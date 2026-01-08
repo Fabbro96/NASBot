@@ -212,7 +212,6 @@ func getStatusText() string {
 
 	// CPU
 	b.WriteString(fmt.Sprintf("%s *CPU*  %s  `%.1f%%`\n", getIcon(s.CPU, 70, 90), progressBar(s.CPU, 10), s.CPU))
-	b.WriteString(fmt.Sprintf("   ↳ Load ₁‚₅‚₁₅: `%.2f` `%.2f` `%.2f`\n", s.Load1m, s.Load5m, s.Load15m))
 
 	// RAM
 	b.WriteString(fmt.Sprintf("%s *RAM*  %s  `%.1f%%`\n", getIcon(s.RAM, 70, 90), progressBar(s.RAM, 10), s.RAM))
