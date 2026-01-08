@@ -431,22 +431,22 @@ func getLogsText() string {
 }
 
 func getHelpText() string {
-	return `🤖 *NASBot — Comandi*
+	return `🤖 *NASBot — Guida Comandi*
 
 📊 *Monitoraggio:*
-/status — Dashboard sistema
-/temp — Temperature CPU e dischi
-/docker — Stato container
-/dstats — Risorse container
-/net — Info rete
-/logs — Log di sistema
+/status — Panoramica risorse (CPU, RAM, Dischi)
+/temp — Temperature e salute dischi (SMART)
+/docker — Applicazioni (Container) attive
+/dstats — Consumo risorse per App
+/net — Indirizzo IP locale e pubblico
+/logs — Ultimi messaggi/errori di sistema
 
 🔧 *Utilità:*
-/speedtest — Test velocità
+/speedtest — Misura velocità connessione
 
 ⚡ *Sistema:*
-/reboot — Riavvia NAS
-/shutdown — Spegni NAS
+/reboot — Riavvia il NAS
+/shutdown — Spegni il NAS in sicurezza
 
 ━━━━━━━━━━━━━━━━━━
 💡 _Usa i pulsanti sotto i messaggi per navigare rapidamente._`
