@@ -1,27 +1,27 @@
 package main
 
 import (
-"context"
-"fmt"
-"io"
-"log"
-"net/http"
-"os"
-"os/exec"
-"runtime/debug"
-"sort"
-"strconv"
-"strings"
-"sync"
-"time"
+	"context"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"os/exec"
+	"runtime/debug"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
 
-tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-"github.com/shirou/gopsutil/v3/cpu"
-"github.com/shirou/gopsutil/v3/disk"
-"github.com/shirou/gopsutil/v3/host"
-"github.com/shirou/gopsutil/v3/load"
-"github.com/shirou/gopsutil/v3/mem"
-"github.com/shirou/gopsutil/v3/process"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/disk"
+	"github.com/shirou/gopsutil/v3/host"
+	"github.com/shirou/gopsutil/v3/load"
+	"github.com/shirou/gopsutil/v3/mem"
+	"github.com/shirou/gopsutil/v3/process"
 )
 
 // ═══════════════════════════════════════════════════════════════════
@@ -29,34 +29,34 @@ tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 // ═══════════════════════════════════════════════════════════════════
 
 const (
-// Soglie allarme
-SogliaCPU      = 90.0
-SogliaRAM      = 90.0
-SogliaDisco    = 90.0 // Allarme disco quasi pieno
-CooldownMinuti = 20
+	// Soglie allarme
+	SogliaCPU      = 90.0
+	SogliaRAM      = 90.0
+	SogliaDisco    = 90.0 // Allarme disco quasi pieno
+	CooldownMinuti = 20
 
-// Path volumi (adatta al tuo NAS)
-PathSSD = "/Volume1"
-PathHDD = "/Volume2"
+	// Path volumi (adatta al tuo NAS)
+	PathSSD = "/Volume1"
+	PathHDD = "/Volume2"
 
-// Intervalli background (ottimizzati per NAS lento)
-IntervalloStats   = 5 * time.Second  // Aggiorna cache stats
-IntervalloMonitor = 30 * time.Second // Check allarmi
+	// Intervalli background (ottimizzati per NAS lento)
+	IntervalloStats   = 5 * time.Second  // Aggiorna cache stats
+	IntervalloMonitor = 30 * time.Second // Check allarmi
 )
 
 var (
-BotToken      string
-AllowedUserID int64
+	BotToken      string
+	AllowedUserID int64
 
-// Cache globale con mutex (evita chiamate lente ripetute)
-statsCache   Stats
-statsMutex   sync.RWMutex
-statsReady   bool
-ultimoAvviso time.Time
+	// Cache globale con mutex (evita chiamate lente ripetute)
+	statsCache   Stats
+	statsMutex   sync.RWMutex
+	statsReady   bool
+	ultimoAvviso time.Time
 
-// Pending confirmations per reboot/shutdown
-pendingAction      string
-pendingActionMutex sync.Mutex
+	// Pending confirmations per reboot/shutdown
+	pendingAction      string
+	pendingActionMutex sync.Mutex
 )
 
 // ═══════════════════════════════════════════════════════════════════
@@ -205,26 +205,31 @@ func getStatusText() string {
 	var b strings.Builder
 	now := time.Now().Format("15:04:05")
 
+	// Header
 	b.WriteString(fmt.Sprintf("📊 *SISTEMA* ─ %s\n", now))
-	b.WriteString(fmt.Sprintf("⏱ Uptime: _%s_\n\n", formatUptime(s.Uptime)))
+	b.WriteString(fmt.Sprintf("⏱ Uptime: _%s_\n", formatUptime(s.Uptime)))
+	b.WriteString("─────────────────────\n")
 
-	// CPU con barra
-	b.WriteString(fmt.Sprintf("%s *CPU*  %s `%5.1f%%`\n", getIcon(s.CPU, 70, 90), progressBar(s.CPU, 10), s.CPU))
-	b.WriteString(fmt.Sprintf("   Load: `%.2f` `%.2f` `%.2f`\n\n", s.Load1m, s.Load5m, s.Load15m))
+	// CPU
+	b.WriteString(fmt.Sprintf("%s *CPU*  %s  `%.1f%%`\n", getIcon(s.CPU, 70, 90), progressBar(s.CPU, 10), s.CPU))
+	b.WriteString(fmt.Sprintf("   ↳ Load ₁‚₅‚₁₅: `%.2f` `%.2f` `%.2f`\n", s.Load1m, s.Load5m, s.Load15m))
 
-	// RAM e SWAP con barre
-	b.WriteString(fmt.Sprintf("%s *RAM*  %s `%5.1f%%`\n", getIcon(s.RAM, 70, 90), progressBar(s.RAM, 10), s.RAM))
-	b.WriteString(fmt.Sprintf("   Free: `%.1f GB` / `%.1f GB`\n", float64(s.RAMFreeGB), float64(s.RAMTotalGB)))
+	// RAM
+	b.WriteString(fmt.Sprintf("%s *RAM*  %s  `%.1f%%`\n", getIcon(s.RAM, 70, 90), progressBar(s.RAM, 10), s.RAM))
+	b.WriteString(fmt.Sprintf("   ↳ Libera: `%s` di `%s`\n", formatRAM(s.RAMFreeMB), formatRAM(s.RAMTotalMB)))
+
+	// SWAP (solo se usato)
 	if s.Swap > 0.1 {
-		b.WriteString(fmt.Sprintf("%s *SWAP* %s `%5.1f%%`\n", getIcon(s.Swap, 50, 75), progressBar(s.Swap, 10), s.Swap))
+		b.WriteString(fmt.Sprintf("%s *SWAP* %s  `%.1f%%`\n", getIcon(s.Swap, 50, 75), progressBar(s.Swap, 10), s.Swap))
 	}
-	b.WriteString("\n")
 
-	// Dischi con barre
-	b.WriteString(fmt.Sprintf("🚀 *SSD*  %s `%5.1f%%`\n", progressBar(s.VolSSD.Used, 10), s.VolSSD.Used))
-	b.WriteString(fmt.Sprintf("   Free: `%s`\n", formatBytes(s.VolSSD.Free)))
-	b.WriteString(fmt.Sprintf("🗄 *HDD*  %s `%5.1f%%`\n", progressBar(s.VolHDD.Used, 10), s.VolHDD.Used))
-	b.WriteString(fmt.Sprintf("   Free: `%s`\n\n", formatBytes(s.VolHDD.Free)))
+	b.WriteString("─────────────────────\n")
+
+	// Storage
+	b.WriteString(fmt.Sprintf("💾 *SSD*  %s  `%.1f%%`\n", progressBar(s.VolSSD.Used, 10), s.VolSSD.Used))
+	b.WriteString(fmt.Sprintf("   ↳ Libero: `%s`\n", formatBytes(s.VolSSD.Free)))
+	b.WriteString(fmt.Sprintf("💿 *HDD*  %s  `%.1f%%`\n", progressBar(s.VolHDD.Used, 10), s.VolHDD.Used))
+	b.WriteString(fmt.Sprintf("   ↳ Libero: `%s`\n", formatBytes(s.VolHDD.Free)))
 
 	// I/O
 	ioIcon := "🟢"
@@ -234,13 +239,15 @@ func getStatusText() string {
 	if s.DiskUtil > 95 {
 		ioIcon = "🔴"
 	}
-	b.WriteString(fmt.Sprintf("%s *I/O* `%.0f%%` ─ R:`%.1f` W:`%.1f` MB/s\n\n", ioIcon, s.DiskUtil, s.ReadMBs, s.WriteMBs))
+	b.WriteString(fmt.Sprintf("%s *I/O*  `%.0f%%` ─ R:`%.1f` W:`%.1f` MB/s\n", ioIcon, s.DiskUtil, s.ReadMBs, s.WriteMBs))
 
-	// Top processi (pre-calcolati nella cache)
+	b.WriteString("─────────────────────\n")
+
+	// Top processi
 	b.WriteString("🔥 *Top CPU:*\n")
-	b.WriteString(formatTopProcs(s.TopCPU))
+	b.WriteString(formatTopProcs(s.TopCPU, "cpu"))
 	b.WriteString("\n🧠 *Top RAM:*\n")
-	b.WriteString(formatTopProcs(s.TopRAM))
+	b.WriteString(formatTopProcs(s.TopRAM, "mem"))
 
 	return b.String()
 }
@@ -349,26 +356,26 @@ func getDockerStatsText() string {
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("📈 *RISORSE CONTAINER* ─ %s\n", time.Now().Format("15:04:05")))
 	b.WriteString("```\n")
-b.WriteString(fmt.Sprintf("%-12s %6s %6s %s\n", "CONTAINER", "CPU", "MEM%", "MEM"))
-b.WriteString("────────────────────────────────\n")
+	b.WriteString(fmt.Sprintf("%-12s %6s %6s %s\n", "CONTAINER", "CPU", "MEM%", "MEM"))
+	b.WriteString("────────────────────────────────\n")
 
-for _, line := range lines {
-parts := strings.Split(line, "|")
-if len(parts) < 4 {
-continue
-}
-name := truncate(parts[0], 12)
+	for _, line := range lines {
+		parts := strings.Split(line, "|")
+		if len(parts) < 4 {
+			continue
+		}
+		name := truncate(parts[0], 12)
 		cpuP := strings.TrimSpace(parts[1])
 		memUsage := strings.TrimSpace(parts[2])
 		memP := strings.TrimSpace(parts[3])
 
 		memShort := strings.Split(memUsage, " ")[0]
-memShort = strings.Replace(memShort, "MiB", "M", 1)
-memShort = strings.Replace(memShort, "GiB", "G", 1)
+		memShort = strings.Replace(memShort, "MiB", "M", 1)
+		memShort = strings.Replace(memShort, "GiB", "G", 1)
 
-b.WriteString(fmt.Sprintf("%-12s %6s %6s %s\n", name, cpuP, memP, memShort))
-}
-b.WriteString("```")
+		b.WriteString(fmt.Sprintf("%-12s %6s %6s %s\n", name, cpuP, memP, memShort))
+	}
+	b.WriteString("```")
 
 	return b.String()
 }
@@ -465,11 +472,11 @@ func sendPowerConfirm(bot *tgbotapi.BotAPI, chatID int64, action string) {
 	msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("%s *Confermi di voler %s il NAS?*\n\n⚠️ _Questa azione è irreversibile._", emoji, text))
 	msg.ParseMode = "Markdown"
 	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
-tgbotapi.NewInlineKeyboardRow(
-tgbotapi.NewInlineKeyboardButtonData("✅ Sì, procedi", "confirm_"+action),
-tgbotapi.NewInlineKeyboardButtonData("❌ Annulla", "cancel_power"),
-),
-)
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("✅ Sì, procedi", "confirm_"+action),
+			tgbotapi.NewInlineKeyboardButtonData("❌ Annulla", "cancel_power"),
+		),
+	)
 	bot.Send(msg)
 }
 
@@ -587,13 +594,13 @@ func statsCollector() {
 		lastIO = currentIO
 		lastIOTime = time.Now()
 
-		topCPU, topRAM := getTopProcesses(3)
+		topCPU, topRAM := getTopProcesses(5)
 
 		newStats := Stats{
 			CPU:        safeFloat(c, 0),
 			RAM:        v.UsedPercent,
-			RAMFreeGB:  v.Available / 1024 / 1024 / 1024,
-			RAMTotalGB: v.Total / 1024 / 1024 / 1024,
+			RAMFreeMB:  v.Available / 1024 / 1024,
+			RAMTotalMB: v.Total / 1024 / 1024,
 			Swap:       sw.UsedPercent,
 			Load1m:     l.Load1,
 			Load5m:     l.Load5,
@@ -711,13 +718,13 @@ type VolumeStats struct {
 }
 
 type Stats struct {
-	CPU, RAM, Swap                 float64
-	RAMFreeGB, RAMTotalGB          uint64
-	Load1m, Load5m, Load15m        float64
-	Uptime                         uint64
-	VolSSD, VolHDD                 VolumeStats
-	ReadMBs, WriteMBs, DiskUtil    float64
-	TopCPU, TopRAM                 []ProcInfo
+	CPU, RAM, Swap              float64
+	RAMFreeMB, RAMTotalMB       uint64
+	Load1m, Load5m, Load15m     float64
+	Uptime                      uint64
+	VolSSD, VolHDD              VolumeStats
+	ReadMBs, WriteMBs, DiskUtil float64
+	TopCPU, TopRAM              []ProcInfo
 }
 
 type ProcInfo struct {
@@ -766,21 +773,28 @@ func formatBytes(bytes uint64) string {
 	return fmt.Sprintf("%.1f GB", gb)
 }
 
-func formatTopProcs(procs []ProcInfo) string {
+func formatRAM(mb uint64) string {
+	if mb >= 1024 {
+		return fmt.Sprintf("%.1f GB", float64(mb)/1024.0)
+	}
+	return fmt.Sprintf("%d MB", mb)
+}
+
+func formatTopProcs(procs []ProcInfo, metric string) string {
 	if len(procs) == 0 {
 		return "```\n N/A\n```"
 	}
 	var b strings.Builder
 	b.WriteString("```\n")
-for _, p := range procs {
+	for _, p := range procs {
 		name := truncate(p.Name, 12)
-		if p.Cpu > p.Mem {
-			b.WriteString(fmt.Sprintf("%-12s %5.1f%% cpu\n", name, p.Cpu))
-} else {
-b.WriteString(fmt.Sprintf("%-12s %5.1f%% mem\n", name, p.Mem))
-}
-}
-b.WriteString("```")
+		if metric == "cpu" {
+			b.WriteString(fmt.Sprintf("%-12s %5.1f%%\n", name, p.Cpu))
+		} else {
+			b.WriteString(fmt.Sprintf("%-12s %5.1f%%\n", name, p.Mem))
+		}
+	}
+	b.WriteString("```")
 	return b.String()
 }
 
@@ -860,16 +874,16 @@ func editMessage(bot *tgbotapi.BotAPI, chatID int64, msgID int, text string, key
 
 func getMainKeyboard() tgbotapi.InlineKeyboardMarkup {
 	return tgbotapi.NewInlineKeyboardMarkup(
-tgbotapi.NewInlineKeyboardRow(
-tgbotapi.NewInlineKeyboardButtonData("🔄 Refresh", "refresh_status"),
-tgbotapi.NewInlineKeyboardButtonData("🌡 Temp", "show_temp"),
-),
-tgbotapi.NewInlineKeyboardRow(
-tgbotapi.NewInlineKeyboardButtonData("🐳 Docker", "show_docker"),
-tgbotapi.NewInlineKeyboardButtonData("📈 Stats", "show_dstats"),
-),
-tgbotapi.NewInlineKeyboardRow(
-tgbotapi.NewInlineKeyboardButtonData("🌐 Rete", "show_net"),
-),
-)
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🔄 Refresh", "refresh_status"),
+			tgbotapi.NewInlineKeyboardButtonData("🌡 Temp", "show_temp"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🐳 Docker", "show_docker"),
+			tgbotapi.NewInlineKeyboardButtonData("📈 Stats", "show_dstats"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🌐 Rete", "show_net"),
+		),
+	)
 }
