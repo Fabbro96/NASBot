@@ -64,16 +64,47 @@ Se la tua macchina NON è ARM64, compila da sorgente oppure ricompila per la tua
 
 ## Comandi Telegram
 
-- `/start` o `/status`: stato sistema + top processi CPU/RAM
-- `/temp`: temperature (CPU + SMART dischi `sda`, `sdb`)
-- `/docker`: elenco container
-- `/dstats`: risorse container (`docker stats`)
-- `/net`: IP locale + IP pubblico
-- `/speedtest`: download test (100MB) e stima Mbps
-- `/logs`: ultimi 10 log kernel (`dmesg | tail -n 10`)
-- `/reboot`: reboot host (richiede permessi)
-- `/shutdown`: spegnimento host (richiede permessi)
-- `/help`: help sintetico
+| Comando | Descrizione |
+| --- | --- |
+| `/status` | 📊 Dashboard risorse interattiva |
+| `/temp` | 🌡 Temperature CPU e Dischi (SMART) |
+| `/docker` | 🐳 Stato dei Container |
+| `/dstats` | 📈 Consumo risorse Container |
+| `/net` | 🌐 Info IP Locale e Pubblico |
+| `/speedtest` | 🚀 Test velocità connessione |
+| `/logs` | 📜 Ultimi log di sistema (dmesg) |
+| `/reboot` | 🔄 Riavvia il NAS |
+| `/shutdown` | 🛑 Spegni il NAS |
+| `/help` | ❓ Guida comandi |
+
+Nota: `/start` è gestito come alias di `/status`.
+
+## Avvio automatico (esempio `start_box.sh`)
+
+Esempio di script per esportare le variabili d’ambiente ed evitare doppi avvii:
+
+```bash
+#!/bin/bash
+
+# --- CONFIGURAZIONE ---
+export BOT_TOKEN="TOKEN"
+export BOT_USER_ID="USER"
+# ----------------------
+
+cd /Volume1/public/
+
+# Evita doppi avvii
+if pgrep -x "nasbot" > /dev/null
+then
+  echo "Bot già attivo."
+else
+  # Avvio silenzioso in background
+  nohup ./nasbot > /dev/null 2>&1 &
+  echo "Bot avviato."
+fi
+```
+
+Ricordati di rendere lo script eseguibile (`chmod +x start_box.sh`) e di sostituire `TOKEN`/`USER` con valori reali.
 
 ## Note di configurazione dischi
 
