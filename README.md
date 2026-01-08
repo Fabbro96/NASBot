@@ -1,68 +1,93 @@
-# NASBot (Telegram)
+# 🖥️ NASBot
 
-Bot Telegram per monitorare un NAS (CPU/RAM/SWAP, spazio dischi, I/O, processi top) e comandare alcune azioni di sistema.
+> Un bot Telegram leggero e reattivo per tenere sotto controllo il tuo NAS — ovunque tu sia.
 
-Il codice è in `main.go` (Go). Nel repository è presente anche un binario precompilato `nasbot` (ARM64).
+![Go](https://img.shields.io/badge/Go-1.18+-00ADD8?logo=go&logoColor=white)
+![Platform](https://img.shields.io/badge/Platform-Linux%20ARM64-orange)
+![License](https://img.shields.io/badge/License-MIT-green)
 
-## Funzionalità
+---
 
-- Dashboard con pulsanti inline (refresh status, temp, docker, docker stats)
-- Comandi Telegram per status e diagnostica (rete, speedtest, logs)
-- Monitoraggio in background con allarme (CPU alta o I/O “bloccato”) con cooldown
-- Accesso limitato a un singolo utente (chat id)
+## ✨ Perché NASBot?
 
-## Requisiti
+Hai un NAS casalingo o un mini-server ARM e vuoi sapere come sta **senza aprire SSH ogni volta**?  
+NASBot ti manda una dashboard interattiva su Telegram: CPU, RAM, dischi, container Docker, temperature — tutto a portata di tap.
 
-- Go >= 1.18 (se compili da sorgente)
-- Linux (il codice legge anche `/sys/class/thermal/...` e usa comandi di sistema)
-- Facoltativi ma consigliati:
-  - `docker` (per `/docker` e `/dstats`)
-  - `smartctl` (pacchetto `smartmontools`) per `/temp` (lettura SMART dischi)
+**Caratteristiche principali:**
 
-Nota permessi:
-- `/reboot` e `/shutdown` eseguono `reboot`/`poweroff` direttamente: il processo deve avere i privilegi necessari.
-- `smartctl` spesso richiede root o capability (`sudo`, group `disk`, oppure policy ad-hoc).
+| | |
+|---|---|
+| 📊 **Dashboard live** | Pulsanti inline per aggiornare al volo |
+| 🔔 **Allarmi automatici** | Notifica se CPU o I/O vanno in sofferenza |
+| 🐳 **Docker-aware** | Stato e risorse dei container |
+| 🔒 **Accesso singolo** | Solo il tuo user ID può comandare |
+| 🪶 **Leggero** | Binario statico ~6 MB, zero dipendenze runtime |
 
-## Configurazione
+---
 
-Il bot usa variabili d’ambiente (obbligatorie):
+## 📋 Requisiti
 
-- `BOT_TOKEN`: token del bot Telegram
-- `BOT_USER_ID`: chat id numerico autorizzato (gli altri messaggi vengono ignorati)
+| Requisito | Note |
+|-----------|------|
+| **Go ≥ 1.18** | Solo se compili da sorgente |
+| **Linux** | Testato su Debian/Ubuntu ARM64 |
+| `docker` *(opzionale)* | Per `/docker` e `/dstats` |
+| `smartmontools` *(opzionale)* | Per temperature SMART (`/temp`) |
 
-Esempio:
+### ⚠️ Permessi
+
+- `/reboot` e `/shutdown` eseguono direttamente `reboot`/`poweroff` → il processo deve girare come **root** o avere i permessi necessari.
+- `smartctl` di solito richiede **root** o appartenenza al gruppo `disk`.
+
+---
+
+## ⚙️ Configurazione
+
+Il bot legge due variabili d'ambiente **obbligatorie**:
+
+| Variabile | Descrizione |
+|-----------|-------------|
+| `BOT_TOKEN` | Token rilasciato da [@BotFather](https://t.me/BotFather) |
+| `BOT_USER_ID` | Il tuo chat ID numerico (puoi ottenerlo da [@userinfobot](https://t.me/userinfobot)) |
 
 ```bash
-export BOT_TOKEN="123456:ABC..."
+export BOT_TOKEN="123456:ABC-xyz..."
 export BOT_USER_ID="123456789"
 ```
 
-## Avvio
+> 💡 **Tip:** non committare mai il token nel repo! Usa un file `.env` ignorato da git oppure variabili di sistema.
 
-### 1) Esegui da sorgente
+---
+
+## 🚀 Avvio
+
+### Opzione A — Da sorgente
 
 ```bash
 go run .
 ```
 
-### 2) Compila e avvia
+### Opzione B — Compila e lancia
 
 ```bash
 go build -o nasbot .
 ./nasbot
 ```
 
-### 3) Usa il binario incluso (ARM64)
+### Opzione C — Binario precompilato (ARM64)
 
-Nel repo c’è un eseguibile `nasbot` per `linux/arm64`:
+Nel repo è incluso un eseguibile `nasbot` già compilato per `linux/arm64`:
 
 ```bash
+chmod +x nasbot
 ./nasbot
 ```
 
-Se la tua macchina NON è ARM64, compila da sorgente oppure ricompila per la tua architettura.
+> Se la tua arch è diversa (es. `amd64`), ricompila con `GOARCH=amd64 go build -o nasbot .`
 
-## Comandi Telegram
+---
+
+## 🤖 Comandi Telegram
 
 | Comando | Descrizione |
 | --- | --- |
@@ -77,40 +102,107 @@ Se la tua macchina NON è ARM64, compila da sorgente oppure ricompila per la tua
 | `/shutdown` | 🛑 Spegni il NAS |
 | `/help` | ❓ Guida comandi |
 
-Nota: `/start` è gestito come alias di `/status`.
+> `/start` è un alias di `/status`.
 
-## Avvio automatico (esempio `start_box.sh`)
+---
 
-Esempio di script per esportare le variabili d’ambiente ed evitare doppi avvii:
+## 🛠️ Script di avvio (`start_box.sh`)
+
+Uno script pronto per avviare (o fermare) il bot, con controllo anti-duplicato e un po' di colore:
 
 ```bash
 #!/bin/bash
+# ============================================================
+#  NASBot Launcher — start | stop | status
+# ============================================================
 
-# --- CONFIGURAZIONE ---
-export BOT_TOKEN="TOKEN"
-export BOT_USER_ID="USER"
-# ----------------------
+# --- CONFIGURAZIONE (sostituisci con i tuoi valori) ---------
+export BOT_TOKEN="IL_TUO_TOKEN"
+export BOT_USER_ID="IL_TUO_USER_ID"
+BOT_DIR="/Volume1/public"
+# ------------------------------------------------------------
 
-cd /Volume1/public/
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 
-# Evita doppi avvii
-if pgrep -x "nasbot" > /dev/null
-then
-  echo "Bot già attivo."
-else
-  # Avvio silenzioso in background
-  nohup ./nasbot > /dev/null 2>&1 &
-  echo "Bot avviato."
-fi
+cd "$BOT_DIR" || { echo -e "${RED}✗ Directory $BOT_DIR non trovata${NC}"; exit 1; }
+
+case "${1:-start}" in
+  start)
+    if pgrep -x "nasbot" > /dev/null; then
+      echo -e "${YELLOW}⚡ NASBot già in esecuzione (PID $(pgrep -x nasbot))${NC}"
+    else
+      [[ -z "$BOT_TOKEN" || -z "$BOT_USER_ID" ]] && { echo -e "${RED}✗ BOT_TOKEN o BOT_USER_ID mancanti${NC}"; exit 1; }
+      nohup ./nasbot >> nasbot.log 2>&1 &
+      sleep 1
+      if pgrep -x "nasbot" > /dev/null; then
+        echo -e "${GREEN}✔ NASBot avviato (PID $(pgrep -x nasbot))${NC}"
+      else
+        echo -e "${RED}✗ Avvio fallito — controlla nasbot.log${NC}"
+      fi
+    fi
+    ;;
+  stop)
+    if pgrep -x "nasbot" > /dev/null; then
+      pkill -x "nasbot"
+      echo -e "${GREEN}✔ NASBot fermato${NC}"
+    else
+      echo -e "${YELLOW}⚠ NASBot non era in esecuzione${NC}"
+    fi
+    ;;
+  status)
+    if pgrep -x "nasbot" > /dev/null; then
+      echo -e "${GREEN}● NASBot attivo (PID $(pgrep -x nasbot))${NC}"
+    else
+      echo -e "${RED}○ NASBot non attivo${NC}"
+    fi
+    ;;
+  *)
+    echo "Uso: $0 {start|stop|status}"
+    exit 1
+    ;;
+esac
 ```
 
-Ricordati di rendere lo script eseguibile (`chmod +x start_box.sh`) e di sostituire `TOKEN`/`USER` con valori reali.
+```bash
+chmod +x start_box.sh
+./start_box.sh start   # avvia
+./start_box.sh status  # controlla
+./start_box.sh stop    # ferma
+```
 
-## Note di configurazione dischi
+> 💡 **Tip:** aggiungi `@reboot /percorso/start_box.sh start` al crontab per l'avvio automatico al boot.
 
-Nel codice ci sono costanti per i mountpoint:
+---
 
-- `PathSSD = "/Volume1"`
-- `PathHDD = "/Volume2"`
+## 🔧 Personalizzazione
 
-Se nel tuo NAS i path sono diversi, aggiorna `main.go` e ricompila.
+Nel codice (`main.go`) trovi alcune costanti che puoi modificare:
+
+```go
+const (
+    SogliaCPU      = 90.0       // % CPU per allarme
+    SogliaRAM      = 90.0       // % RAM per allarme
+    PathSSD        = "/Volume1" // mount point SSD
+    PathHDD        = "/Volume2" // mount point HDD
+    CooldownMinuti = 20         // minuti tra un allarme e l'altro
+)
+```
+
+Dopo le modifiche: `go build -o nasbot .`
+
+---
+
+## 🐛 Troubleshooting
+
+| Problema | Soluzione |
+|----------|-----------|
+| *"BOT_TOKEN mancante"* | Controlla che le variabili siano esportate nella shell che lancia il bot |
+| *Temperature disco "??"* | Installa `smartmontools` e verifica i permessi (`sudo smartctl ...`) |
+| *Comandi Docker falliscono* | Assicurati che l'utente che esegue il bot sia nel gruppo `docker` |
+| *Il bot non risponde* | Verifica che `BOT_USER_ID` corrisponda al tuo chat ID |
+
+---
+
+## 📜 Licenza
+
+MIT — usalo, modificalo, divertiti. 🎉
