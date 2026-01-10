@@ -18,8 +18,12 @@ NASBot ti manda una dashboard interattiva su Telegram: CPU, RAM, dischi, contain
 | | |
 |---|---|
 | 📊 **Dashboard live** | Pulsanti inline per aggiornare al volo |
-| 🔔 **Allarmi automatici** | Notifica se CPU o I/O vanno in sofferenza |
-| 🐳 **Docker-aware** | Stato e risorse dei container |
+| 🌅 **Report mattina** | Ogni giorno alle 07:30 con "Buongiorno!" |
+| 🌆 **Report sera** | Ogni giorno alle 18:30 con "Buonasera!" |
+| 🛡️ **Protezione autonoma** | Riavvia container se RAM critica |
+| 🐳 **Gestione Docker** | Start/Stop/Restart container da Telegram |
+| 🔔 **Allarmi intelligenti** | Notifica solo stress I/O prolungato (2+ min) |
+| 🔄 **Auto-recovery** | Riavvio automatico dopo crash/reboot |
 | 🔒 **Accesso singolo** | Solo il tuo user ID può comandare |
 | 🪶 **Leggero** | Binario statico ~6 MB, zero dipendenze runtime |
 
@@ -30,14 +34,15 @@ NASBot ti manda una dashboard interattiva su Telegram: CPU, RAM, dischi, contain
 | Requisito | Note |
 |-----------|------|
 | **Go ≥ 1.18** | Solo se compili da sorgente |
-| **Linux** | Testato su Debian/Ubuntu ARM64 |
-| `docker` *(opzionale)* | Per `/docker` e `/dstats` |
+| **Linux** | Testato su Debian/Ubuntu ARM64, TerraMaster |
+| `docker` *(opzionale)* | Per gestione container |
 | `smartmontools` *(opzionale)* | Per temperature SMART (`/temp`) |
 
 ### ⚠️ Permessi
 
 - `/reboot` e `/shutdown` eseguono direttamente `reboot`/`poweroff` → il processo deve girare come **root** o avere i permessi necessari.
 - `smartctl` di solito richiede **root** o appartenenza al gruppo `disk`.
+- Per la gestione Docker, l'utente deve poter eseguire comandi `docker`.
 
 ---
 
@@ -61,29 +66,38 @@ export BOT_USER_ID="123456789"
 
 ## 🚀 Avvio
 
-### Opzione A — Da sorgente
+### Opzione A — Script di gestione (consigliato)
 
 ```bash
-go run .
+./start_bot.sh start     # Avvia
+./start_bot.sh stop      # Ferma
+./start_bot.sh restart   # Riavvia
+./start_bot.sh status    # Stato dettagliato
+./start_bot.sh logs 100  # Ultimi 100 log
 ```
 
-### Opzione B — Compila e lancia
+### Opzione B — Avvio automatico (auto-recovery)
+
+Per TerraMaster e sistemi senza systemd:
+```bash
+sudo ./setup_autostart.sh
+```
+
+Per sistemi con systemd:
+```bash
+sudo cp nasbot.service /etc/systemd/system/
+# Modifica BOT_TOKEN e BOT_USER_ID nel file
+sudo systemctl daemon-reload
+sudo systemctl enable nasbot
+sudo systemctl start nasbot
+```
+
+### Opzione C — Compila e lancia manualmente
 
 ```bash
 go build -o nasbot .
 ./nasbot
 ```
-
-### Opzione C — Binario precompilato (ARM64)
-
-Nel repo è incluso un eseguibile `nasbot` già compilato per `linux/arm64`:
-
-```bash
-chmod +x nasbot
-./nasbot
-```
-
-> Se la tua arch è diversa (es. `amd64`), ricompila con `GOARCH=amd64 go build -o nasbot .`
 
 ---
 
@@ -92,9 +106,11 @@ chmod +x nasbot
 | Comando | Descrizione |
 | --- | --- |
 | `/status` | 📊 Dashboard risorse interattiva |
+| `/report` | 📋 Report completo stato NAS |
 | `/temp` | 🌡 Temperature CPU e Dischi (SMART) |
-| `/docker` | 🐳 Stato dei Container |
+| `/docker` | 🐳 Menu gestione Container |
 | `/dstats` | 📈 Consumo risorse Container |
+| `/container <nome>` | 🔍 Info container specifico |
 | `/net` | 🌐 Info IP Locale e Pubblico |
 | `/speedtest` | 🚀 Test velocità connessione |
 | `/logs` | 📜 Ultimi log di sistema (dmesg) |
