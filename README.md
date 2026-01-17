@@ -48,19 +48,32 @@ NASBot ti manda una dashboard interattiva su Telegram: CPU, RAM, dischi, contain
 
 ## ⚙️ Configurazione
 
-Il bot legge due variabili d'ambiente **obbligatorie**:
-
-| Variabile | Descrizione |
-|-----------|-------------|
-| `BOT_TOKEN` | Token rilasciato da [@BotFather](https://t.me/BotFather) |
-| `BOT_USER_ID` | Il tuo chat ID numerico (puoi ottenerlo da [@userinfobot](https://t.me/userinfobot)) |
+Copia il file di esempio e inserisci i tuoi dati:
 
 ```bash
-export BOT_TOKEN="123456:ABC-xyz..."
-export BOT_USER_ID="123456789"
+cp config.example.json config.json
+nano config.json
 ```
 
-> 💡 **Tip:** non committare mai il token nel repo! Usa un file `.env` ignorato da git oppure variabili di sistema.
+**Esempio `config.json`:**
+
+```json
+{
+  "bot_token": "123456:ABC-xyz...",
+  "allowed_user_id": 123456789,
+  "paths": {
+    "ssd": "/Volume1",
+    "hdd": "/Volume2"
+  },
+  "thresholds": {
+    "cpu": 90,
+    "ram": 90,
+    "disk": 90
+  }
+}
+```
+
+> 🔒 **Sicurezza:** Il file `config.json` viene automaticamente ignorato da git per proteggere il tuo token.
 
 ---
 
@@ -76,26 +89,18 @@ export BOT_USER_ID="123456789"
 ./start_bot.sh logs 100  # Ultimi 100 log
 ```
 
-### Opzione B — Avvio automatico (auto-recovery)
+### Opzione B — Avvio automatico (TerraMaster / init.d)
 
-Per TerraMaster e sistemi senza systemd:
 ```bash
 sudo ./setup_autostart.sh
 ```
 
-Per sistemi con systemd:
-```bash
-sudo cp nasbot.service /etc/systemd/system/
-# Modifica BOT_TOKEN e BOT_USER_ID nel file
-sudo systemctl daemon-reload
-sudo systemctl enable nasbot
-sudo systemctl start nasbot
-```
-
 ### Opzione C — Compila e lancia manualmente
 
+Per ridurre le dimensioni del binario (consigliato su NAS):
+
 ```bash
-go build -o nasbot .
+go build -ldflags="-s -w" -o nasbot .
 ./nasbot
 ```
 
@@ -122,32 +127,15 @@ go build -o nasbot .
 
 ---
 
-## 🛠️ Script di avvio (`start_box.sh`)
+## 🛠️ Script di avvio (`start_bot.sh`)
 
-Uno script pronto per avviare (o fermare) il bot, con controllo anti-duplicato e un po' di colore:
+Il progetto include `start_bot.sh` che gestisce:
+- Avvio in background (`nohup`)
+- Rotazione log (10 MB max)
+- PID file management
+- Verifica permessi esecuzione
 
-```bash
-#!/bin/bash
-# ============================================================
-#  NASBot Launcher — start | stop | status
-# ============================================================
-
-# --- CONFIGURAZIONE (sostituisci con i tuoi valori) ---------
-export BOT_TOKEN="IL_TUO_TOKEN"
-export BOT_USER_ID="IL_TUO_USER_ID"
-BOT_DIR="/Volume1/public"
-# ------------------------------------------------------------
-
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
-
-cd "$BOT_DIR" || { echo -e "${RED}✗ Directory $BOT_DIR non trovata${NC}"; exit 1; }
-
-case "${1:-start}" in
-  start)
-    if pgrep -x "nasbot" > /dev/null; then
-      echo -e "${YELLOW}⚡ NASBot già in esecuzione (PID $(pgrep -x nasbot))${NC}"
-    else
-      [[ -z "$BOT_TOKEN" || -z "$BOT_USER_ID" ]] && { echo -e "${RED}✗ BOT_TOKEN o BOT_USER_ID mancanti${NC}"; exit 1; }
+Sentiti libero di personalizzare `BOT_DIR` all'interno dello script se lo sposti.
       nohup ./nasbot >> nasbot.log 2>&1 &
       sleep 1
       if pgrep -x "nasbot" > /dev/null; then

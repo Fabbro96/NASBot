@@ -32,15 +32,6 @@ import (
 // ═══════════════════════════════════════════════════════════════════
 
 const (
-	// Soglie allarme
-	SogliaCPU   = 90.0
-	SogliaRAM   = 90.0
-	SogliaDisco = 90.0 // Allarme disco quasi pieno
-
-	// Path volumi (adatta al tuo NAS)
-	PathSSD = "/Volume1"
-	PathHDD = "/Volume2"
-
 	// Intervalli background
 	IntervalloStats     = 5 * time.Second  // Aggiorna cache stats
 	IntervalloMonitor   = 30 * time.Second // Check allarmi
@@ -63,13 +54,20 @@ const (
 	ReportMinuti  = 30
 	Timezone      = "Europe/Rome"
 
-	// Stato persistente
-	StateFile = "/Volume1/public/nasbot_state.json"
+	// Stato persistente (default, sovrascritto se necessario)
+	StateFile = "nasbot_state.json" 
 )
 
 var (
 	BotToken      string
 	AllowedUserID int64
+
+	// Configurazione Runtime (da config.json)
+	PathSSD     = "/Volume1"
+	PathHDD     = "/Volume2"
+	SogliaCPU   = 90.0
+	SogliaRAM   = 90.0
+	SogliaDisco = 90.0
 
 	// Cache globale con mutex
 	statsCache Stats
@@ -155,9 +153,20 @@ func init() {
 
 // loadConfig legge i token dal file config.json
 func loadConfig() {
+	type Paths struct {
+		SSD string `json:"ssd"`
+		HDD string `json:"hdd"`
+	}
+	type Thresholds struct {
+		CPU  float64 `json:"cpu"`
+		RAM  float64 `json:"ram"`
+		Disk float64 `json:"disk"`
+	}
 	type Config struct {
-		BotToken      string `json:"bot_token"`
-		AllowedUserID int64  `json:"allowed_user_id"`
+		BotToken      string     `json:"bot_token"`
+		AllowedUserID int64      `json:"allowed_user_id"`
+		Paths         Paths      `json:"paths"`
+		Thresholds    Thresholds `json:"thresholds"`
 	}
 
 	data, err := os.ReadFile("config.json")
@@ -172,6 +181,24 @@ func loadConfig() {
 
 	BotToken = cfg.BotToken
 	AllowedUserID = cfg.AllowedUserID
+
+	// Sovrascrivi default se presenti nel json
+	if cfg.Paths.SSD != "" {
+		PathSSD = cfg.Paths.SSD
+	}
+	if cfg.Paths.HDD != "" {
+		PathHDD = cfg.Paths.HDD
+	}
+
+	if cfg.Thresholds.CPU > 0 {
+		SogliaCPU = cfg.Thresholds.CPU
+	}
+	if cfg.Thresholds.RAM > 0 {
+		SogliaRAM = cfg.Thresholds.RAM
+	}
+	if cfg.Thresholds.Disk > 0 {
+		SogliaDisco = cfg.Thresholds.Disk
+	}
 
 	if BotToken == "" {
 		log.Fatal("❌ bot_token vuoto in config.json")
@@ -421,10 +448,10 @@ func getStatusText() string {
 
 	b.WriteString(fmt.Sprintf("🖥 *NAS* at %s\n\n", time.Now().Format("15:04")))
 
-	b.WriteString(fmt.Sprintf("🧠 CPU %s %2.0f%%\n", modernBar(s.CPU), s.CPU))
-	b.WriteString(fmt.Sprintf("💾 RAM %s %2.0f%%\n", modernBar(s.RAM), s.RAM))
+	b.WriteString(fmt.Sprintf("🧠 CPU %s %2.0f%%\n", makeProgressBar(s.CPU), s.CPU))
+	b.WriteString(fmt.Sprintf("💾 RAM %s %2.0f%%\n", makeProgressBar(s.RAM), s.RAM))
 	if s.Swap > 5 {
-		b.WriteString(fmt.Sprintf("🔄 Swap %s %2.0f%%\n", modernBar(s.Swap), s.Swap))
+		b.WriteString(fmt.Sprintf("🔄 Swap %s %2.0f%%\n", makeProgressBar(s.Swap), s.Swap))
 	}
 
 	b.WriteString(fmt.Sprintf("\n💿 SSD %2.0f%% · %s free\n", s.VolSSD.Used, formatBytes(s.VolSSD.Free)))
@@ -443,16 +470,23 @@ func getStatusText() string {
 	return b.String()
 }
 
-// modernBar crea una barra compatta
-func modernBar(percent float64) string {
+// makeProgressBar creates a 10-step visual progress bar
+func makeProgressBar(percent float64) string {
+	if percent < 0 {
+		percent = 0
+	}
 	if percent > 100 {
 		percent = 100
 	}
-	filled := int(percent / 12.5)
-	if filled > 8 {
-		filled = 8
+	
+	// Arrotonda al 10% più vicino (55% -> 60% -> 6 tacche)
+	filled := int((percent + 5) / 10)
+	if filled > 10 {
+		filled = 10
 	}
-	return strings.Repeat("\u2588", filled) + strings.Repeat("\u2591", 8-filled)
+	
+	// Usa caratteri block per la barra
+	return strings.Repeat("█", filled) + strings.Repeat("░", 10-filled)
 }
 
 func getTempText() string {
@@ -1162,10 +1196,10 @@ func generateDailyReport(greeting string) string {
 	}
 
 	b.WriteString("*Resources*\n")
-	b.WriteString(fmt.Sprintf("🧠 CPU %s %2.0f%%\n", modernBar(s.CPU), s.CPU))
-	b.WriteString(fmt.Sprintf("💾 RAM %s %2.0f%%\n", modernBar(s.RAM), s.RAM))
+	b.WriteString(fmt.Sprintf("🧠 CPU %s %2.0f%%\n", makeProgressBar(s.CPU), s.CPU))
+	b.WriteString(fmt.Sprintf("💾 RAM %s %2.0f%%\n", makeProgressBar(s.RAM), s.RAM))
 	if s.Swap > 5 {
-		b.WriteString(fmt.Sprintf("🔄 Swap %s %2.0f%%\n", modernBar(s.Swap), s.Swap))
+		b.WriteString(fmt.Sprintf("🔄 Swap %s %2.0f%%\n", makeProgressBar(s.Swap), s.Swap))
 	}
 
 	b.WriteString(fmt.Sprintf("\n💿 SSD %2.0f%% · %s free\n", s.VolSSD.Used, formatBytes(s.VolSSD.Free)))
@@ -1243,13 +1277,13 @@ func generateReport(manual bool) string {
 	b.WriteString(fmt.Sprintf("%s %s\n\n", healthIcon, healthText))
 
 	b.WriteString("*Resources*\n")
-	b.WriteString(fmt.Sprintf("CPU %s %.1f%%\n", modernBar(s.CPU), s.CPU))
-	b.WriteString(fmt.Sprintf("RAM %s %.1f%% (%s free)\n", modernBar(s.RAM), s.RAM, formatRAM(s.RAMFreeMB)))
+	b.WriteString(fmt.Sprintf("CPU %s %.1f%%\n", makeProgressBar(s.CPU), s.CPU))
+	b.WriteString(fmt.Sprintf("RAM %s %.1f%% (%s free)\n", makeProgressBar(s.RAM), s.RAM, formatRAM(s.RAMFreeMB)))
 	if s.DiskUtil > 5 {
-		b.WriteString(fmt.Sprintf("I/O %s %.0f%%\n", modernBar(s.DiskUtil), s.DiskUtil))
+		b.WriteString(fmt.Sprintf("I/O %s %.0f%%\n", makeProgressBar(s.DiskUtil), s.DiskUtil))
 	}
 	if s.Swap > 5 {
-		b.WriteString(fmt.Sprintf("Swap %s %.1f%%\n", modernBar(s.Swap), s.Swap))
+		b.WriteString(fmt.Sprintf("Swap %s %.1f%%\n", makeProgressBar(s.Swap), s.Swap))
 	}
 
 	b.WriteString(fmt.Sprintf("\nSSD %.1f%% · %s free\n", s.VolSSD.Used, formatBytes(s.VolSSD.Free)))
