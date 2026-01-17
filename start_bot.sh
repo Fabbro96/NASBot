@@ -16,6 +16,9 @@ MAX_LOG_SIZE=$((10*1024*1024))  # 10MB
 
 cd "$BOT_DIR" || exit 1
 
+# Assicura permessi di esecuzione al binario
+chmod +x "$BOT_DIR/$BOT_NAME" 2>/dev/null
+
 # Funzione per ruotare i log se troppo grandi
 rotate_logs() {
     if [ -f "$LOG_FILE" ] && [ $(stat -f%z "$LOG_FILE" 2>/dev/null || stat -c%s "$LOG_FILE" 2>/dev/null) -gt $MAX_LOG_SIZE ]; then

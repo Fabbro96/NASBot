@@ -46,8 +46,16 @@ const (
 	IntervalloMonitor   = 30 * time.Second // Check allarmi
 	DurataStressDisco   = 2 * time.Minute  // Soglia stress I/O prolungato
 	SogliaIOCritico     = 95.0             // % I/O per considerare stress
+	SogliaCPUStress     = 90.0             // CPU stress threshold
+	SogliaRAMStress     = 90.0             // RAM stress threshold
+	SogliaSwapStress    = 50.0             // Swap stress threshold
 	SogliaRAMCritica    = 95.0             // RAM critica per azioni autonome
 	MaxRestartContainer = 3                // Max riavvii automatici container/ora
+
+	// Quiet hours (niente notifiche)
+	QuietHourStart   = 23 // 23:30 inizio silenzio
+	QuietHourEnd     = 7  // 07:00 fine silenzio
+	QuietMinuteStart = 30
 
 	// Orari report giornalieri (Europe/Rome)
 	ReportMattina = 7  // 07:30
@@ -68,10 +76,14 @@ var (
 	statsMutex sync.RWMutex
 	statsReady bool
 
-	// Tracking stress I/O
+	// Tracking stress I/O (HDD)
 	stressStartTime   time.Time
 	stressNotified    bool
 	consecutiveStress int
+
+	// Tracking stress per tutte le risorse
+	resourceStress      map[string]*StressTracker
+	resourceStressMutex sync.Mutex
 
 	// Tracking azioni autonome
 	autoRestarts      map[string][]time.Time
@@ -100,6 +112,15 @@ type ReportEvent struct {
 	Message string
 }
 
+// StressTracker traccia periodi di stress per una risorsa
+type StressTracker struct {
+	CurrentStart  time.Time     // Inizio stress corrente (zero se non in stress)
+	StressCount   int           // Numero di volte sotto stress dall'ultimo report
+	LongestStress time.Duration // Durata massima stress
+	TotalStress   time.Duration // Tempo totale sotto stress
+	Notified      bool          // Se già notificato per questo stress
+}
+
 // BotState per persistenza
 type BotState struct {
 	LastReportTime time.Time              `json:"last_report_time"`
@@ -111,50 +132,90 @@ type BotState struct {
 // ═══════════════════════════════════════════════════════════════════
 
 func init() {
-	BotToken = os.Getenv("BOT_TOKEN")
-	if BotToken == "" {
-		log.Fatal("❌ BOT_TOKEN mancante!")
-	}
-	uidStr := os.Getenv("BOT_USER_ID")
-	if uidStr == "" {
-		log.Fatal("❌ BOT_USER_ID mancante!")
-	}
-	var err error
-	AllowedUserID, err = strconv.ParseInt(uidStr, 10, 64)
-	if err != nil {
-		log.Fatal("❌ BOT_USER_ID deve essere numerico!")
-	}
+	loadConfig()
 
 	// Inizializza timezone
+	var err error
 	location, err = time.LoadLocation(Timezone)
 	if err != nil {
-		log.Printf("⚠️ Timezone %s non trovata, uso UTC", Timezone)
+		log.Printf("[w] Timezone %s non trovata, uso UTC", Timezone)
 		location = time.UTC
 	}
 
 	// Inizializza mappe
 	autoRestarts = make(map[string][]time.Time)
+	resourceStress = make(map[string]*StressTracker)
+	for _, res := range []string{"CPU", "RAM", "Swap", "SSD", "HDD"} {
+		resourceStress[res] = &StressTracker{}
+	}
 
 	// Carica stato persistente
 	loadState()
 }
 
+// loadConfig legge i token dal file config.json
+func loadConfig() {
+	type Config struct {
+		BotToken      string `json:"bot_token"`
+		AllowedUserID int64  `json:"allowed_user_id"`
+	}
+
+	data, err := os.ReadFile("config.json")
+	if err != nil {
+		log.Fatalf("❌ Errore lettura config.json: %v\nCrea il file copiando config.example.json", err)
+	}
+
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		log.Fatalf("❌ Errore parsing config.json: %v", err)
+	}
+
+	BotToken = cfg.BotToken
+	AllowedUserID = cfg.AllowedUserID
+
+	if BotToken == "" {
+		log.Fatal("❌ bot_token vuoto in config.json")
+	}
+	if AllowedUserID == 0 {
+		log.Fatal("❌ allowed_user_id vuoto o invalido in config.json")
+	}
+
+	log.Println("[✓] Config caricata da config.json")
+}
+
+// isQuietHours verifica se siamo in orario notturno (23:30 - 07:00)
+func isQuietHours() bool {
+	now := time.Now().In(location)
+	hour := now.Hour()
+	minute := now.Minute()
+
+	// Dopo le 23:30
+	if hour == QuietHourStart && minute >= QuietMinuteStart {
+		return true
+	}
+	// Dalle 00:00 alle 06:59
+	if hour > QuietHourStart || hour < QuietHourEnd {
+		return true
+	}
+	return false
+}
+
 func loadState() {
 	data, err := os.ReadFile(StateFile)
 	if err != nil {
-		log.Printf("📁 Nessuno stato precedente trovato (primo avvio)")
+		log.Printf("[i] Primo avvio - nessuno stato")
 		return
 	}
 	var state BotState
 	if err := json.Unmarshal(data, &state); err != nil {
-		log.Printf("⚠️ Errore lettura stato: %v", err)
+		log.Printf("[w] Errore stato: %v", err)
 		return
 	}
 	lastReportTime = state.LastReportTime
 	if state.AutoRestarts != nil {
 		autoRestarts = state.AutoRestarts
 	}
-	log.Printf("✅ Stato ripristinato (ultimo report: %s)", lastReportTime.Format("15:04"))
+	log.Printf("[+] Stato ripristinato")
 }
 
 func saveState() {
@@ -167,47 +228,41 @@ func saveState() {
 
 	data, err := json.Marshal(state)
 	if err != nil {
-		log.Printf("⚠️ Errore serializzazione stato: %v", err)
+		log.Printf("[w] Serialize: %v", err)
 		return
 	}
 	if err := os.WriteFile(StateFile, data, 0644); err != nil {
-		log.Printf("⚠️ Errore salvataggio stato: %v", err)
+		log.Printf("[w] Save: %v", err)
 	}
 }
 
 func main() {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("⚠️ PANIC: %v\n%s", r, debug.Stack())
-			// Salva stato prima di crashare
+			log.Printf("[!] PANIC: %v\n%s", r, debug.Stack())
 			saveState()
 		}
 	}()
 
 	bot, err := tgbotapi.NewBotAPI(BotToken)
 	if err != nil {
-		log.Fatalf("❌ Errore avvio bot: %v", err)
+		log.Fatalf("[!] Avvio bot: %v", err)
 	}
-	log.Printf("✅ NASBot avviato: @%s", bot.Self.UserName)
+	log.Printf("[+] NASBot @%s", bot.Self.UserName)
 
-	// Notifica avvio (utile dopo recovery da crash)
+	// Notifica avvio
 	nextReport, isMorning := getNextReportTime()
-	nextReportStr := "stasera 18:30"
+	nextReportStr := "18:30"
 	if isMorning {
-		nextReportStr = "domani 07:30"
-		if time.Now().In(location).Hour() < ReportMattina {
-			nextReportStr = "oggi 07:30"
-		}
+		nextReportStr = "07:30"
 	}
 
-	startupText := fmt.Sprintf(`🤖 *NASBot Online*
+	startupText := fmt.Sprintf(`*NASBot is online* 👋
 
-✅ Bot avviato correttamente
-📬 Report: 07:30 e 18:30
-🛡 Protezione autonoma attiva
+I'll keep an eye on things.
+Next report at %s
 
-_Prossimo report: %s_
-_Usa /help per i comandi_`, nextReportStr)
+_Type /help to see what I can do_`, nextReportStr)
 
 	_ = nextReport
 	startupMsg := tgbotapi.NewMessage(AllowedUserID, startupText)
@@ -219,7 +274,7 @@ _Usa /help per i comandi_`, nextReportStr)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigChan
-		log.Println("🛑 Shutdown richiesto, salvataggio stato...")
+		log.Println("[-] Shutdown")
 		saveState()
 		os.Exit(0)
 	}()
@@ -272,8 +327,6 @@ func handleCommand(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) {
 		sendWithKeyboard(bot, chatID, getTempText())
 	case "net":
 		sendMarkdown(bot, chatID, getNetworkText())
-	case "speedtest":
-		runSpeedtest(bot, chatID)
 	case "logs":
 		sendMarkdown(bot, chatID, getLogsText())
 	case "report":
@@ -287,7 +340,7 @@ func handleCommand(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) {
 	case "help":
 		sendMarkdown(bot, chatID, getHelpText())
 	default:
-		bot.Send(tgbotapi.NewMessage(chatID, "❓ Comando sconosciuto. Usa /help"))
+		bot.Send(tgbotapi.NewMessage(chatID, "Hmm, I don't know that one. Try /help"))
 	}
 }
 
@@ -304,7 +357,7 @@ func handleCallback(bot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery) {
 		return
 	}
 	if data == "cancel_power" {
-		editMessage(bot, chatID, msgID, "❌ Operazione annullata.", nil)
+		editMessage(bot, chatID, msgID, "\u2717 Annullato", nil)
 		return
 	}
 
@@ -361,109 +414,101 @@ func getStatusText() string {
 	statsMutex.RUnlock()
 
 	if !ready {
-		return "⏳ *Raccolta dati in corso...*\nRiprova tra qualche secondo."
+		return "_loading..._"
 	}
 
 	var b strings.Builder
-	now := time.Now().Format("15:04:05")
 
-	// Header
-	b.WriteString(fmt.Sprintf("📊 *SISTEMA* ─ %s\n", now))
-	b.WriteString(fmt.Sprintf("⏱ Uptime: _%s_\n", formatUptime(s.Uptime)))
-	b.WriteString("─────────────────────\n")
+	b.WriteString(fmt.Sprintf("🖥 *NAS* at %s\n\n", time.Now().Format("15:04")))
 
-	// CPU
-	b.WriteString(fmt.Sprintf("%s *CPU*  %s  `%.1f%%`\n", getIcon(s.CPU, 70, 90), progressBar(s.CPU, 10), s.CPU))
-
-	// RAM
-	b.WriteString(fmt.Sprintf("%s *RAM*  %s  `%.1f%%`\n", getIcon(s.RAM, 70, 90), progressBar(s.RAM, 10), s.RAM))
-	b.WriteString(fmt.Sprintf("   ↳ Libera: `%s` di `%s`\n", formatRAM(s.RAMFreeMB), formatRAM(s.RAMTotalMB)))
-
-	// SWAP (solo se usato)
-	if s.Swap > 0.1 {
-		b.WriteString(fmt.Sprintf("%s *SWAP* %s  `%.1f%%`\n", getIcon(s.Swap, 50, 75), progressBar(s.Swap, 10), s.Swap))
+	b.WriteString(fmt.Sprintf("🧠 CPU %s %2.0f%%\n", modernBar(s.CPU), s.CPU))
+	b.WriteString(fmt.Sprintf("💾 RAM %s %2.0f%%\n", modernBar(s.RAM), s.RAM))
+	if s.Swap > 5 {
+		b.WriteString(fmt.Sprintf("🔄 Swap %s %2.0f%%\n", modernBar(s.Swap), s.Swap))
 	}
 
-	b.WriteString("─────────────────────\n")
+	b.WriteString(fmt.Sprintf("\n💿 SSD %2.0f%% · %s free\n", s.VolSSD.Used, formatBytes(s.VolSSD.Free)))
+	b.WriteString(fmt.Sprintf("🗄 HDD %2.0f%% · %s free\n", s.VolHDD.Used, formatBytes(s.VolHDD.Free)))
 
-	// Storage
-	b.WriteString(fmt.Sprintf("💾 *SSD*  %s  `%.1f%%`\n", progressBar(s.VolSSD.Used, 10), s.VolSSD.Used))
-	b.WriteString(fmt.Sprintf("   ↳ Libero: `%s`\n", formatBytes(s.VolSSD.Free)))
-	b.WriteString(fmt.Sprintf("💿 *HDD*  %s  `%.1f%%`\n", progressBar(s.VolHDD.Used, 10), s.VolHDD.Used))
-	b.WriteString(fmt.Sprintf("   ↳ Libero: `%s`\n", formatBytes(s.VolHDD.Free)))
-
-	// I/O
-	ioIcon := "🟢"
-	if s.DiskUtil > 80 {
-		ioIcon = "🟡"
+	if s.DiskUtil > 10 {
+		b.WriteString(fmt.Sprintf("\n📡 Disk I/O at %.0f%%", s.DiskUtil))
+		if s.ReadMBs > 1 || s.WriteMBs > 1 {
+			b.WriteString(fmt.Sprintf(" (R %.0f / W %.0f MB/s)", s.ReadMBs, s.WriteMBs))
+		}
+		b.WriteString("\n")
 	}
-	if s.DiskUtil > 95 {
-		ioIcon = "🔴"
-	}
-	b.WriteString(fmt.Sprintf("%s *I/O*  `%.0f%%` ─ R:`%.1f` W:`%.1f` MB/s\n", ioIcon, s.DiskUtil, s.ReadMBs, s.WriteMBs))
 
-	b.WriteString("─────────────────────\n")
-
-	// Top processi
-	b.WriteString("🔥 *Top CPU:*\n")
-	b.WriteString(formatTopProcs(s.TopCPU, "cpu"))
-	b.WriteString("\n🧠 *Top RAM:*\n")
-	b.WriteString(formatTopProcs(s.TopRAM, "mem"))
+	b.WriteString(fmt.Sprintf("\n_⏱ Running for %s_", formatUptime(s.Uptime)))
 
 	return b.String()
+}
+
+// modernBar crea una barra compatta
+func modernBar(percent float64) string {
+	if percent > 100 {
+		percent = 100
+	}
+	filled := int(percent / 12.5)
+	if filled > 8 {
+		filled = 8
+	}
+	return strings.Repeat("\u2588", filled) + strings.Repeat("\u2591", 8-filled)
 }
 
 func getTempText() string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("🌡 *TEMPERATURE* ─ %s\n\n", time.Now().Format("15:04:05")))
+	b.WriteString("🌡 *Temperatures*\n\n")
 
-	// CPU temp
 	cpuTemp := readCPUTemp()
-	cpuIcon := "🟢"
+	cpuIcon := "✅"
+	cpuStatus := "looking good"
 	if cpuTemp > 60 {
 		cpuIcon = "🟡"
+		cpuStatus = "a bit warm"
 	}
 	if cpuTemp > 75 {
-		cpuIcon = "🔴"
+		cpuIcon = "🔥"
+		cpuStatus = "running hot!"
 	}
-	b.WriteString(fmt.Sprintf("%s *CPU:* `%.1f°C`\n\n", cpuIcon, cpuTemp))
+	b.WriteString(fmt.Sprintf("%s CPU: %.0f°C — %s\n\n", cpuIcon, cpuTemp, cpuStatus))
 
-	// Dischi SMART
-	b.WriteString("💾 *Dischi:*\n")
+	b.WriteString("*Disks*\n")
 	for _, dev := range []string{"sda", "sdb"} {
 		temp, health := readDiskSMART(dev)
-		icon := "🟢"
+		icon := "✅"
+		status := "healthy"
 		if strings.Contains(strings.ToUpper(health), "FAIL") {
-			icon = "🔴"
+			icon = "🚨"
+			status = "FAILING!"
 		} else if temp > 45 {
 			icon = "🟡"
+			status = "warm"
 		}
-		b.WriteString(fmt.Sprintf("%s `%s` %d°C ─ %s\n", icon, dev, temp, health))
+		b.WriteString(fmt.Sprintf("%s %s: %d°C — %s\n", icon, dev, temp, status))
 	}
-
 	return b.String()
 }
 
 func getDockerText() string {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "docker", "ps", "-a", "--format", "{{.Names}}|{{.Status}}|{{.Image}}")
 	out, err := cmd.Output()
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return "⏱ *Timeout Docker* — riprova."
+			return "*timeout*"
 		}
-		return "❌ *Docker non disponibile*\n\n_Verifica che Docker sia installato e in esecuzione._"
+		return "*docker n/a*"
 	}
 
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 	if len(lines) == 0 || (len(lines) == 1 && lines[0] == "") {
-		return "🐳 *Nessun container trovato*"
+		return "_No containers found_"
 	}
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("🐳 *DOCKER* ─ %s\n\n", time.Now().Format("15:04:05")))
+	b.WriteString("*Container*\n────────────────────\n")
 
 	running, stopped := 0, 0
 	for _, line := range lines {
@@ -474,51 +519,49 @@ func getDockerText() string {
 		name := truncate(parts[0], 14)
 		status := parts[1]
 
-		icon := "🔴"
-		statusShort := "Stopped"
+		icon := "-"
+		statusShort := "off"
 		if strings.Contains(status, "Up") {
-			icon = "🟢"
+			icon = "+"
 			statusParts := strings.Fields(status)
 			if len(statusParts) >= 2 {
 				statusShort = statusParts[1]
-				if len(statusParts) >= 3 && (statusParts[2] == "hours" || statusParts[2] == "days" || statusParts[2] == "minutes") {
-					statusShort = statusParts[1] + " " + statusParts[2][:1]
+				if len(statusParts) >= 3 && len(statusParts[2]) > 0 {
+					statusShort += string(statusParts[2][0])
 				}
 			}
 			running++
 		} else {
 			stopped++
 		}
-		b.WriteString(fmt.Sprintf("%s `%-14s` %s\n", icon, name, statusShort))
+		b.WriteString(fmt.Sprintf("\n%s %-14s %s", icon, name, statusShort))
 	}
 
-	b.WriteString(fmt.Sprintf("\n✅ %d running  🔴 %d stopped", running, stopped))
+	b.WriteString(fmt.Sprintf("\n\nContainers: %d running · %d stopped", running, stopped))
 	return b.String()
 }
 
 func getDockerStatsText() string {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "docker", "stats", "--no-stream", "--format", "{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}")
 	out, err := cmd.Output()
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return "⏱ *Timeout Docker Stats* — riprova."
+			return "*timeout*"
 		}
-		return "❌ *Docker Stats non disponibile*"
+		return "*stats n/a*"
 	}
 
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 	if len(lines) == 0 || (len(lines) == 1 && lines[0] == "") {
-		return "📈 *Nessun container attivo*"
+		return "_No containers running_"
 	}
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("📈 *RISORSE CONTAINER* ─ %s\n", time.Now().Format("15:04:05")))
-	b.WriteString("```\n")
-	b.WriteString(fmt.Sprintf("%-12s %6s %6s %s\n", "CONTAINER", "CPU", "MEM%", "MEM"))
-	b.WriteString("────────────────────────────────\n")
+	b.WriteString("*Container resources*\n```\n")
+	b.WriteString(fmt.Sprintf("%-12s %5s %5s %s\n", "NAME", "CPU", "MEM%", "MEM"))
 
 	for _, line := range lines {
 		parts := strings.Split(line, "|")
@@ -534,7 +577,7 @@ func getDockerStatsText() string {
 		memShort = strings.Replace(memShort, "MiB", "M", 1)
 		memShort = strings.Replace(memShort, "GiB", "G", 1)
 
-		b.WriteString(fmt.Sprintf("%-12s %6s %6s %s\n", name, cpuP, memP, memShort))
+		b.WriteString(fmt.Sprintf("%-12s %5s %5s %s\n", name, cpuP, memP, memShort))
 	}
 	b.WriteString("```")
 
@@ -543,18 +586,18 @@ func getDockerStatsText() string {
 
 func getNetworkText() string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("🌐 *RETE* ─ %s\n\n", time.Now().Format("15:04:05")))
+	b.WriteString("🌐 *Network*\n\n")
 
-	localIP := "N/A"
+	localIP := "n/a"
 	if out, err := exec.Command("hostname", "-I").Output(); err == nil {
 		ips := strings.Fields(string(out))
 		if len(ips) > 0 {
 			localIP = ips[0]
 		}
 	}
-	b.WriteString(fmt.Sprintf("🏠 *LAN:* `%s`\n", localIP))
+	b.WriteString(fmt.Sprintf("🏠 Local: `%s`\n", localIP))
 
-	publicIP := "N/A"
+	publicIP := "checking..."
 	client := http.Client{Timeout: 3 * time.Second}
 	if resp, err := client.Get("https://api.ipify.org"); err == nil {
 		defer resp.Body.Close()
@@ -562,7 +605,7 @@ func getNetworkText() string {
 			publicIP = string(body)
 		}
 	}
-	b.WriteString(fmt.Sprintf("🌍 *WAN:* `%s`\n", publicIP))
+	b.WriteString(fmt.Sprintf("🌍 Public: `%s`\n", publicIP))
 
 	return b.String()
 }
@@ -589,37 +632,24 @@ func getLogsText() string {
 		recentLogs = recentLogs[:3500] + "..."
 	}
 
-	return fmt.Sprintf("📜 *SYSTEM LOGS*\n```\n%s\n```", recentLogs)
+	return fmt.Sprintf("*Recent system logs*\n```\n%s\n```", recentLogs)
 }
 
 func getHelpText() string {
-	return `🤖 *NASBot — Guida Comandi*
+	return `👋 *Hey! I'm NASBot*
 
-📊 *Monitoraggio:*
-/status — Panoramica risorse (CPU, RAM, Dischi)
-/temp — Temperature e salute dischi (SMART)
-/report — Report completo stato NAS
-/net — Indirizzo IP locale e pubblico
-/logs — Ultimi messaggi/errori di sistema
+Here's what I can do for you:
 
-🐳 *Docker:*
-/docker — Menu gestione container
-/dstats — Consumo risorse per container
-/container \<nome\> — Info container specifico
+📊 /status — quick system overview
+🌡 /temp — check temperatures
+🐳 /docker — manage containers
+📊 /dstats — container resources
+🌐 /net — network info
+📋 /report — full detailed report
+⚡ /reboot · /shutdown
 
-🔧 *Utilità:*
-/speedtest — Misura velocità connessione
-
-⚡ *Sistema:*
-/reboot — Riavvia il NAS
-/shutdown — Spegni il NAS in sicurezza
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🌅 *Report mattina:* 07:30
-🌆 *Report sera:* 18:30
-🛡 *Protezione automatica attiva*
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-💡 _Usa i pulsanti per navigare_`
+_📨 Daily reports at 7:30 & 18:30_
+_🌙 Quiet hours: 23:30 — 7:00_`
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -627,12 +657,13 @@ func getHelpText() string {
 // ═══════════════════════════════════════════════════════════════════
 
 func getContainerList() []ContainerInfo {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "docker", "ps", "-a", "--format", "{{.Names}}|{{.Status}}|{{.Image}}|{{.ID}}")
-	out, err := cmd.Output()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
+		log.Printf("x Docker error: %v - Output: %s", err, string(out))
 		return nil
 	}
 
@@ -675,47 +706,49 @@ func getDockerMenuText() (string, *tgbotapi.InlineKeyboardMarkup) {
 	containers := getContainerList()
 	if len(containers) == 0 {
 		mainKb := getMainKeyboard()
-		return "🐳 *Nessun container trovato*\n\n_Verifica che Docker sia installato._", &mainKb
+		return "_No containers found. Is Docker running?_", &mainKb
 	}
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("🐳 *GESTIONE CONTAINER* ─ %s\n", time.Now().Format("15:04:05")))
-	b.WriteString("━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
+	b.WriteString("🐳 *Containers*\n\n")
 
 	running, stopped := 0, 0
 	for _, c := range containers {
-		icon := "🔴"
-		statusText := "Fermo"
+		icon := "⏸"
+		statusText := "stopped"
 		if c.Running {
-			icon = "🟢"
+			icon = "▶️"
 			statusText = parseUptime(c.Status)
 			running++
 		} else {
 			stopped++
 		}
-		b.WriteString(fmt.Sprintf("%s *%s*\n", icon, c.Name))
-		b.WriteString(fmt.Sprintf("   ↳ %s │ `%s`\n", statusText, truncate(c.Image, 20)))
+		b.WriteString(fmt.Sprintf("%s *%s* — %s\n", icon, c.Name, statusText))
 	}
 
-	b.WriteString(fmt.Sprintf("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"))
-	b.WriteString(fmt.Sprintf("✅ *%d* attivi  🔴 *%d* fermi\n", running, stopped))
-	b.WriteString("\n_Seleziona un container per gestirlo:_")
+	b.WriteString(fmt.Sprintf("\n_%d running, %d stopped_", running, stopped))
 
-	// Crea bottoni per ogni container
+	// Bottoni - 2 per riga
 	var rows [][]tgbotapi.InlineKeyboardButton
-	for _, c := range containers {
-		icon := "🔴"
-		if c.Running {
-			icon = "🟢"
+	for i := 0; i < len(containers); i += 2 {
+		var row []tgbotapi.InlineKeyboardButton
+		for j := 0; j < 2 && i+j < len(containers); j++ {
+			c := containers[i+j]
+			icon := "⏸"
+			if c.Running {
+				icon = "▶"
+			}
+			row = append(row, tgbotapi.NewInlineKeyboardButtonData(
+				fmt.Sprintf("%s %s", icon, truncate(c.Name, 10)),
+				"container_select_"+c.Name,
+			))
 		}
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("%s %s", icon, c.Name), "container_select_"+c.Name),
-		))
+		rows = append(rows, row)
 	}
-	// Aggiungi bottone indietro
+
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 		tgbotapi.NewInlineKeyboardButtonData("🔄 Refresh", "show_docker"),
-		tgbotapi.NewInlineKeyboardButtonData("◀️ Indietro", "back_main"),
+		tgbotapi.NewInlineKeyboardButtonData("🏠 Menu", "back_main"),
 	))
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(rows...)
@@ -729,22 +762,29 @@ func handleContainerCallback(bot *tgbotapi.BotAPI, chatID int64, msgID int, data
 	}
 
 	action := parts[1]
-	containerName := strings.Join(parts[2:], "_")
 
 	switch action {
-	case "select":
-		// Mostra menu azioni per questo container
-		showContainerActions(bot, chatID, msgID, containerName)
-	case "start", "stop", "restart", "logs":
-		// Conferma azione
-		confirmContainerAction(bot, chatID, msgID, containerName, action)
+	case "select", "start", "stop", "restart", "logs", "cancel":
+		// Nome container è tutto dopo parts[1]
+		containerName := strings.Join(parts[2:], "_")
+		switch action {
+		case "select":
+			showContainerActions(bot, chatID, msgID, containerName)
+		case "start", "stop", "restart", "logs":
+			confirmContainerAction(bot, chatID, msgID, containerName, action)
+		case "cancel":
+			text, kb := getDockerMenuText()
+			editMessage(bot, chatID, msgID, text, kb)
+		}
 	case "confirm":
-		// Esegui azione confermata
-		executeContainerAction(bot, chatID, msgID, containerName, strings.Join(parts[3:], "_"))
-	case "cancel":
-		// Torna al menu container
-		text, kb := getDockerMenuText()
-		editMessage(bot, chatID, msgID, text, kb)
+		// Format: container_confirm_CONTAINERNAME_ACTION
+		// L'azione è l'ultimo elemento, il nome è tutto il resto
+		if len(parts) < 4 {
+			return
+		}
+		containerAction := parts[len(parts)-1]
+		containerName := strings.Join(parts[2:len(parts)-1], "_")
+		executeContainerAction(bot, chatID, msgID, containerName, containerAction)
 	}
 }
 
@@ -759,35 +799,30 @@ func showContainerActions(bot *tgbotapi.BotAPI, chatID int64, msgID int, contain
 	}
 
 	if container == nil {
-		editMessage(bot, chatID, msgID, "❌ Container non trovato.", nil)
+		editMessage(bot, chatID, msgID, "❓ Container not found", nil)
 		return
 	}
 
 	var b strings.Builder
-	icon := "🔴"
-	statusText := "Fermo"
+	icon := "⏸"
+	statusText := "stopped"
 	if container.Running {
-		icon = "🟢"
+		icon = "▶️"
 		statusText = parseUptime(container.Status)
 	}
 
-	b.WriteString(fmt.Sprintf("🐳 *Container: %s*\n", container.Name))
-	b.WriteString("━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
-	b.WriteString(fmt.Sprintf("%s *Stato:* %s\n", icon, statusText))
-	b.WriteString(fmt.Sprintf("📦 *Immagine:* `%s`\n", container.Image))
-	b.WriteString(fmt.Sprintf("🆔 *ID:* `%s`\n", container.ID[:12]))
+	b.WriteString(fmt.Sprintf("%s *%s*\n\n", icon, container.Name))
+	b.WriteString(fmt.Sprintf("Status: %s\n", statusText))
+	b.WriteString(fmt.Sprintf("Image: `%s`\n", truncate(container.Image, 20)))
+	b.WriteString(fmt.Sprintf("ID: `%s`\n", container.ID[:12]))
 
-	// Ottieni stats se running
 	if container.Running {
 		stats := getContainerStats(containerName)
 		if stats != "" {
-			b.WriteString(fmt.Sprintf("\n📊 *Risorse:*\n%s", stats))
+			b.WriteString(fmt.Sprintf("\n%s", stats))
 		}
 	}
 
-	b.WriteString("\n\n_Seleziona un'azione:_")
-
-	// Bottoni azioni
 	var rows [][]tgbotapi.InlineKeyboardButton
 	if container.Running {
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
@@ -803,7 +838,7 @@ func showContainerActions(bot *tgbotapi.BotAPI, chatID int64, msgID int, contain
 		))
 	}
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("◀️ Lista Container", "show_docker"),
+		tgbotapi.NewInlineKeyboardButtonData("⬅️ Back", "show_docker"),
 	))
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(rows...)
@@ -812,28 +847,21 @@ func showContainerActions(bot *tgbotapi.BotAPI, chatID int64, msgID int, contain
 
 func confirmContainerAction(bot *tgbotapi.BotAPI, chatID int64, msgID int, containerName, action string) {
 	if action == "logs" {
-		// I logs non richiedono conferma
 		showContainerLogs(bot, chatID, msgID, containerName)
 		return
 	}
 
 	actionText := map[string]string{
-		"start":   "avviare",
-		"stop":    "fermare",
-		"restart": "riavviare",
+		"start":   "▶️ Start",
+		"stop":    "⏹ Stop",
+		"restart": "🔄 Restart",
 	}[action]
 
-	emoji := map[string]string{
-		"start":   "▶️",
-		"stop":    "⏹",
-		"restart": "🔄",
-	}[action]
-
-	text := fmt.Sprintf("%s *Confermi di voler %s* `%s`*?*", emoji, actionText, containerName)
+	text := fmt.Sprintf("%s *%s*?", actionText, containerName)
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("✅ Sì", fmt.Sprintf("container_confirm_%s_%s", containerName, action)),
+			tgbotapi.NewInlineKeyboardButtonData("✅ Yes", fmt.Sprintf("container_confirm_%s_%s", containerName, action)),
 			tgbotapi.NewInlineKeyboardButtonData("❌ No", "container_cancel_"+containerName),
 		),
 	)
@@ -844,7 +872,7 @@ func executeContainerAction(bot *tgbotapi.BotAPI, chatID int64, msgID int, conta
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	editMessage(bot, chatID, msgID, fmt.Sprintf("⏳ *Esecuzione %s su* `%s`*...*", action, containerName), nil)
+	editMessage(bot, chatID, msgID, fmt.Sprintf("... `%s` %s", containerName, action), nil)
 
 	var cmd *exec.Cmd
 	switch action {
@@ -858,20 +886,24 @@ func executeContainerAction(bot *tgbotapi.BotAPI, chatID int64, msgID int, conta
 		return
 	}
 
-	err := cmd.Run()
+	output, err := cmd.CombinedOutput()
 	var resultText string
 	if err != nil {
-		resultText = fmt.Sprintf("❌ *Errore:* %v", err)
-		addReportEvent("warning", fmt.Sprintf("Errore %s container %s: %v", action, containerName, err))
+		errMsg := strings.TrimSpace(string(output))
+		if errMsg == "" {
+			errMsg = err.Error()
+		}
+		resultText = fmt.Sprintf("❌ Couldn't %s *%s*\n`%s`", action, containerName, errMsg)
+		addReportEvent("warning", fmt.Sprintf("Error %s container %s: %s", action, containerName, errMsg))
 	} else {
-		emoji := map[string]string{"start": "▶️", "stop": "⏹", "restart": "🔄"}[action]
-		resultText = fmt.Sprintf("%s *Container* `%s` *%s completato!*", emoji, containerName, action)
-		addReportEvent("info", fmt.Sprintf("Container %s: %s (manuale)", containerName, action))
+		actionPast := map[string]string{"start": "started ▶️", "stop": "stopped ⏹", "restart": "restarted 🔄"}[action]
+		resultText = fmt.Sprintf("✅ *%s* %s", containerName, actionPast)
+		addReportEvent("info", fmt.Sprintf("Container %s: %s (manual)", containerName, action))
 	}
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("◀️ Lista Container", "show_docker"),
+			tgbotapi.NewInlineKeyboardButtonData("🐳 Containers", "show_docker"),
 			tgbotapi.NewInlineKeyboardButtonData("🏠 Home", "back_main"),
 		),
 	)
@@ -887,29 +919,29 @@ func showContainerLogs(bot *tgbotapi.BotAPI, chatID int64, msgID int, containerN
 
 	var text string
 	if err != nil {
-		text = fmt.Sprintf("❌ *Errore lettura logs:* %v", err)
+		text = fmt.Sprintf("Couldn't read logs: %v", err)
 	} else {
 		logs := string(out)
 		if len(logs) > 3500 {
 			logs = logs[len(logs)-3500:]
 		}
 		if logs == "" {
-			logs = "(nessun log disponibile)"
+			logs = "(no logs available)"
 		}
-		text = fmt.Sprintf("📜 *Logs:* `%s`\n```\n%s\n```", containerName, logs)
+		text = fmt.Sprintf("*Logs for %s*\n```\n%s\n```", containerName, logs)
 	}
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🔄 Refresh", "container_logs_"+containerName),
-			tgbotapi.NewInlineKeyboardButtonData("◀️ Indietro", "container_select_"+containerName),
+			tgbotapi.NewInlineKeyboardButtonData("⬅️ Back", "container_select_"+containerName),
 		),
 	)
 	editMessage(bot, chatID, msgID, text, &kb)
 }
 
 func getContainerStats(containerName string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "docker", "stats", "--no-stream", "--format", "{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.NetIO}}", containerName)
@@ -949,18 +981,18 @@ func handleContainerCommand(bot *tgbotapi.BotAPI, chatID int64, args string) {
 			return
 		}
 	}
-	bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Container `%s` non trovato.", args)))
+	bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf("x Container `%s` non trovato.", args)))
 }
 
 func getContainerInfoText(c ContainerInfo) (string, *tgbotapi.InlineKeyboardMarkup) {
 	var b strings.Builder
-	icon := "🔴"
+	icon := "x"
 	if c.Running {
-		icon = "🟢"
+		icon = ">"
 	}
-	b.WriteString(fmt.Sprintf("🐳 *%s* %s\n", c.Name, icon))
-	b.WriteString(fmt.Sprintf("📦 `%s`\n", c.Image))
-	b.WriteString(fmt.Sprintf("📋 %s\n", c.Status))
+	b.WriteString(fmt.Sprintf("> *%s* %s\n", c.Name, icon))
+	b.WriteString(fmt.Sprintf("> `%s`\n", c.Image))
+	b.WriteString(fmt.Sprintf("> %s\n", c.Status))
 
 	if c.Running {
 		stats := getContainerStats(c.Name)
@@ -974,7 +1006,7 @@ func getContainerInfoText(c ContainerInfo) (string, *tgbotapi.InlineKeyboardMark
 
 func parseUptime(status string) string {
 	if !strings.Contains(status, "Up") {
-		return "Fermo"
+		return "stopped"
 	}
 	parts := strings.Fields(status)
 	if len(parts) >= 2 {
@@ -984,7 +1016,7 @@ func parseUptime(status string) string {
 		}
 		return result
 	}
-	return "Attivo"
+	return "running"
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -996,19 +1028,17 @@ func sendPowerConfirm(bot *tgbotapi.BotAPI, chatID int64, action string) {
 	pendingAction = action
 	pendingActionMutex.Unlock()
 
-	emoji := "🔄"
-	text := "riavviare"
+	question := "🔄 *Reboot* the NAS?"
 	if action == "shutdown" {
-		emoji = "🛑"
-		text = "spegnere"
+		question = "⚠️ *Shut down* the NAS?"
 	}
 
-	msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("%s *Confermi di voler %s il NAS?*\n\n⚠️ _Questa azione è irreversibile._", emoji, text))
+	msg := tgbotapi.NewMessage(chatID, question)
 	msg.ParseMode = "Markdown"
 	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("✅ Sì, procedi", "confirm_"+action),
-			tgbotapi.NewInlineKeyboardButtonData("❌ Annulla", "cancel_power"),
+			tgbotapi.NewInlineKeyboardButtonData("✅ Yes, do it", "confirm_"+action),
+			tgbotapi.NewInlineKeyboardButtonData("❌ Cancel", "cancel_power"),
 		),
 	)
 	bot.Send(msg)
@@ -1022,18 +1052,18 @@ func handlePowerConfirm(bot *tgbotapi.BotAPI, chatID int64, msgID int, data stri
 
 	expectedAction := strings.TrimPrefix(data, "confirm_")
 	if action == "" || action != expectedAction {
-		editMessage(bot, chatID, msgID, "⏱ *Sessione scaduta* — usa di nuovo il comando.", nil)
+		editMessage(bot, chatID, msgID, "_Session expired — try again_", nil)
 		return
 	}
 
 	cmd := "reboot"
-	emoji := "🔄"
+	actionMsg := "Rebooting now..."
 	if action == "shutdown" {
 		cmd = "poweroff"
-		emoji = "🛑"
+		actionMsg = "Shutting down... See you later!"
 	}
 
-	editMessage(bot, chatID, msgID, fmt.Sprintf("%s *Eseguo %s...*\n\n_Il bot tornerà online dopo il riavvio._", emoji, action), nil)
+	editMessage(bot, chatID, msgID, actionMsg, nil)
 
 	go func() {
 		time.Sleep(1 * time.Second)
@@ -1073,12 +1103,12 @@ func periodicReport(bot *tgbotapi.BotAPI) {
 		nextReport, isMorning := getNextReportTime()
 		sleepDuration := time.Until(nextReport)
 
-		greeting := "🌅 *Buongiorno!*"
+		greeting := "Good morning! ☀️"
 		if !isMorning {
-			greeting = "🌆 *Buonasera!*"
+			greeting = "Good evening! 🌙"
 		}
 
-		log.Printf("📋 Prossimo report: %s", nextReport.Format("02/01 15:04"))
+		log.Printf("> Prossimo report: %s", nextReport.Format("02/01 15:04"))
 		time.Sleep(sleepDuration)
 
 		// Genera e invia report
@@ -1103,101 +1133,75 @@ func generateDailyReport(greeting string) string {
 	var b strings.Builder
 	now := time.Now().In(location)
 
-	// Saluto
-	b.WriteString(fmt.Sprintf("%s\n", greeting))
-	b.WriteString(fmt.Sprintf("📅 %s\n", now.Format("Monday 02/01/2006")))
-	b.WriteString("━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
+	b.WriteString(fmt.Sprintf("*%s*\n", greeting))
+	b.WriteString(fmt.Sprintf("_%s_\n\n", now.Format("Mon 02/01")))
 
-	// Stato generale con emoji grande
-	healthIcon, healthText, hasProblems := getHealthStatus(s)
-	b.WriteString(fmt.Sprintf("%s *Stato NAS:* %s\n\n", healthIcon, healthText))
+	healthIcon, healthText, _ := getHealthStatus(s)
+	b.WriteString(fmt.Sprintf("%s %s\n\n", healthIcon, healthText))
 
-	// Se ci sono stati problemi, mostrali per primi
 	reportEventsMutex.Lock()
-	events := make([]ReportEvent, len(reportEvents))
-	copy(events, reportEvents)
+	events := filterSignificantEvents(reportEvents)
 	reportEventsMutex.Unlock()
 
-	if len(events) > 0 || hasProblems {
-		b.WriteString("📝 *Cosa è successo:*\n")
-		if len(events) == 0 {
-			b.WriteString("└ _Nessun evento particolare_\n")
-		} else {
-			for _, e := range events {
-				icon := "ℹ️"
-				switch e.Type {
-				case "warning":
-					icon = "⚠️"
-				case "critical":
-					icon = "🚨"
-				case "action":
-					icon = "🤖"
-				}
-				timeStr := e.Time.In(location).Format("15:04")
-				b.WriteString(fmt.Sprintf("%s `%s` %s\n", icon, timeStr, e.Message))
+	if len(events) > 0 {
+		b.WriteString("*Events*\n")
+		for _, e := range events {
+			icon := "·"
+			switch e.Type {
+			case "warning":
+				icon = "~"
+			case "critical":
+				icon = "!"
+			case "action":
+				icon = ">"
 			}
+			timeStr := e.Time.In(location).Format("15:04")
+			b.WriteString(fmt.Sprintf("%s %s %s\n", icon, timeStr, truncate(e.Message, 28)))
 		}
 		b.WriteString("\n")
 	}
 
-	// Risorse attuali (compatto)
-	b.WriteString("📊 *Risorse:*\n")
-	b.WriteString(fmt.Sprintf("├ CPU: %s `%.0f%%`  RAM: %s `%.0f%%`\n",
-		miniBar(s.CPU), s.CPU, miniBar(s.RAM), s.RAM))
-	b.WriteString(fmt.Sprintf("└ I/O: %s `%.0f%%`  Swap: `%.0f%%`\n\n",
-		miniBar(s.DiskUtil), s.DiskUtil, s.Swap))
+	b.WriteString("*Resources*\n")
+	b.WriteString(fmt.Sprintf("🧠 CPU %s %2.0f%%\n", modernBar(s.CPU), s.CPU))
+	b.WriteString(fmt.Sprintf("💾 RAM %s %2.0f%%\n", modernBar(s.RAM), s.RAM))
+	if s.Swap > 5 {
+		b.WriteString(fmt.Sprintf("🔄 Swap %s %2.0f%%\n", modernBar(s.Swap), s.Swap))
+	}
 
-	// Storage
-	b.WriteString("💾 *Storage:*\n")
-	b.WriteString(fmt.Sprintf("├ SSD: %s `%.0f%%` (%s liberi)\n",
-		miniBar(s.VolSSD.Used), s.VolSSD.Used, formatBytes(s.VolSSD.Free)))
-	b.WriteString(fmt.Sprintf("└ HDD: %s `%.0f%%` (%s liberi)\n\n",
-		miniBar(s.VolHDD.Used), s.VolHDD.Used, formatBytes(s.VolHDD.Free)))
+	b.WriteString(fmt.Sprintf("\n💿 SSD %2.0f%% · %s free\n", s.VolSSD.Used, formatBytes(s.VolSSD.Free)))
+	b.WriteString(fmt.Sprintf("🗄 HDD %2.0f%% · %s free\n", s.VolHDD.Used, formatBytes(s.VolHDD.Free)))
 
-	// Container Docker
 	containers := getContainerList()
 	running, stopped := 0, 0
-	var stoppedNames []string
 	for _, c := range containers {
 		if c.Running {
 			running++
 		} else {
 			stopped++
-			stoppedNames = append(stoppedNames, c.Name)
 		}
 	}
-	b.WriteString(fmt.Sprintf("🐳 *Docker:* %d attivi", running))
+	b.WriteString(fmt.Sprintf("\n🐳 %d container", running))
+	if running != 1 {
+		b.WriteString("s")
+	}
+	b.WriteString(" running")
 	if stopped > 0 {
-		b.WriteString(fmt.Sprintf(", %d fermi", stopped))
-		if len(stoppedNames) <= 3 {
-			b.WriteString(fmt.Sprintf(" (%s)", strings.Join(stoppedNames, ", ")))
-		}
-	}
-	b.WriteString("\n\n")
-
-	// Uptime
-	b.WriteString(fmt.Sprintf("⏱ *Uptime:* %s\n", formatUptime(s.Uptime)))
-
-	// Footer
-	b.WriteString("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
-	nextReport, isMorning := getNextReportTime()
-	nextTime := "stasera 18:30"
-	if !isMorning {
-		nextTime = "domani 07:30"
-	}
-	b.WriteString(fmt.Sprintf("_Prossimo report: %s_", nextTime))
-
-	// Se è il report serale, aggiungi buonanotte
-	if !strings.Contains(greeting, "Buongiorno") {
-		b.WriteString("\n\n🌙 _Buona serata!_")
+		b.WriteString(fmt.Sprintf(", %d stopped", stopped))
 	}
 
-	_ = nextReport // evita warning unused
+	stressSummary := getStressSummary()
+	if stressSummary != "" {
+		b.WriteString("\n\n💨 *Been under stress:*\n")
+		b.WriteString(stressSummary)
+	}
+
+	b.WriteString(fmt.Sprintf("\n\n_⏱ Up for %s_", formatUptime(s.Uptime)))
+
+	resetStressCounters()
 	return b.String()
 }
 
 func getHealthStatus(s Stats) (icon, text string, hasProblems bool) {
-	// Controlla problemi critici
 	reportEventsMutex.Lock()
 	criticalCount := 0
 	warningCount := 0
@@ -1210,20 +1214,19 @@ func getHealthStatus(s Stats) (icon, text string, hasProblems bool) {
 	}
 	reportEventsMutex.Unlock()
 
-	// Valuta stato attuale
 	if criticalCount > 0 || s.CPU > SogliaCPU || s.RAM > SogliaRAMCritica || s.VolSSD.Used > 95 || s.VolHDD.Used > 95 {
-		return "🔴", "Problemi rilevati", true
+		return "⚠️", "Some issues to look at", true
 	}
 	if warningCount > 0 || s.CPU > 80 || s.RAM > 85 || s.DiskUtil > 90 || s.VolSSD.Used > SogliaDisco || s.VolHDD.Used > SogliaDisco {
-		return "🟡", "Qualche attenzione", true
+		return "👀", "A few things need attention", true
 	}
-	return "🟢", "Tutto OK!", false
+	return "✨", "Everything's running smoothly", false
 }
 
 // generateReport per richieste manuali (/report)
 func generateReport(manual bool) string {
 	if !manual {
-		return generateDailyReport("📋 *Report NAS*")
+		return generateDailyReport("> *Report NAS*")
 	}
 
 	statsMutex.RLock()
@@ -1233,28 +1236,25 @@ func generateReport(manual bool) string {
 	var b strings.Builder
 	now := time.Now().In(location)
 
-	// Header
-	b.WriteString("📋 *REPORT NAS* ─ _su richiesta_\n")
-	b.WriteString(fmt.Sprintf("🕐 %s\n", now.Format("02/01/2006 15:04")))
-	b.WriteString("━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
+	b.WriteString("*Report*\n")
+	b.WriteString(fmt.Sprintf("%s\n\n", now.Format("02/01 15:04")))
 
-	// Stato generale
 	healthIcon, healthText, _ := getHealthStatus(s)
-	b.WriteString(fmt.Sprintf("%s *Stato:* %s\n\n", healthIcon, healthText))
+	b.WriteString(fmt.Sprintf("%s %s\n\n", healthIcon, healthText))
 
-	// Risorse
-	b.WriteString("📊 *RISORSE*\n")
-	b.WriteString(fmt.Sprintf("├ CPU:  %s `%.1f%%`\n", miniBar(s.CPU), s.CPU))
-	b.WriteString(fmt.Sprintf("├ RAM:  %s `%.1f%%` (%s libera)\n", miniBar(s.RAM), s.RAM, formatRAM(s.RAMFreeMB)))
-	b.WriteString(fmt.Sprintf("├ I/O:  %s `%.0f%%`\n", miniBar(s.DiskUtil), s.DiskUtil))
-	b.WriteString(fmt.Sprintf("└ Swap: %s `%.1f%%`\n\n", miniBar(s.Swap), s.Swap))
+	b.WriteString("*Resources*\n")
+	b.WriteString(fmt.Sprintf("CPU %s %.1f%%\n", modernBar(s.CPU), s.CPU))
+	b.WriteString(fmt.Sprintf("RAM %s %.1f%% (%s free)\n", modernBar(s.RAM), s.RAM, formatRAM(s.RAMFreeMB)))
+	if s.DiskUtil > 5 {
+		b.WriteString(fmt.Sprintf("I/O %s %.0f%%\n", modernBar(s.DiskUtil), s.DiskUtil))
+	}
+	if s.Swap > 5 {
+		b.WriteString(fmt.Sprintf("Swap %s %.1f%%\n", modernBar(s.Swap), s.Swap))
+	}
 
-	// Storage
-	b.WriteString("💾 *STORAGE*\n")
-	b.WriteString(fmt.Sprintf("├ SSD: %s `%.1f%%` (%s liberi)\n", miniBar(s.VolSSD.Used), s.VolSSD.Used, formatBytes(s.VolSSD.Free)))
-	b.WriteString(fmt.Sprintf("└ HDD: %s `%.1f%%` (%s liberi)\n\n", miniBar(s.VolHDD.Used), s.VolHDD.Used, formatBytes(s.VolHDD.Free)))
+	b.WriteString(fmt.Sprintf("\nSSD %.1f%% · %s free\n", s.VolSSD.Used, formatBytes(s.VolSSD.Free)))
+	b.WriteString(fmt.Sprintf("HDD %.1f%% · %s free\n", s.VolHDD.Used, formatBytes(s.VolHDD.Free)))
 
-	// Docker
 	containers := getContainerList()
 	running, stopped := 0, 0
 	for _, c := range containers {
@@ -1264,47 +1264,28 @@ func generateReport(manual bool) string {
 			stopped++
 		}
 	}
-	b.WriteString("🐳 *CONTAINER*\n")
-	b.WriteString(fmt.Sprintf("├ Attivi: `%d`\n", running))
-	b.WriteString(fmt.Sprintf("└ Fermi:  `%d`\n\n", stopped))
+	b.WriteString(fmt.Sprintf("\nContainers: %d on · %d off\n", running, stopped))
 
-	// Uptime
-	b.WriteString(fmt.Sprintf("⏱ *Uptime:* `%s`\n\n", formatUptime(s.Uptime)))
+	b.WriteString(fmt.Sprintf("\n_Up for %s_\n", formatUptime(s.Uptime)))
 
-	// Eventi
 	reportEventsMutex.Lock()
 	events := make([]ReportEvent, len(reportEvents))
 	copy(events, reportEvents)
 	reportEventsMutex.Unlock()
 
 	if len(events) > 0 {
-		b.WriteString("📝 *EVENTI RECENTI*\n")
+		b.WriteString("\n*Eventi*\n")
 		for _, e := range events {
-			icon := "ℹ️"
+			icon := "."
 			switch e.Type {
-			case "warning":
-				icon = "⚠️"
-			case "critical":
-				icon = "🚨"
+			case "warning", "critical":
+				icon = "!"
 			case "action":
-				icon = "🤖"
+				icon = ">"
 			}
-			b.WriteString(fmt.Sprintf("%s `%s` %s\n", icon, e.Time.In(location).Format("15:04"), e.Message))
+			b.WriteString(fmt.Sprintf("%s `%s` %s\n", icon, e.Time.In(location).Format("15:04"), truncate(e.Message, 24)))
 		}
-		b.WriteString("\n")
-	} else {
-		b.WriteString("📝 _Nessun evento significativo_\n\n")
 	}
-
-	// Footer
-	b.WriteString("━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
-	nextReport, isMorning := getNextReportTime()
-	nextTime := "stasera 18:30"
-	if !isMorning {
-		nextTime = "domani 07:30"
-	}
-	b.WriteString(fmt.Sprintf("_Prossimo report automatico: %s_", nextTime))
-	_ = nextReport
 
 	return b.String()
 }
@@ -1329,7 +1310,7 @@ func cleanOldReportEvents() {
 	reportEventsMutex.Lock()
 	defer reportEventsMutex.Unlock()
 
-	// Mantieni eventi delle ultime 24 ore
+	// Keep events from last 24 hours
 	cutoff := time.Now().Add(-24 * time.Hour)
 	var newEvents []ReportEvent
 	for _, e := range reportEvents {
@@ -1340,14 +1321,19 @@ func cleanOldReportEvents() {
 	reportEvents = newEvents
 }
 
-func miniBar(percent float64) string {
-	if percent > 90 {
-		return "🔴"
+// filterSignificantEvents removes trivial events (e.g., short stress periods)
+func filterSignificantEvents(events []ReportEvent) []ReportEvent {
+	var filtered []ReportEvent
+	for _, e := range events {
+		// Skip trivial stress events (those mentioning short durations)
+		msg := strings.ToLower(e.Message)
+		if strings.Contains(msg, "for 30s") || strings.Contains(msg, "for 1m") ||
+			strings.Contains(msg, "after 30s") || strings.Contains(msg, "after 1m") {
+			continue
+		}
+		filtered = append(filtered, e)
 	}
-	if percent > 70 {
-		return "🟡"
-	}
-	return "🟢"
+	return filtered
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1368,8 +1354,12 @@ func autonomousManager(bot *tgbotapi.BotAPI) {
 			continue
 		}
 
-		// Check stress I/O prolungato
-		checkIOStress(bot, s)
+		// Check stress per tutte le risorse
+		checkResourceStress(bot, "HDD", s.DiskUtil, SogliaIOCritico)
+		checkResourceStress(bot, "CPU", s.CPU, SogliaCPUStress)
+		checkResourceStress(bot, "RAM", s.RAM, SogliaRAMStress)
+		checkResourceStress(bot, "Swap", s.Swap, SogliaSwapStress)
+		checkResourceStress(bot, "SSD", s.VolSSD.Used, SogliaDisco)
 
 		// Check RAM critica
 		if s.RAM >= SogliaRAMCritica {
@@ -1381,53 +1371,148 @@ func autonomousManager(bot *tgbotapi.BotAPI) {
 	}
 }
 
-func checkIOStress(bot *tgbotapi.BotAPI, s Stats) {
-	if s.DiskUtil >= SogliaIOCritico {
-		if stressStartTime.IsZero() {
-			stressStartTime = time.Now()
-			consecutiveStress = 1
-		} else {
-			consecutiveStress++
+// checkResourceStress traccia lo stress di una risorsa e notifica se necessario
+func checkResourceStress(bot *tgbotapi.BotAPI, resource string, currentValue, threshold float64) {
+	resourceStressMutex.Lock()
+	defer resourceStressMutex.Unlock()
+
+	tracker := resourceStress[resource]
+	if tracker == nil {
+		tracker = &StressTracker{}
+		resourceStress[resource] = tracker
+	}
+
+	isStressed := currentValue >= threshold
+
+	if isStressed {
+		// Inizia nuovo periodo di stress
+		if tracker.CurrentStart.IsZero() {
+			tracker.CurrentStart = time.Now()
+			tracker.StressCount++
+			tracker.Notified = false
 		}
 
-		// Stress prolungato (>2 minuti)?
-		if time.Since(stressStartTime) >= DurataStressDisco && !stressNotified {
-			// Notifica SOLO se stress prolungato
-			msg := fmt.Sprintf("⚠️ *I/O Disco Elevato*\n\n"+
-				"💾 Utilizzo I/O: `%.0f%%`\n"+
-				"⏱ Durata: `%s`\n"+
-				"📖 R: `%.1f` MB/s │ 📝 W: `%.1f` MB/s\n\n"+
-				"_Monitoraggio attivo..._",
-				s.DiskUtil,
-				time.Since(stressStartTime).Round(time.Second),
-				s.ReadMBs, s.WriteMBs)
+		// Notifica se stress prolungato (>2 min) e non già notificato e non in quiet hours
+		stressDuration := time.Since(tracker.CurrentStart)
+		if stressDuration >= DurataStressDisco && !tracker.Notified && !isQuietHours() {
+			var emoji, unit string
+			switch resource {
+			case "HDD":
+				emoji = "~"
+				unit = "I/O"
+			case "SSD":
+				emoji = "~"
+				unit = "Usage"
+			case "CPU":
+				emoji = "~"
+				unit = "Usage"
+			case "RAM":
+				emoji = "~"
+				unit = "Usage"
+			case "Swap":
+				emoji = "~"
+				unit = "Usage"
+			}
+
+			msg := fmt.Sprintf("%s *%s stress*\n\n"+
+				"%s: `%.0f%%` for `%s`\n\n"+
+				"_Watching..._",
+				emoji, resource, unit, currentValue,
+				stressDuration.Round(time.Second))
 
 			m := tgbotapi.NewMessage(AllowedUserID, msg)
 			m.ParseMode = "Markdown"
 			bot.Send(m)
 
-			stressNotified = true
-			addReportEvent("warning", fmt.Sprintf("I/O elevato (%.0f%%) per %s", s.DiskUtil, time.Since(stressStartTime).Round(time.Second)))
-
-			// Se molto prolungato (>5 min), prova azioni
-			if time.Since(stressStartTime) >= 5*time.Minute {
-				tryMitigateIOStress(bot)
-			}
+			tracker.Notified = true
+			addReportEvent("warning", fmt.Sprintf("%s high (%.0f%%) for %s", resource, currentValue, stressDuration.Round(time.Second)))
 		}
 	} else {
-		// I/O tornato normale
-		if !stressStartTime.IsZero() && stressNotified {
-			duration := time.Since(stressStartTime).Round(time.Second)
-			msg := fmt.Sprintf("✅ *I/O Normalizzato*\n\nDurata stress: `%s`", duration)
-			m := tgbotapi.NewMessage(AllowedUserID, msg)
-			m.ParseMode = "Markdown"
-			bot.Send(m)
-			addReportEvent("info", fmt.Sprintf("I/O normalizzato dopo %s", duration))
+		// Fine stress
+		if !tracker.CurrentStart.IsZero() {
+			stressDuration := time.Since(tracker.CurrentStart)
+			tracker.TotalStress += stressDuration
+
+			// Aggiorna durata massima
+			if stressDuration > tracker.LongestStress {
+				tracker.LongestStress = stressDuration
+			}
+
+			// Notify stress end if it was notified and not in quiet hours
+			if tracker.Notified && !isQuietHours() {
+				msg := fmt.Sprintf("✓ *%s back to normal* after `%s`", resource, stressDuration.Round(time.Second))
+				m := tgbotapi.NewMessage(AllowedUserID, msg)
+				m.ParseMode = "Markdown"
+				bot.Send(m)
+				addReportEvent("info", fmt.Sprintf("%s normalized after %s", resource, stressDuration.Round(time.Second)))
+			}
+
+			tracker.CurrentStart = time.Time{}
+			tracker.Notified = false
 		}
-		stressStartTime = time.Time{}
-		stressNotified = false
-		consecutiveStress = 0
 	}
+}
+
+// getStressSummary returns a summary of significant stress events
+func getStressSummary() string {
+	resourceStressMutex.Lock()
+	defer resourceStressMutex.Unlock()
+
+	var parts []string
+
+	for _, res := range []string{"CPU", "RAM", "Swap", "SSD", "HDD"} {
+		tracker := resourceStress[res]
+		if tracker == nil || tracker.StressCount == 0 {
+			continue
+		}
+
+		// Skip trivial stress (< 5 min longest duration)
+		if tracker.LongestStress < 5*time.Minute {
+			continue
+		}
+
+		entry := fmt.Sprintf("%s %dx", res, tracker.StressCount)
+		if tracker.LongestStress > 0 {
+			entry += fmt.Sprintf(" `%s`", formatDuration(tracker.LongestStress))
+		}
+		parts = append(parts, entry)
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, " · ")
+}
+
+// resetStressCounters resetta i contatori stress per il nuovo periodo di report
+func resetStressCounters() {
+	resourceStressMutex.Lock()
+	defer resourceStressMutex.Unlock()
+
+	for _, tracker := range resourceStress {
+		tracker.StressCount = 0
+		tracker.LongestStress = 0
+		tracker.TotalStress = 0
+	}
+}
+
+// formatDuration formatta una durata in modo leggibile
+func formatDuration(d time.Duration) string {
+	d = d.Round(time.Second)
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	if d < time.Hour {
+		m := int(d.Minutes())
+		s := int(d.Seconds()) % 60
+		if s > 0 {
+			return fmt.Sprintf("%dm%ds", m, s)
+		}
+		return fmt.Sprintf("%dm", m)
+	}
+	h := int(d.Hours())
+	m := int(d.Minutes()) % 60
+	return fmt.Sprintf("%dh%dm", h, m)
 }
 
 func tryMitigateIOStress(bot *tgbotapi.BotAPI) {
@@ -1487,7 +1572,7 @@ func handleCriticalRAM(bot *tgbotapi.BotAPI, s Stats) {
 		// Prova a riavviare il container più pesante (se non già fatto di recente)
 		target := heavyContainers[0]
 		if canAutoRestart(target.name) {
-			log.Printf("🤖 RAM critica (%.1f%%), riavvio automatico: %s (%.1f%%)", s.RAM, target.name, target.memPct)
+			log.Printf("> RAM critica (%.1f%%), riavvio automatico: %s (%.1f%%)", s.RAM, target.name, target.memPct)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			cmd := exec.CommandContext(ctx, "docker", "restart", target.name)
@@ -1498,18 +1583,17 @@ func handleCriticalRAM(bot *tgbotapi.BotAPI, s Stats) {
 
 			var msgText string
 			if err != nil {
-				msgText = fmt.Sprintf("🤖 *Azione Automatica Fallita*\n\n"+
-					"RAM critica: `%.1f%%`\n"+
-					"Tentato restart: `%s`\n"+
-					"Errore: %v", s.RAM, target.name, err)
-				addReportEvent("critical", fmt.Sprintf("Restart auto fallito: %s (%v)", target.name, err))
+				msgText = fmt.Sprintf("! *Auto-restart failed*\n\n"+
+					"RAM critical: `%.1f%%`\n"+
+					"Container: `%s`\n"+
+					"Error: %v", s.RAM, target.name, err)
+				addReportEvent("critical", fmt.Sprintf("Auto-restart failed: %s (%v)", target.name, err))
 			} else {
-				msgText = fmt.Sprintf("🤖 *Azione Automatica Eseguita*\n\n"+
-					"RAM critica: `%.1f%%`\n"+
-					"Container riavviato: `%s`\n"+
-					"Consumo memoria: `%.1f%%`\n\n"+
-					"_Monitoraggio attivo..._", s.RAM, target.name, target.memPct)
-				addReportEvent("action", fmt.Sprintf("Restart auto: %s (RAM %.1f%%)", target.name, s.RAM))
+				msgText = fmt.Sprintf("> *Auto-restart done*\n\n"+
+					"RAM was critical: `%.1f%%`\n"+
+					"Restarted: `%s` (`%.1f%%` mem)\n\n"+
+					"_Watching..._", s.RAM, target.name, target.memPct)
+				addReportEvent("action", fmt.Sprintf("Auto-restart: %s (RAM %.1f%%)", target.name, s.RAM))
 			}
 
 			msg := tgbotapi.NewMessage(AllowedUserID, msgText)
@@ -1563,44 +1647,6 @@ func cleanRestartCounter() {
 			autoRestarts[name] = newTimes
 		}
 	}
-}
-
-// ═══════════════════════════════════════════════════════════════════
-//  SPEEDTEST
-// ═══════════════════════════════════════════════════════════════════
-
-func runSpeedtest(bot *tgbotapi.BotAPI, chatID int64) {
-	initMsg, _ := bot.Send(tgbotapi.NewMessage(chatID, "🚀 *Speedtest in corso...*\n\n⏳ Download 100MB da Hetzner..."))
-
-	start := time.Now()
-	resp, err := http.Get("https://fsn1-speed.hetzner.com/100MB.bin")
-	if err != nil {
-		editMessage(bot, chatID, initMsg.MessageID, "❌ *Errore connessione*", nil)
-		return
-	}
-	defer resp.Body.Close()
-
-	written, _ := io.Copy(io.Discard, resp.Body)
-	duration := time.Since(start)
-	mbps := (float64(written) * 8) / duration.Seconds() / 1_000_000
-
-	var b strings.Builder
-	b.WriteString("🚀 *SPEEDTEST*\n\n")
-	b.WriteString(fmt.Sprintf("📦 Scaricati: `%d MB`\n", written/1024/1024))
-	b.WriteString(fmt.Sprintf("⏱ Tempo: `%.1f s`\n", duration.Seconds()))
-	b.WriteString(fmt.Sprintf("💨 Velocità: `%.1f Mbps`\n\n", mbps))
-
-	if mbps > 100 {
-		b.WriteString("✅ _Ottima connessione!_")
-	} else if mbps > 50 {
-		b.WriteString("🟡 _Connessione buona_")
-	} else if mbps > 20 {
-		b.WriteString("🟠 _Connessione sufficiente_")
-	} else {
-		b.WriteString("🔴 _Connessione lenta_")
-	}
-
-	editMessage(bot, chatID, initMsg.MessageID, b.String(), nil)
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1743,47 +1789,50 @@ func monitorAlerts(bot *tgbotapi.BotAPI) {
 		// Solo allarmi CRITICI immediati (disco pieno, SMART failure)
 		var criticalAlerts []string
 
-		// Disco quasi pieno (urgente!)
+		// Disk almost full
 		if s.VolSSD.Used >= 95 {
-			criticalAlerts = append(criticalAlerts, fmt.Sprintf("🚨 *SSD CRITICO:* `%.1f%%` — Spazio quasi esaurito!", s.VolSSD.Used))
+			criticalAlerts = append(criticalAlerts, fmt.Sprintf("SSD critical: `%.1f%%`", s.VolSSD.Used))
 		}
 		if s.VolHDD.Used >= 95 {
-			criticalAlerts = append(criticalAlerts, fmt.Sprintf("🚨 *HDD CRITICO:* `%.1f%%` — Spazio quasi esaurito!", s.VolHDD.Used))
+			criticalAlerts = append(criticalAlerts, fmt.Sprintf("HDD critical: `%.1f%%`", s.VolHDD.Used))
 		}
 
-		// Check SMART dischi (ogni 30 sec è ok, è una lettura leggera)
+		// Check SMART
 		for _, dev := range []string{"sda", "sdb"} {
 			_, health := readDiskSMART(dev)
 			if strings.Contains(strings.ToUpper(health), "FAIL") {
-				criticalAlerts = append(criticalAlerts, fmt.Sprintf("🚨 *DISCO %s FAILING!* — Backup immediato consigliato!", dev))
+				criticalAlerts = append(criticalAlerts, fmt.Sprintf("Disk %s FAILING — backup now!", dev))
 			}
 		}
 
-		// Invia solo alert critici (con cooldown di 30 min per evitare spam)
-		if len(criticalAlerts) > 0 && time.Since(lastCriticalAlert).Minutes() >= 30 {
-			msg := "🚨 *ALLARME CRITICO NAS*\n\n" + strings.Join(criticalAlerts, "\n")
+		// Send critical alerts with 30min cooldown
+		if len(criticalAlerts) > 0 && time.Since(lastCriticalAlert).Minutes() >= 30 && !isQuietHours() {
+			msg := "! *Critical*\n\n" + strings.Join(criticalAlerts, "\n")
 			m := tgbotapi.NewMessage(AllowedUserID, msg)
 			m.ParseMode = "Markdown"
 			bot.Send(m)
 			lastCriticalAlert = time.Now()
+		}
 
+		// Registra sempre gli eventi critici per il report
+		if len(criticalAlerts) > 0 {
 			for _, alert := range criticalAlerts {
 				addReportEvent("critical", alert)
 			}
 		}
 
-		// Registra warning per il report (non notifica immediata)
+		// Record warnings for the report
 		if s.CPU >= SogliaCPU {
-			addReportEvent("warning", fmt.Sprintf("CPU elevata: %.1f%%", s.CPU))
+			addReportEvent("warning", fmt.Sprintf("CPU high: %.1f%%", s.CPU))
 		}
 		if s.RAM >= SogliaRAM && s.RAM < SogliaRAMCritica {
-			addReportEvent("warning", fmt.Sprintf("RAM elevata: %.1f%%", s.RAM))
+			addReportEvent("warning", fmt.Sprintf("RAM high: %.1f%%", s.RAM))
 		}
 		if s.VolSSD.Used >= SogliaDisco && s.VolSSD.Used < 95 {
-			addReportEvent("warning", fmt.Sprintf("SSD: %.1f%% utilizzato", s.VolSSD.Used))
+			addReportEvent("warning", fmt.Sprintf("SSD at %.1f%%", s.VolSSD.Used))
 		}
 		if s.VolHDD.Used >= SogliaDisco && s.VolHDD.Used < 95 {
-			addReportEvent("warning", fmt.Sprintf("HDD: %.1f%% utilizzato", s.VolHDD.Used))
+			addReportEvent("warning", fmt.Sprintf("HDD at %.1f%%", s.VolHDD.Used))
 		}
 	}
 }
@@ -1813,76 +1862,36 @@ type ProcInfo struct {
 	Cpu  float64
 }
 
-func progressBar(percent float64, width int) string {
-	if percent > 100 {
-		percent = 100
-	}
-	if percent < 0 {
-		percent = 0
-	}
-	filled := int(percent / 100 * float64(width))
-	empty := width - filled
-	return strings.Repeat("▰", filled) + strings.Repeat("▱", empty)
-}
-
-func getIcon(val, warn, crit float64) string {
-	if val >= crit {
-		return "🔴"
-	}
-	if val >= warn {
-		return "🟡"
-	}
-	return "🟢"
-}
-
 func formatUptime(seconds uint64) string {
 	days := seconds / 86400
 	hours := (seconds % 86400) / 3600
 	mins := (seconds % 3600) / 60
 	if days > 0 {
-		return fmt.Sprintf("%dd %dh %dm", days, hours, mins)
+		return fmt.Sprintf("%dd%dh", days, hours)
 	}
-	return fmt.Sprintf("%dh %dm", hours, mins)
+	return fmt.Sprintf("%dh%dm", hours, mins)
 }
 
 func formatBytes(bytes uint64) string {
 	gb := float64(bytes) / 1024 / 1024 / 1024
 	if gb >= 1000 {
-		return fmt.Sprintf("%.1f TB", gb/1024)
+		return fmt.Sprintf("%.0fT", gb/1024)
 	}
-	return fmt.Sprintf("%.1f GB", gb)
+	return fmt.Sprintf("%.0fG", gb)
 }
 
 func formatRAM(mb uint64) string {
 	if mb >= 1024 {
-		return fmt.Sprintf("%.1f GB", float64(mb)/1024.0)
+		return fmt.Sprintf("%.1fG", float64(mb)/1024.0)
 	}
-	return fmt.Sprintf("%d MB", mb)
-}
-
-func formatTopProcs(procs []ProcInfo, metric string) string {
-	if len(procs) == 0 {
-		return "```\n N/A\n```"
-	}
-	var b strings.Builder
-	b.WriteString("```\n")
-	for _, p := range procs {
-		name := truncate(p.Name, 12)
-		if metric == "cpu" {
-			b.WriteString(fmt.Sprintf("%-12s %5.1f%%\n", name, p.Cpu))
-		} else {
-			b.WriteString(fmt.Sprintf("%-12s %5.1f%%\n", name, p.Mem))
-		}
-	}
-	b.WriteString("```")
-	return b.String()
+	return fmt.Sprintf("%dM", mb)
 }
 
 func truncate(s string, max int) string {
 	if len(s) <= max {
 		return s
 	}
-	return s[:max-1] + "…"
+	return s[:max-1] + "~"
 }
 
 func safeFloat(arr []float64, def float64) float64 {
@@ -1957,14 +1966,12 @@ func getMainKeyboard() tgbotapi.InlineKeyboardMarkup {
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🔄 Refresh", "refresh_status"),
 			tgbotapi.NewInlineKeyboardButtonData("🌡 Temp", "show_temp"),
+			tgbotapi.NewInlineKeyboardButtonData("🌐 Net", "show_net"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🐳 Docker", "show_docker"),
-			tgbotapi.NewInlineKeyboardButtonData("📈 Stats", "show_dstats"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("📊 Stats", "show_dstats"),
 			tgbotapi.NewInlineKeyboardButtonData("📋 Report", "show_report"),
-			tgbotapi.NewInlineKeyboardButtonData("🌐 Rete", "show_net"),
 		),
 	)
 }
