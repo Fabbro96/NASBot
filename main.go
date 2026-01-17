@@ -354,6 +354,8 @@ func handleCommand(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) {
 		sendDockerMenu(bot, chatID)
 	case "dstats":
 		sendWithKeyboard(bot, chatID, getDockerStatsText())
+	case "top":
+		sendWithKeyboard(bot, chatID, getTopProcText())
 	case "temp":
 		sendWithKeyboard(bot, chatID, getTempText())
 	case "net":
@@ -420,6 +422,10 @@ func handleCallback(bot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery) {
 		text, kb = getDockerMenuText()
 	case "show_dstats":
 		text = getDockerStatsText()
+		mainKb := getMainKeyboard()
+		kb = &mainKb
+	case "show_top":
+		text = getTopProcText()
 		mainKb := getMainKeyboard()
 		kb = &mainKb
 	case "show_net":
@@ -679,6 +685,58 @@ func getLogsText() string {
 	}
 
 	return fmt.Sprintf("*Recent system logs*\n```\n%s\n```", recentLogs)
+}
+
+func getTopProcText() string {
+	// Esegue comando ps per ottenere top 10 processi per CPU
+	// Output: pid, command, cpu%, mem%
+	cmd := exec.Command("ps", "-Ao", "pid,comm,pcpu,pmem", "--sort=-pcpu")
+	out, err := cmd.Output()
+	if err != nil {
+		return fmt.Sprintf("❌ Error fetching processes: %v", err)
+	}
+
+	lines := strings.Split(string(out), "\n")
+	// Skip header (1st line), take next 10
+	if len(lines) < 2 {
+		return "_No processes found_"
+	}
+	
+	count := 0
+	var b strings.Builder
+	b.WriteString("🔥 *Top Processes (by CPU)*\n\n")
+	b.WriteString("`PID   CPU%  MEM%  COMMAND`\n")
+	
+	// Start from index 1 (skip header)
+	for i := 1; i < len(lines) && count < 10; i++ {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 4 {
+			continue
+		}
+		
+		pid := fields[0]
+		cmdName := fields[1]
+		cpu := fields[2]
+		mem := fields[3]
+		
+		// If command name is long, truncate
+		if len(cmdName) > 15 {
+			cmdName = cmdName[:13] + ".."
+		}
+		
+		// PID   CPU   MEM   CMD
+		// 12345 12.3  10.2  python3
+		b.WriteString(fmt.Sprintf("`%-5s %-4s %-4s %s`\n", 
+			pid, cpu, mem, cmdName))
+		
+		count++
+	}
+	
+	return b.String()
 }
 
 func getHelpText() string {
@@ -2147,11 +2205,11 @@ func getMainKeyboard() tgbotapi.InlineKeyboardMarkup {
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🐳 Docker", "show_docker"),
-			tgbotapi.NewInlineKeyboardButtonData("📊 Stats", "show_dstats"),
-			tgbotapi.NewInlineKeyboardButtonData("📋 Report", "show_report"),
+			tgbotapi.NewInlineKeyboardButtonData("📊 D-Stats", "show_dstats"),
+			tgbotapi.NewInlineKeyboardButtonData("🔥 Top Proc", "show_top"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("⚡ Power", "show_power"),
+			tgbotapi.NewInlineKeyboardButtonData("⚡ Power Actions", "show_power"),
 		),
 	)
 }
