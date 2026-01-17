@@ -55,7 +55,7 @@ const (
 	Timezone      = "Europe/Rome"
 
 	// Stato persistente (default, sovrascritto se necessario)
-	StateFile = "nasbot_state.json" 
+	StateFile = "nasbot_state.json"
 )
 
 var (
@@ -478,13 +478,13 @@ func makeProgressBar(percent float64) string {
 	if percent > 100 {
 		percent = 100
 	}
-	
+
 	// Arrotonda al 10% più vicino (55% -> 60% -> 6 tacche)
 	filled := int((percent + 5) / 10)
 	if filled > 10 {
 		filled = 10
 	}
-	
+
 	// Usa caratteri block per la barra
 	return strings.Repeat("█", filled) + strings.Repeat("░", 10-filled)
 }
