@@ -101,6 +101,10 @@ var (
 	pendingContainerAction string
 	pendingContainerName   string
 	pendingContainerMutex  sync.Mutex
+
+	// Beta Features variables
+	dockerFailureStart time.Time // Quando abbiamo iniziato a non vedere container
+	pruneDoneToday     bool      // Se il prune settimanale è stato fatto
 )
 
 // ReportEvent traccia eventi per il report periodico
@@ -1402,6 +1406,116 @@ func autonomousManager(bot *tgbotapi.BotAPI) {
 
 		// Pulizia restart counter (ogni ora)
 		cleanRestartCounter()
+		
+		// ════════════ BETA FEATURES ════════════
+		checkDockerHealth(bot)
+		checkWeeklyPrune(bot)
+	}
+}
+
+func checkDockerHealth(bot *tgbotapi.BotAPI) {
+	// Verifica se il servizio Docker risponde e ha container
+	// getContainerList restituisce nil in caso di errore (es. docker non in esecuzione)
+	// o lista vuota se docker gira ma non ci sono container.
+	containers := getContainerList()
+	
+	isHealthy := containers != nil && len(containers) > 0
+	
+	if isHealthy {
+		// Tutto ok, resetta timer
+		if !dockerFailureStart.IsZero() {
+			dockerFailureStart = time.Time{}
+			log.Println("[Beta] Docker recoverato/popolato.")
+		}
+		return
+	}
+	
+	// Rilevato problema (errore o 0 container)
+	if dockerFailureStart.IsZero() {
+		dockerFailureStart = time.Now()
+		log.Println("[Beta] Docker warning: 0 containers o servizio down. Avvio timer 2m.")
+		return
+	}
+	
+	// Se siamo in stato di failure da più di 2 minuti
+	if time.Since(dockerFailureStart) > 2*time.Minute {
+		log.Println("[Beta] ⚠️ Docker down > 2m. Tentativo restart...")
+		
+		bot.Send(tgbotapi.NewMessage(AllowedUserID, "⚠️ *Docker Watchdog*\n\nNessun container rilevato per 2 minuti.\nRiavvio il servizio Docker..."))
+		
+		addReportEvent("action", "Docker watchdog restart triggered")
+		
+		// Reset timer per evitare loop immediato (aspetta altri 2 min dopo restart)
+		dockerFailureStart = time.Now() 
+		
+		// Esegui comando restart
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+		defer cancel()
+		
+		cmd := exec.CommandContext(ctx, "systemctl", "restart", "docker")
+		// Fallback per sistemi init.d se systemctl non c'è
+		if _, err := exec.LookPath("systemctl"); err != nil {
+			cmd = exec.CommandContext(ctx, "/etc/init.d/nasbot", "restart") // No, restartare docker
+			// Prova service command standard
+			cmd = exec.CommandContext(ctx, "service", "docker", "restart")
+		}
+		
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			bot.Send(tgbotapi.NewMessage(AllowedUserID, fmt.Sprintf("❌ Errore restart Docker:\n`%v`", err)))
+			log.Printf("[!] Docker restart fail: %v\n%s", err, string(out))
+		} else {
+			bot.Send(tgbotapi.NewMessage(AllowedUserID, "✅ Comando restart inviato."))
+		}
+	}
+}
+
+func checkWeeklyPrune(bot *tgbotapi.BotAPI) {
+	now := time.Now().In(location)
+	
+	// Esegui SOLO la Domenica (Sunday) alle 04:xx di notte
+	isTime := now.Weekday() == time.Sunday && now.Hour() == 4
+	
+	if isTime {
+		if !pruneDoneToday {
+			log.Println("[Beta] Esecuzione Weekly Prune...")
+			pruneDoneToday = true
+			
+			go func() {
+				// docker system prune -a (all images) -f (force)
+				cmd := exec.Command("docker", "system", "prune", "-a", "-f")
+				out, err := cmd.CombinedOutput()
+				
+				var msg string
+				if err != nil {
+					msg = fmt.Sprintf("🧹 *Weekly Prune Error*\n\n`%v`", err)
+				} else {
+					// Estrai info utili dall'output (spazio recuperato)
+					output := string(out)
+					lines := strings.Split(output, "\n")
+					lastLine := ""
+					if len(lines) > 0 {
+						for i := len(lines)-1; i >= 0; i-- {
+							if strings.TrimSpace(lines[i]) != "" {
+								lastLine = lines[i]
+								break
+							}
+						}
+					}
+					msg = fmt.Sprintf("🧹 *Weekly Prune*\n\nImmagini inutilizzate rimosse.\n`%s`", lastLine)
+					addReportEvent("info", "Weekly docker prune completed")
+				}
+				
+				m := tgbotapi.NewMessage(AllowedUserID, msg)
+				m.ParseMode = "Markdown"
+				bot.Send(m)
+			}()
+		}
+	} else {
+		// Resetta il flag quando non siamo più nell'ora X (così è pronto per la settimana dopo)
+		if now.Hour() != 4 {
+			pruneDoneToday = false
+		}
 	}
 }
 
