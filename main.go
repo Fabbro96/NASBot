@@ -365,9 +365,9 @@ func handleCommand(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) {
 	case "container":
 		handleContainerCommand(bot, chatID, args)
 	case "reboot":
-		sendPowerConfirm(bot, chatID, "reboot")
+		askPowerConfirmation(bot, chatID, 0, "reboot")
 	case "shutdown":
-		sendPowerConfirm(bot, chatID, "shutdown")
+		askPowerConfirmation(bot, chatID, 0, "shutdown")
 	case "help":
 		sendMarkdown(bot, chatID, getHelpText())
 	default:
@@ -388,7 +388,13 @@ func handleCallback(bot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery) {
 		return
 	}
 	if data == "cancel_power" {
-		editMessage(bot, chatID, msgID, "\u2717 Annullato", nil)
+		editMessage(bot, chatID, msgID, "❌ Annullato", nil)
+		return
+	}
+	// Gestione pre-conferma da menu power
+	if data == "pre_confirm_reboot" || data == "pre_confirm_shutdown" {
+		action := strings.TrimPrefix(data, "pre_confirm_")
+		askPowerConfirmation(bot, chatID, msgID, action)
 		return
 	}
 
@@ -424,6 +430,8 @@ func handleCallback(bot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery) {
 		text = generateReport(true)
 		mainKb := getMainKeyboard()
 		kb = &mainKb
+	case "show_power":
+		text, kb = getPowerMenuText()
 	case "back_main":
 		text = getStatusText()
 		mainKb := getMainKeyboard()
@@ -1061,7 +1069,21 @@ func parseUptime(status string) string {
 //  POWER MANAGEMENT (con conferma)
 // ═══════════════════════════════════════════════════════════════════
 
-func sendPowerConfirm(bot *tgbotapi.BotAPI, chatID int64, action string) {
+func getPowerMenuText() (string, *tgbotapi.InlineKeyboardMarkup) {
+	text := "⚡ *Power Management*\n\nBe careful, these actions affect the physical server."
+	kb := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🔄 Reboot NAS", "pre_confirm_reboot"),
+			tgbotapi.NewInlineKeyboardButtonData("🛑 Shutdown NAS", "pre_confirm_shutdown"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("⬅️ Back", "back_main"),
+		),
+	)
+	return text, &kb
+}
+
+func askPowerConfirmation(bot *tgbotapi.BotAPI, chatID int64, msgID int, action string) {
 	pendingActionMutex.Lock()
 	pendingAction = action
 	pendingActionMutex.Unlock()
@@ -1070,16 +1092,23 @@ func sendPowerConfirm(bot *tgbotapi.BotAPI, chatID int64, action string) {
 	if action == "shutdown" {
 		question = "⚠️ *Shut down* the NAS?"
 	}
+	question += "\n\n_Are you sure?_"
 
-	msg := tgbotapi.NewMessage(chatID, question)
-	msg.ParseMode = "Markdown"
-	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
+	kb := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("✅ Yes, do it", "confirm_"+action),
 			tgbotapi.NewInlineKeyboardButtonData("❌ Cancel", "cancel_power"),
 		),
 	)
-	bot.Send(msg)
+	
+	if msgID > 0 {
+		editMessage(bot, chatID, msgID, question, &kb)
+	} else {
+		msg := tgbotapi.NewMessage(chatID, question)
+		msg.ParseMode = "Markdown"
+		msg.ReplyMarkup = kb
+		bot.Send(msg)
+	}
 }
 
 func handlePowerConfirm(bot *tgbotapi.BotAPI, chatID int64, msgID int, data string) {
@@ -2120,6 +2149,9 @@ func getMainKeyboard() tgbotapi.InlineKeyboardMarkup {
 			tgbotapi.NewInlineKeyboardButtonData("🐳 Docker", "show_docker"),
 			tgbotapi.NewInlineKeyboardButtonData("📊 Stats", "show_dstats"),
 			tgbotapi.NewInlineKeyboardButtonData("📋 Report", "show_report"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("⚡ Power", "show_power"),
 		),
 	)
 }
