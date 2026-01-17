@@ -5,8 +5,6 @@
 # ═══════════════════════════════════════════════════════════════════
 
 # ─── CONFIG ─────────────────────────────────────────
-export BOT_TOKEN=""
-export BOT_USER_ID=""
 BOT_DIR="/Volume1/public"
 BOT_NAME="nasbot"
 LOG_FILE="$BOT_DIR/nasbot.log"
