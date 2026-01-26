@@ -1,15 +1,5 @@
-# Binario compilato (rigenerabile con: go build -o nasbot .)
-nasbot
-
-# Configurazione con token (PRIVATO - non caricare!)
 config.json
-
-# File di stato del bot
+nasbot
 nasbot_state.json
-
-# Log
-*.log
-
-# IDE
-.vscode/
-.idea/
+nasbot.log
+nasbot.pid

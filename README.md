@@ -1,6 +1,6 @@
 # 🖥️ NASBot
 
-> Un bot Telegram leggero e reattivo per tenere sotto controllo il tuo NAS — ovunque tu sia.
+> A lightweight and responsive Telegram bot to monitor your NAS — wherever you are.
 
 ![Go](https://img.shields.io/badge/Go-1.18+-00ADD8?logo=go&logoColor=white)
 ![Platform](https://img.shields.io/badge/Platform-Linux%20ARM64-orange)
@@ -8,205 +8,122 @@
 
 ---
 
-## ✨ Perché NASBot?
+## ✨ Why NASBot?
 
-Hai un NAS casalingo o un mini-server ARM e vuoi sapere come sta **senza aprire SSH ogni volta**?  
-NASBot ti manda una dashboard interattiva su Telegram: CPU, RAM, dischi, container Docker, temperature — tutto a portata di tap.
+Do you have a home NAS or an ARM mini-server and want to check its status **without opening SSH every time**?
+NASBot sends you an interactive dashboard on Telegram: CPU, RAM, disks, Docker containers, temperatures — all at your fingertips.
 
-**Caratteristiche principali:**
+**Key Features:**
 
 | | |
 |---|---|
-| 📊 **Dashboard live** | Pulsanti inline per aggiornare al volo |
-| 🌅 **Report mattina** | Ogni giorno alle 07:30 con "Buongiorno!" |
-| 🌆 **Report sera** | Ogni giorno alle 18:30 con "Buonasera!" |
-| 🛡️ **Protezione autonoma** | Riavvia container se RAM critica |
-| 🐳 **Gestione Docker** | Start/Stop/Restart container da Telegram |
-| 🔔 **Allarmi intelligenti** | Notifica solo stress I/O prolungato (2+ min) |
-| 🔄 **Auto-recovery** | Riavvio automatico dopo crash/reboot |
-| 🔒 **Accesso singolo** | Solo il tuo user ID può comandare |
-| 🪶 **Leggero** | Binario statico ~6 MB, zero dipendenze runtime |
+| 📊 **Live Dashboard** | Inline buttons for instant updates |
+| 🌅 **Morning Report** | Daily at 07:30 AM with a "Good morning!" status |
+| 🌆 **Evening Report** | Daily at 06:30 PM with a "Good evening!" status |
+| 🛡️ **Autonomous Protection** | Restarts containers if RAM uses critical |
+| 🐳 **Docker Management** | Start/Stop/Restart containers from Telegram |
+| 🔔 **Smart Alerts** | Notifies only on prolonged I/O stress (2+ min) |
+| 🔄 **Auto-recovery** | Automatic restart after crash/reboot |
+| 🔒 **Single Access** | Only your user ID can command the bot |
+| 🪶 **Lightweight** | ~6 MB static binary, zero runtime dependencies |
 
 ---
 
-## 📋 Requisiti
+## 📋 Requirements
 
-| Requisito | Note |
+| Requirement | Notes |
 |-----------|------|
-| **Go ≥ 1.18** | Solo se compili da sorgente |
-| **Linux** | Testato su Debian/Ubuntu ARM64, TerraMaster |
-| `docker` *(opzionale)* | Per gestione container |
-| `smartmontools` *(opzionale)* | Per temperature SMART (`/temp`) |
+| **Go ≥ 1.18** | Only if compiling from source |
+| **Linux** | Tested on Debian/Ubuntu ARM64, TerraMaster |
+| `docker` *(optional)* | For container management |
+| `smartmontools` *(optional)* | For SMART temperatures (`/temp`) |
 
-### ⚠️ Permessi
+### ⚠️ Permissions
 
-- `/reboot` e `/shutdown` eseguono direttamente `reboot`/`poweroff` → il processo deve girare come **root** o avere i permessi necessari.
-- `smartctl` di solito richiede **root** o appartenenza al gruppo `disk`.
-- Per la gestione Docker, l'utente deve poter eseguire comandi `docker`.
+- `/reboot` and `/shutdown` execute `reboot`/`poweroff` directly → the process must run as **root** or have necessary permissions.
+- `smartctl` usually requires **root** or membership in the `disk` group.
+- For Docker management, the user must be able to execute `docker` commands.
 
 ---
 
-## ⚙️ Configurazione
+## ⚙️ Configuration
 
-Copia il file di esempio e inserisci i tuoi dati:
+1. **Rename** `config.example.json` to `config.json`.
+2. **Edit** the file:
+   ```json
+   {
+     "bot_token": "YOUR_234234:ABC...",
+     "allowed_user_id": 12345678,
+     "paths": {
+       "ssd": "/Volume1",
+       "hdd": "/Volume2"
+     },
+     "thresholds": {
+       "cpu": 90.0,
+       "ram": 90.0,
+       "disk": 90.0
+     }
+   }
+   ```
+   *   `bot_token`: From @BotFather.
+   *   `allowed_user_id`: Your numeric Telegram ID (get it from @userinfobot).
+   *   `paths`: Mount points to monitor.
+   *   `thresholds`: Alert percentages.
+
+---
+
+## 🚀 Installation
+
+### Option A: Quick Start (Binary)
+
+1. Download the binary (if available) or compile it:
+   ```bash
+   go build -o nasbot main.go
+   ```
+2. Make it executable:
+   ```bash
+   chmod +x nasbot
+   ```
+3. Run it:
+   ```bash
+   ./nasbot
+   ```
+
+### Option B: Automatic Service (Autostart)
+
+Use the provided script to set up persistence (cron/start script):
 
 ```bash
-cp config.example.json config.json
-nano config.json
+chmod +x setup_autostart.sh
+./setup_autostart.sh
 ```
 
-**Esempio `config.json`:**
-
-```json
-{
-  "bot_token": "123456:ABC-xyz...",
-  "allowed_user_id": 123456789,
-  "paths": {
-    "ssd": "/Volume1",
-    "hdd": "/Volume2"
-  },
-  "thresholds": {
-    "cpu": 90,
-    "ram": 90,
-    "disk": 90
-  }
-}
-```
-
-> 🔒 **Sicurezza:** Il file `config.json` viene automaticamente ignorato da git per proteggere il tuo token.
+This will configure a cron job or startup script to keep the bot running.
 
 ---
 
-## 🚀 Avvio
+## 🎮 Commands
 
-### Opzione A — Script di gestione (consigliato)
-
-```bash
-./start_bot.sh start     # Avvia
-./start_bot.sh stop      # Ferma
-./start_bot.sh restart   # Riavvia
-./start_bot.sh status    # Stato dettagliato
-./start_bot.sh logs 100  # Ultimi 100 log
-```
-
-### Opzione B — Avvio automatico (TerraMaster / init.d)
-
-```bash
-sudo ./setup_autostart.sh
-```
-
-### Opzione C — Compila e lancia manualmente
-
-Per ridurre le dimensioni del binario (consigliato su NAS):
-
-```bash
-go build -ldflags="-s -w" -o nasbot .
-./nasbot
-```
+| Command | Description |
+|---|---|
+| `/start` | Welcome and main menu |
+| `/status` | Complete dashboard (CPU, RAM, Disk, Uptime) |
+| `/docker` | Manage containers (List, Start, Stop, Logs) |
+| `/temp` | Sensors and Disk temperatures |
+| `/reboot` | Reboot the server (requires root) |
+| `/shutdown` | Shutdown the server (requires root) |
+| `/help` | List of commands |
 
 ---
 
-## 🤖 Comandi Telegram
+## 🛡️ Security Note
 
-| Comando | Descrizione |
-| --- | --- |
-| `/status` | 📊 Dashboard risorse interattiva |
-| `/report` | 📋 Report completo stato NAS |
-| `/temp` | 🌡 Temperature CPU e Dischi (SMART) |
-| `/docker` | 🐳 Menu gestione Container |
-| `/dstats` | 📈 Consumo risorse Container |
-| `/container <nome>` | 🔍 Info container specifico |
-| `/net` | 🌐 Info IP Locale e Pubblico |
-| `/speedtest` | 🚀 Test velocità connessione |
-| `/logs` | 📜 Ultimi log di sistema (dmesg) |
-| `/reboot` | 🔄 Riavvia il NAS |
-| `/shutdown` | 🛑 Spegni il NAS |
-| `/help` | ❓ Guida comandi |
-
-> `/start` è un alias di `/status`.
+This bot allows executing system commands (`reboot`, `shutdown`, `docker`).
+**Ensure `allowed_user_id` is correctly set in `config.json`.**
+The bot will ignore messages from any other user.
 
 ---
 
-## 🛠️ Script di avvio (`start_bot.sh`)
+## 📄 License
 
-Il progetto include `start_bot.sh` che gestisce:
-- Avvio in background (`nohup`)
-- Rotazione log (10 MB max)
-- PID file management
-- Verifica permessi esecuzione
-
-Sentiti libero di personalizzare `BOT_DIR` all'interno dello script se lo sposti.
-      nohup ./nasbot >> nasbot.log 2>&1 &
-      sleep 1
-      if pgrep -x "nasbot" > /dev/null; then
-        echo -e "${GREEN}✔ NASBot avviato (PID $(pgrep -x nasbot))${NC}"
-      else
-        echo -e "${RED}✗ Avvio fallito — controlla nasbot.log${NC}"
-      fi
-    fi
-    ;;
-  stop)
-    if pgrep -x "nasbot" > /dev/null; then
-      pkill -x "nasbot"
-      echo -e "${GREEN}✔ NASBot fermato${NC}"
-    else
-      echo -e "${YELLOW}⚠ NASBot non era in esecuzione${NC}"
-    fi
-    ;;
-  status)
-    if pgrep -x "nasbot" > /dev/null; then
-      echo -e "${GREEN}● NASBot attivo (PID $(pgrep -x nasbot))${NC}"
-    else
-      echo -e "${RED}○ NASBot non attivo${NC}"
-    fi
-    ;;
-  *)
-    echo "Uso: $0 {start|stop|status}"
-    exit 1
-    ;;
-esac
-```
-
-```bash
-chmod +x start_box.sh
-./start_box.sh start   # avvia
-./start_box.sh status  # controlla
-./start_box.sh stop    # ferma
-```
-
-> 💡 **Tip:** aggiungi `@reboot /percorso/start_box.sh start` al crontab per l'avvio automatico al boot.
-
----
-
-## 🔧 Personalizzazione
-
-Nel codice (`main.go`) trovi alcune costanti che puoi modificare:
-
-```go
-const (
-    SogliaCPU      = 90.0       // % CPU per allarme
-    SogliaRAM      = 90.0       // % RAM per allarme
-    PathSSD        = "/Volume1" // mount point SSD
-    PathHDD        = "/Volume2" // mount point HDD
-    CooldownMinuti = 20         // minuti tra un allarme e l'altro
-)
-```
-
-Dopo le modifiche: `go build -o nasbot .`
-
----
-
-## 🐛 Troubleshooting
-
-| Problema | Soluzione |
-|----------|-----------|
-| *"BOT_TOKEN mancante"* | Controlla che le variabili siano esportate nella shell che lancia il bot |
-| *Temperature disco "??"* | Installa `smartmontools` e verifica i permessi (`sudo smartctl ...`) |
-| *Comandi Docker falliscono* | Assicurati che l'utente che esegue il bot sia nel gruppo `docker` |
-| *Il bot non risponde* | Verifica che `BOT_USER_ID` corrisponda al tuo chat ID |
-
----
-
-## 📜 Licenza
-
-MIT — usalo, modificalo, divertiti. 🎉
+MIT License. Feel free to fork and modify!

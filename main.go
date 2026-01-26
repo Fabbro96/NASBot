@@ -28,33 +28,33 @@ import (
 )
 
 // ═══════════════════════════════════════════════════════════════════
-//  CONFIGURAZIONE
+//  CONFIGURATION
 // ═══════════════════════════════════════════════════════════════════
 
 const (
-	// Intervalli background
-	IntervalloStats     = 5 * time.Second  // Aggiorna cache stats
-	IntervalloMonitor   = 30 * time.Second // Check allarmi
-	DurataStressDisco   = 2 * time.Minute  // Soglia stress I/O prolungato
-	SogliaIOCritico     = 95.0             // % I/O per considerare stress
-	SogliaCPUStress     = 90.0             // CPU stress threshold
-	SogliaRAMStress     = 90.0             // RAM stress threshold
-	SogliaSwapStress    = 50.0             // Swap stress threshold
-	SogliaRAMCritica    = 95.0             // RAM critica per azioni autonome
-	MaxRestartContainer = 3                // Max riavvii automatici container/ora
+	// Background intervals
+	IntervalStats     = 5 * time.Second  // Refresh stats cache
+	IntervalMonitor   = 30 * time.Second // Check alerts
+	DurationStressDisk = 2 * time.Minute // Threshold for prolonged I/O stress
+	ThresholdIOCritical = 95.0          // % I/O to consider stress
+	ThresholdCPUStress  = 90.0          // CPU stress threshold
+	ThresholdRAMStress  = 90.0          // RAM stress threshold
+	ThresholdSwapStress = 50.0          // Swap stress threshold
+	ThresholdRAMCritical = 95.0         // Critical RAM for autonomous actions
+	MaxRestartContainer = 3             // Max autonomous container restarts/hour
 
-	// Quiet hours (niente notifiche)
-	QuietHourStart   = 23 // 23:30 inizio silenzio
-	QuietHourEnd     = 7  // 07:00 fine silenzio
+	// Quiet hours (no notifications)
+	QuietHourStart   = 23 // 23:30 silence start
+	QuietHourEnd     = 7  // 07:00 silence end
 	QuietMinuteStart = 30
 
-	// Orari report giornalieri (Europe/Rome)
-	ReportMattina = 7  // 07:30
-	ReportSera    = 18 // 18:30
-	ReportMinuti  = 30
+	// Report schedules (Europe/Rome)
+	ReportMorning = 7  // 07:30
+	ReportEvening = 18 // 18:30
+	ReportMinute  = 30
 	Timezone      = "Europe/Rome"
 
-	// Stato persistente (default, sovrascritto se necessario)
+	// Persistent state (default, overwritten if necessary)
 	StateFile = "nasbot_state.json"
 )
 
@@ -62,28 +62,28 @@ var (
 	BotToken      string
 	AllowedUserID int64
 
-	// Configurazione Runtime (da config.json)
+	// Runtime Configuration (from config.json)
 	PathSSD     = "/Volume1"
 	PathHDD     = "/Volume2"
-	SogliaCPU   = 90.0
-	SogliaRAM   = 90.0
-	SogliaDisco = 90.0
+	ThresholdCPU   = 90.0
+	ThresholdRAM   = 90.0
+	ThresholdDisk = 90.0
 
-	// Cache globale con mutex
+	// Global cache with mutex
 	statsCache Stats
 	statsMutex sync.RWMutex
 	statsReady bool
 
-	// Tracking stress I/O (HDD)
+	// Stress tracking I/O (HDD)
 	stressStartTime   time.Time
 	stressNotified    bool
 	consecutiveStress int
 
-	// Tracking stress per tutte le risorse
+	// Stress tracking for all resources
 	resourceStress      map[string]*StressTracker
 	resourceStressMutex sync.Mutex
 
-	// Tracking azioni autonome
+	// Autonomous action tracking
 	autoRestarts      map[string][]time.Time
 	autoRestartsMutex sync.Mutex
 
@@ -103,27 +103,27 @@ var (
 	pendingContainerMutex  sync.Mutex
 
 	// Beta Features variables
-	dockerFailureStart time.Time // Quando abbiamo iniziato a non vedere container
-	pruneDoneToday     bool      // Se il prune settimanale è stato fatto
+	dockerFailureStart time.Time // When we started not seeing containers
+	pruneDoneToday     bool      // If weekly prune was done
 )
 
-// ReportEvent traccia eventi per il report periodico
+// ReportEvent tracks events for the periodic report
 type ReportEvent struct {
 	Time    time.Time
 	Type    string // "warning", "critical", "action", "info"
 	Message string
 }
 
-// StressTracker traccia periodi di stress per una risorsa
+// StressTracker tracks stress periods for a resource
 type StressTracker struct {
-	CurrentStart  time.Time     // Inizio stress corrente (zero se non in stress)
-	StressCount   int           // Numero di volte sotto stress dall'ultimo report
-	LongestStress time.Duration // Durata massima stress
-	TotalStress   time.Duration // Tempo totale sotto stress
-	Notified      bool          // Se già notificato per questo stress
+	CurrentStart  time.Time     // Start of current stress (zero if not stressed)
+	StressCount   int           // Number of times under stress since last report
+	LongestStress time.Duration // Max stress duration
+	TotalStress   time.Duration // Total time under stress
+	Notified      bool          // If already notified for this stress
 }
 
-// BotState per persistenza
+// BotState for persistence
 type BotState struct {
 	LastReportTime time.Time              `json:"last_report_time"`
 	AutoRestarts   map[string][]time.Time `json:"auto_restarts"`
@@ -136,26 +136,26 @@ type BotState struct {
 func init() {
 	loadConfig()
 
-	// Inizializza timezone
+	// Initialize timezone
 	var err error
 	location, err = time.LoadLocation(Timezone)
 	if err != nil {
-		log.Printf("[w] Timezone %s non trovata, uso UTC", Timezone)
+		log.Printf("[w] Timezone %s not found, using UTC", Timezone)
 		location = time.UTC
 	}
 
-	// Inizializza mappe
+	// Initialize maps
 	autoRestarts = make(map[string][]time.Time)
 	resourceStress = make(map[string]*StressTracker)
 	for _, res := range []string{"CPU", "RAM", "Swap", "SSD", "HDD"} {
 		resourceStress[res] = &StressTracker{}
 	}
 
-	// Carica stato persistente
+	// Load persistent state
 	loadState()
 }
 
-// loadConfig legge i token dal file config.json
+// loadConfig reads tokens from config.json
 func loadConfig() {
 	type Paths struct {
 		SSD string `json:"ssd"`
@@ -175,18 +175,18 @@ func loadConfig() {
 
 	data, err := os.ReadFile("config.json")
 	if err != nil {
-		log.Fatalf("❌ Errore lettura config.json: %v\nCrea il file copiando config.example.json", err)
+		log.Fatalf("❌ Error reading config.json: %v\nCreate the file by copying config.example.json", err)
 	}
 
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		log.Fatalf("❌ Errore parsing config.json: %v", err)
+		log.Fatalf("❌ Error parsing config.json: %v", err)
 	}
 
 	BotToken = cfg.BotToken
 	AllowedUserID = cfg.AllowedUserID
 
-	// Sovrascrivi default se presenti nel json
+	// Overwrite default if present in json
 	if cfg.Paths.SSD != "" {
 		PathSSD = cfg.Paths.SSD
 	}
@@ -195,36 +195,36 @@ func loadConfig() {
 	}
 
 	if cfg.Thresholds.CPU > 0 {
-		SogliaCPU = cfg.Thresholds.CPU
+		ThresholdCPU = cfg.Thresholds.CPU
 	}
 	if cfg.Thresholds.RAM > 0 {
-		SogliaRAM = cfg.Thresholds.RAM
+		ThresholdRAM = cfg.Thresholds.RAM
 	}
 	if cfg.Thresholds.Disk > 0 {
-		SogliaDisco = cfg.Thresholds.Disk
+		ThresholdDisk = cfg.Thresholds.Disk
 	}
 
 	if BotToken == "" {
-		log.Fatal("❌ bot_token vuoto in config.json")
+		log.Fatal("❌ bot_token empty in config.json")
 	}
 	if AllowedUserID == 0 {
-		log.Fatal("❌ allowed_user_id vuoto o invalido in config.json")
+		log.Fatal("❌ allowed_user_id empty or invalid in config.json")
 	}
 
-	log.Println("[✓] Config caricata da config.json")
+	log.Println("[✓] Config loaded from config.json")
 }
 
-// isQuietHours verifica se siamo in orario notturno (23:30 - 07:00)
+// isQuietHours checks if we are in night hours (23:30 - 07:00)
 func isQuietHours() bool {
 	now := time.Now().In(location)
 	hour := now.Hour()
 	minute := now.Minute()
 
-	// Dopo le 23:30
+	// After 23:30
 	if hour == QuietHourStart && minute >= QuietMinuteStart {
 		return true
 	}
-	// Dalle 00:00 alle 06:59
+	// From 00:00 to 06:59
 	if hour > QuietHourStart || hour < QuietHourEnd {
 		return true
 	}
@@ -234,19 +234,19 @@ func isQuietHours() bool {
 func loadState() {
 	data, err := os.ReadFile(StateFile)
 	if err != nil {
-		log.Printf("[i] Primo avvio - nessuno stato")
+		log.Printf("[i] First run - no state")
 		return
 	}
 	var state BotState
 	if err := json.Unmarshal(data, &state); err != nil {
-		log.Printf("[w] Errore stato: %v", err)
+		log.Printf("[w] State error: %v", err)
 		return
 	}
 	lastReportTime = state.LastReportTime
 	if state.AutoRestarts != nil {
 		autoRestarts = state.AutoRestarts
 	}
-	log.Printf("[+] Stato ripristinato")
+	log.Printf("[+] State restored")
 }
 
 func saveState() {
@@ -277,11 +277,11 @@ func main() {
 
 	bot, err := tgbotapi.NewBotAPI(BotToken)
 	if err != nil {
-		log.Fatalf("[!] Avvio bot: %v", err)
+		log.Fatalf("[!] Start bot: %v", err)
 	}
 	log.Printf("[+] NASBot @%s", bot.Self.UserName)
 
-	// Notifica avvio
+	// Startup notification
 	nextReport, isMorning := getNextReportTime()
 	nextReportStr := "18:30"
 	if isMorning {
@@ -300,7 +300,7 @@ _Type /help to see what I can do_`, nextReportStr)
 	startupMsg.ParseMode = "Markdown"
 	bot.Send(startupMsg)
 
-	// Gestione shutdown graceful
+	// Graceful shutdown management
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -310,26 +310,26 @@ _Type /help to see what I can do_`, nextReportStr)
 		os.Exit(0)
 	}()
 
-	// Avvia goroutine background
+	// Start background goroutines
 	go statsCollector()
 	go monitorAlerts(bot)
 	go periodicReport(bot)
 	go autonomousManager(bot)
 
-	// Aspetta primo ciclo stats
-	time.Sleep(IntervalloStats + 500*time.Millisecond)
+	// Wait for first stats cycle
+	time.Sleep(IntervalStats + 500*time.Millisecond)
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 	updates := bot.GetUpdatesChan(u)
 
 	for update := range updates {
-		// Callback (pulsanti inline)
+		// Callback (inline buttons)
 		if update.CallbackQuery != nil {
 			go handleCallback(bot, update.CallbackQuery)
 			continue
 		}
-		// Comandi
+		// Commands
 		if update.Message == nil || update.Message.Chat.ID != AllowedUserID {
 			continue
 		}
@@ -340,7 +340,7 @@ _Type /help to see what I can do_`, nextReportStr)
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  HANDLER COMANDI
+//  COMMAND HANDLERS
 // ═══════════════════════════════════════════════════════════════════
 
 func handleCommand(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) {
@@ -384,29 +384,29 @@ func handleCallback(bot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery) {
 	msgID := query.Message.MessageID
 	data := query.Data
 
-	// Gestione conferma power
+	// Power confirmation management
 	if data == "confirm_reboot" || data == "confirm_shutdown" {
 		handlePowerConfirm(bot, chatID, msgID, data)
 		return
 	}
 	if data == "cancel_power" {
-		editMessage(bot, chatID, msgID, "❌ Annullato", nil)
+		editMessage(bot, chatID, msgID, "❌ Cancelled", nil)
 		return
 	}
-	// Gestione pre-conferma da menu power
+	// Power menu pre-confirmation management
 	if data == "pre_confirm_reboot" || data == "pre_confirm_shutdown" {
 		action := strings.TrimPrefix(data, "pre_confirm_")
 		askPowerConfirmation(bot, chatID, msgID, action)
 		return
 	}
 
-	// Gestione container actions
+	// Container actions management
 	if strings.HasPrefix(data, "container_") {
 		handleContainerCallback(bot, chatID, msgID, data)
 		return
 	}
 
-	// Navigazione normale
+	// Normal navigation
 	var text string
 	var kb *tgbotapi.InlineKeyboardMarkup
 	switch data {
@@ -449,7 +449,7 @@ func handleCallback(bot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  GENERATORI TESTO (usano cache, risposta istantanea)
+//  TEXT GENERATORS (use cache, instant response)
 // ═══════════════════════════════════════════════════════════════════
 
 func getStatusText() string {
@@ -497,13 +497,13 @@ func makeProgressBar(percent float64) string {
 		percent = 100
 	}
 
-	// Arrotonda al 10% più vicino (55% -> 60% -> 6 tacche)
+	// Round to nearest 10% (55% -> 60% -> 6 notches)
 	filled := int((percent + 5) / 10)
 	if filled > 10 {
 		filled = 10
 	}
 
-	// Usa caratteri block per la barra
+	// Use block characters for the bar
 	return strings.Repeat("█", filled) + strings.Repeat("░", 10-filled)
 }
 
@@ -688,7 +688,7 @@ func getLogsText() string {
 }
 
 func getTopProcText() string {
-	// Esegue comando ps per ottenere top 10 processi per CPU
+	// Execute ps command to get top 10 processes by CPU
 	// Output: pid, command, cpu%, mem%
 	cmd := exec.Command("ps", "-Ao", "pid,comm,pcpu,pmem", "--sort=-pcpu")
 	out, err := cmd.Output()
@@ -701,12 +701,12 @@ func getTopProcText() string {
 	if len(lines) < 2 {
 		return "_No processes found_"
 	}
-	
+
 	count := 0
 	var b strings.Builder
 	b.WriteString("🔥 *Top Processes (by CPU)*\n\n")
 	b.WriteString("`PID   CPU%  MEM%  COMMAND`\n")
-	
+
 	// Start from index 1 (skip header)
 	for i := 1; i < len(lines) && count < 10; i++ {
 		line := strings.TrimSpace(lines[i])
@@ -717,25 +717,25 @@ func getTopProcText() string {
 		if len(fields) < 4 {
 			continue
 		}
-		
+
 		pid := fields[0]
 		cmdName := fields[1]
 		cpu := fields[2]
 		mem := fields[3]
-		
+
 		// If command name is long, truncate
 		if len(cmdName) > 15 {
 			cmdName = cmdName[:13] + ".."
 		}
-		
+
 		// PID   CPU   MEM   CMD
 		// 12345 12.3  10.2  python3
-		b.WriteString(fmt.Sprintf("`%-5s %-4s %-4s %s`\n", 
+		b.WriteString(fmt.Sprintf("`%-5s %-4s %-4s %s`\n",
 			pid, cpu, mem, cmdName))
-		
+
 		count++
 	}
-	
+
 	return b.String()
 }
 
@@ -757,7 +757,7 @@ _🌙 Quiet hours: 23:30 — 7:00_`
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  GESTIONE CONTAINER DOCKER
+//  DOCKER CONTAINER MANAGEMENT
 // ═══════════════════════════════════════════════════════════════════
 
 func getContainerList() []ContainerInfo {
@@ -832,7 +832,7 @@ func getDockerMenuText() (string, *tgbotapi.InlineKeyboardMarkup) {
 
 	b.WriteString(fmt.Sprintf("\n_%d running, %d stopped_", running, stopped))
 
-	// Bottoni - 2 per riga
+	// Buttons - 2 per row
 	var rows [][]tgbotapi.InlineKeyboardButton
 	for i := 0; i < len(containers); i += 2 {
 		var row []tgbotapi.InlineKeyboardButton
@@ -869,7 +869,7 @@ func handleContainerCallback(bot *tgbotapi.BotAPI, chatID int64, msgID int, data
 
 	switch action {
 	case "select", "start", "stop", "restart", "logs", "cancel":
-		// Nome container è tutto dopo parts[1]
+		// Container name is everything after parts[1]
 		containerName := strings.Join(parts[2:], "_")
 		switch action {
 		case "select":
@@ -882,7 +882,7 @@ func handleContainerCallback(bot *tgbotapi.BotAPI, chatID int64, msgID int, data
 		}
 	case "confirm":
 		// Format: container_confirm_CONTAINERNAME_ACTION
-		// L'azione è l'ultimo elemento, il nome è tutto il resto
+		// Action is the last element, name is everything else
 		if len(parts) < 4 {
 			return
 		}
@@ -1072,11 +1072,11 @@ func handleContainerCommand(bot *tgbotapi.BotAPI, chatID int64, args string) {
 		return
 	}
 
-	// Cerca container per nome
+	// Search container by name
 	containers := getContainerList()
 	for _, c := range containers {
 		if strings.EqualFold(c.Name, args) {
-			// Invia info container con menu
+			// Send info with menu
 			msg := tgbotapi.NewMessage(chatID, "")
 			msg.ParseMode = "Markdown"
 			text, _ := getContainerInfoText(c)
@@ -1085,7 +1085,7 @@ func handleContainerCommand(bot *tgbotapi.BotAPI, chatID int64, args string) {
 			return
 		}
 	}
-	bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf("x Container `%s` non trovato.", args)))
+	bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf("x Container `%s` not found.", args)))
 }
 
 func getContainerInfoText(c ContainerInfo) (string, *tgbotapi.InlineKeyboardMarkup) {
@@ -1124,7 +1124,7 @@ func parseUptime(status string) string {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  POWER MANAGEMENT (con conferma)
+//  POWER MANAGEMENT (with confirmation)
 // ═══════════════════════════════════════════════════════════════════
 
 func getPowerMenuText() (string, *tgbotapi.InlineKeyboardMarkup) {
@@ -1158,7 +1158,7 @@ func askPowerConfirmation(bot *tgbotapi.BotAPI, chatID int64, msgID int, action 
 			tgbotapi.NewInlineKeyboardButtonData("❌ Cancel", "cancel_power"),
 		),
 	)
-	
+
 	if msgID > 0 {
 		editMessage(bot, chatID, msgID, question, &kb)
 	} else {
@@ -1197,34 +1197,34 @@ func handlePowerConfirm(bot *tgbotapi.BotAPI, chatID int64, msgID int, data stri
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  REPORT GIORNALIERI (07:30 e 18:30)
+//  DAILY REPORTS (07:30 and 18:30)
 // ═══════════════════════════════════════════════════════════════════
 
-// getNextReportTime calcola il prossimo orario di report (07:30 o 18:30)
+// getNextReportTime calculates the next report time (07:30 or 18:30)
 func getNextReportTime() (time.Time, bool) {
 	now := time.Now().In(location)
 
-	// Report mattina (07:30) e sera (18:30)
-	morningReport := time.Date(now.Year(), now.Month(), now.Day(), ReportMattina, ReportMinuti, 0, 0, location)
-	eveningReport := time.Date(now.Year(), now.Month(), now.Day(), ReportSera, ReportMinuti, 0, 0, location)
+	// Morning (07:30) and evening (18:30) reports
+	morningReport := time.Date(now.Year(), now.Month(), now.Day(), ReportMorning, ReportMinute, 0, 0, location)
+	eveningReport := time.Date(now.Year(), now.Month(), now.Day(), ReportEvening, ReportMinute, 0, 0, location)
 
-	// Determina il prossimo report
+	// Determine next report
 	if now.Before(morningReport) {
-		return morningReport, true // true = mattina
+		return morningReport, true // true = morning
 	} else if now.Before(eveningReport) {
-		return eveningReport, false // false = sera
+		return eveningReport, false // false = evening
 	} else {
-		// Dopo le 18:30, prossimo è domani mattina
+		// After 18:30, next is tomorrow morning
 		return morningReport.Add(24 * time.Hour), true
 	}
 }
 
 func periodicReport(bot *tgbotapi.BotAPI) {
-	// Aspetta che le stats siano pronte
-	time.Sleep(IntervalloStats * 2)
+	// Wait for stats to be ready
+	time.Sleep(IntervalStats * 2)
 
 	for {
-		// Calcola prossimo orario di report
+		// Calculate next report time
 		nextReport, isMorning := getNextReportTime()
 		sleepDuration := time.Until(nextReport)
 
@@ -1233,10 +1233,10 @@ func periodicReport(bot *tgbotapi.BotAPI) {
 			greeting = "Good evening! 🌙"
 		}
 
-		log.Printf("> Prossimo report: %s", nextReport.Format("02/01 15:04"))
+		log.Printf("> Next report: %s", nextReport.Format("02/01 15:04"))
 		time.Sleep(sleepDuration)
 
-		// Genera e invia report
+		// Generate and send report
 		report := generateDailyReport(greeting)
 		msg := tgbotapi.NewMessage(AllowedUserID, report)
 		msg.ParseMode = "Markdown"
@@ -1245,7 +1245,7 @@ func periodicReport(bot *tgbotapi.BotAPI) {
 		lastReportTime = time.Now()
 		saveState()
 
-		// Pulisci eventi vecchi (mantieni ultimi 2 giorni)
+		// Clean old events (keep last 2 days)
 		cleanOldReportEvents()
 	}
 }
@@ -1339,16 +1339,16 @@ func getHealthStatus(s Stats) (icon, text string, hasProblems bool) {
 	}
 	reportEventsMutex.Unlock()
 
-	if criticalCount > 0 || s.CPU > SogliaCPU || s.RAM > SogliaRAMCritica || s.VolSSD.Used > 95 || s.VolHDD.Used > 95 {
+	if criticalCount > 0 || s.CPU > ThresholdCPU || s.RAM > ThresholdRAMCritical || s.VolSSD.Used > 95 || s.VolHDD.Used > 95 {
 		return "⚠️", "Some issues to look at", true
 	}
-	if warningCount > 0 || s.CPU > 80 || s.RAM > 85 || s.DiskUtil > 90 || s.VolSSD.Used > SogliaDisco || s.VolHDD.Used > SogliaDisco {
+	if warningCount > 0 || s.CPU > 80 || s.RAM > 85 || s.DiskUtil > 90 || s.VolSSD.Used > ThresholdDisk || s.VolHDD.Used > ThresholdDisk {
 		return "👀", "A few things need attention", true
 	}
 	return "✨", "Everything's running smoothly", false
 }
 
-// generateReport per richieste manuali (/report)
+// generateReport for manual requests (/report)
 func generateReport(manual bool) string {
 	if !manual {
 		return generateDailyReport("> *Report NAS*")
@@ -1399,7 +1399,7 @@ func generateReport(manual bool) string {
 	reportEventsMutex.Unlock()
 
 	if len(events) > 0 {
-		b.WriteString("\n*Eventi*\n")
+		b.WriteString("\n*Events*\n")
 		for _, e := range events {
 			icon := "."
 			switch e.Type {
@@ -1425,7 +1425,7 @@ func addReportEvent(eventType, message string) {
 		Message: message,
 	})
 
-	// Limita a 20 eventi
+	// Limit to 20 events
 	if len(reportEvents) > 20 {
 		reportEvents = reportEvents[len(reportEvents)-20:]
 	}
@@ -1462,7 +1462,7 @@ func filterSignificantEvents(events []ReportEvent) []ReportEvent {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  AUTONOMOUS MANAGER (decisioni automatiche)
+//  AUTONOMOUS MANAGER (automatic decisions)
 // ═══════════════════════════════════════════════════════════════════
 
 func autonomousManager(bot *tgbotapi.BotAPI) {
@@ -1479,21 +1479,21 @@ func autonomousManager(bot *tgbotapi.BotAPI) {
 			continue
 		}
 
-		// Check stress per tutte le risorse
-		checkResourceStress(bot, "HDD", s.DiskUtil, SogliaIOCritico)
-		checkResourceStress(bot, "CPU", s.CPU, SogliaCPUStress)
-		checkResourceStress(bot, "RAM", s.RAM, SogliaRAMStress)
-		checkResourceStress(bot, "Swap", s.Swap, SogliaSwapStress)
-		checkResourceStress(bot, "SSD", s.VolSSD.Used, SogliaDisco)
+		// Check stress for all resources
+		checkResourceStress(bot, "HDD", s.DiskUtil, ThresholdIOCritical)
+		checkResourceStress(bot, "CPU", s.CPU, ThresholdCPUStress)
+		checkResourceStress(bot, "RAM", s.RAM, ThresholdRAMStress)
+		checkResourceStress(bot, "Swap", s.Swap, ThresholdSwapStress)
+		checkResourceStress(bot, "SSD", s.VolSSD.Used, ThresholdDisk)
 
-		// Check RAM critica
-		if s.RAM >= SogliaRAMCritica {
+		// Check critical RAM
+		if s.RAM >= ThresholdRAMCritical {
 			handleCriticalRAM(bot, s)
 		}
 
-		// Pulizia restart counter (ogni ora)
+		// Clean restart counter (every hour)
 		cleanRestartCounter()
-		
+
 		// ════════════ BETA FEATURES ════════════
 		checkDockerHealth(bot)
 		checkWeeklyPrune(bot)
@@ -1501,112 +1501,112 @@ func autonomousManager(bot *tgbotapi.BotAPI) {
 }
 
 func checkDockerHealth(bot *tgbotapi.BotAPI) {
-	// Verifica se il servizio Docker risponde e ha container
-	// getContainerList restituisce nil in caso di errore (es. docker non in esecuzione)
-	// o lista vuota se docker gira ma non ci sono container.
+	// Check if Docker service responds and has containers
+	// getContainerList returns nil on error (e.g. docker not running)
+	// or empty list if docker runs but no containers.
 	containers := getContainerList()
-	
+
 	isHealthy := containers != nil && len(containers) > 0
-	
+
 	if isHealthy {
-		// Tutto ok, resetta timer
+		// All good, reset timer
 		if !dockerFailureStart.IsZero() {
 			dockerFailureStart = time.Time{}
-			log.Println("[Beta] Docker recoverato/popolato.")
+			log.Println("[Beta] Docker recovered/populated.")
 		}
 		return
 	}
-	
-	// Rilevato problema (errore o 0 container)
+
+	// Detected problem (error or 0 containers)
 	if dockerFailureStart.IsZero() {
 		dockerFailureStart = time.Now()
-		log.Println("[Beta] Docker warning: 0 containers o servizio down. Avvio timer 2m.")
+		log.Println("[Beta] Docker warning: 0 containers or service down. Start timer 2m.")
 		return
 	}
-	
-	// Se siamo in stato di failure da più di 2 minuti
+
+	// If in failure state for > 2 minutes
 	if time.Since(dockerFailureStart) > 2*time.Minute {
-		log.Println("[Beta] ⚠️ Docker down > 2m. Tentativo restart...")
-		
-		bot.Send(tgbotapi.NewMessage(AllowedUserID, "⚠️ *Docker Watchdog*\n\nNessun container rilevato per 2 minuti.\nRiavvio il servizio Docker..."))
-		
+		log.Println("[Beta] ⚠️ Docker down > 2m. Attempting restart...")
+
+		bot.Send(tgbotapi.NewMessage(AllowedUserID, "⚠️ *Docker Watchdog*\n\nNo containers detected for 2 minutes.\nRestarting Docker service..."))
+
 		addReportEvent("action", "Docker watchdog restart triggered")
-		
-		// Reset timer per evitare loop immediato (aspetta altri 2 min dopo restart)
-		dockerFailureStart = time.Now() 
-		
-		// Esegui comando restart
+
+		// Reset timer to avoid immediate loop (wait another 2 min after restart)
+		dockerFailureStart = time.Now()
+
+		// Execute restart command
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
 		defer cancel()
-		
+
 		cmd := exec.CommandContext(ctx, "systemctl", "restart", "docker")
-		// Fallback per sistemi init.d se systemctl non c'è
+		// Fallback for init.d systems if systemctl is missing
 		if _, err := exec.LookPath("systemctl"); err != nil {
-			cmd = exec.CommandContext(ctx, "/etc/init.d/nasbot", "restart") // No, restartare docker
-			// Prova service command standard
+			cmd = exec.CommandContext(ctx, "/etc/init.d/nasbot", "restart") // No, restart docker
+			// Try standard service command
 			cmd = exec.CommandContext(ctx, "service", "docker", "restart")
 		}
-		
+
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			bot.Send(tgbotapi.NewMessage(AllowedUserID, fmt.Sprintf("❌ Errore restart Docker:\n`%v`", err)))
+			bot.Send(tgbotapi.NewMessage(AllowedUserID, fmt.Sprintf("❌ Docker restart error:\n`%v`", err)))
 			log.Printf("[!] Docker restart fail: %v\n%s", err, string(out))
 		} else {
-			bot.Send(tgbotapi.NewMessage(AllowedUserID, "✅ Comando restart inviato."))
+			bot.Send(tgbotapi.NewMessage(AllowedUserID, "✅ Restart command sent."))
 		}
 	}
 }
 
 func checkWeeklyPrune(bot *tgbotapi.BotAPI) {
 	now := time.Now().In(location)
-	
-	// Esegui SOLO la Domenica (Sunday) alle 04:xx di notte
+
+	// Run ONLY on Sunday at 04:xx AM
 	isTime := now.Weekday() == time.Sunday && now.Hour() == 4
-	
+
 	if isTime {
 		if !pruneDoneToday {
-			log.Println("[Beta] Esecuzione Weekly Prune...")
+			log.Println("[Beta] Running Weekly Prune...")
 			pruneDoneToday = true
-			
+
 			go func() {
 				// docker system prune -a (all images) -f (force)
 				cmd := exec.Command("docker", "system", "prune", "-a", "-f")
 				out, err := cmd.CombinedOutput()
-				
+
 				var msg string
 				if err != nil {
 					msg = fmt.Sprintf("🧹 *Weekly Prune Error*\n\n`%v`", err)
 				} else {
-					// Estrai info utili dall'output (spazio recuperato)
+					// Extract useful info from output (space reclaimed)
 					output := string(out)
 					lines := strings.Split(output, "\n")
 					lastLine := ""
 					if len(lines) > 0 {
-						for i := len(lines)-1; i >= 0; i-- {
+						for i := len(lines) - 1; i >= 0; i-- {
 							if strings.TrimSpace(lines[i]) != "" {
 								lastLine = lines[i]
 								break
 							}
 						}
 					}
-					msg = fmt.Sprintf("🧹 *Weekly Prune*\n\nImmagini inutilizzate rimosse.\n`%s`", lastLine)
+					msg = fmt.Sprintf("🧹 *Weekly Prune*\n\nUnused images removed.\n`%s`", lastLine)
 					addReportEvent("info", "Weekly docker prune completed")
 				}
-				
+
 				m := tgbotapi.NewMessage(AllowedUserID, msg)
 				m.ParseMode = "Markdown"
 				bot.Send(m)
 			}()
 		}
 	} else {
-		// Resetta il flag quando non siamo più nell'ora X (così è pronto per la settimana dopo)
+		// Reset flag when not in hour X anymore (so ready for next week)
 		if now.Hour() != 4 {
 			pruneDoneToday = false
 		}
 	}
 }
 
-// checkResourceStress traccia lo stress di una risorsa e notifica se necessario
+// checkResourceStress tracks stress for a resource and notifies if necessary
 func checkResourceStress(bot *tgbotapi.BotAPI, resource string, currentValue, threshold float64) {
 	resourceStressMutex.Lock()
 	defer resourceStressMutex.Unlock()
@@ -1620,16 +1620,16 @@ func checkResourceStress(bot *tgbotapi.BotAPI, resource string, currentValue, th
 	isStressed := currentValue >= threshold
 
 	if isStressed {
-		// Inizia nuovo periodo di stress
+		// Start new stress period
 		if tracker.CurrentStart.IsZero() {
 			tracker.CurrentStart = time.Now()
 			tracker.StressCount++
 			tracker.Notified = false
 		}
 
-		// Notifica se stress prolungato (>2 min) e non già notificato e non in quiet hours
+		// Notify if prolonged stress (>2 min) and not already notified and not in quiet hours
 		stressDuration := time.Since(tracker.CurrentStart)
-		if stressDuration >= DurataStressDisco && !tracker.Notified && !isQuietHours() {
+		if stressDuration >= DurationStressDisk && !tracker.Notified && !isQuietHours() {
 			var emoji, unit string
 			switch resource {
 			case "HDD":
@@ -1663,12 +1663,12 @@ func checkResourceStress(bot *tgbotapi.BotAPI, resource string, currentValue, th
 			addReportEvent("warning", fmt.Sprintf("%s high (%.0f%%) for %s", resource, currentValue, stressDuration.Round(time.Second)))
 		}
 	} else {
-		// Fine stress
+		// End stress
 		if !tracker.CurrentStart.IsZero() {
 			stressDuration := time.Since(tracker.CurrentStart)
 			tracker.TotalStress += stressDuration
 
-			// Aggiorna durata massima
+			// Update max duration
 			if stressDuration > tracker.LongestStress {
 				tracker.LongestStress = stressDuration
 			}
@@ -1719,7 +1719,7 @@ func getStressSummary() string {
 	return strings.Join(parts, " · ")
 }
 
-// resetStressCounters resetta i contatori stress per il nuovo periodo di report
+// resetStressCounters resets stress counters for new report period
 func resetStressCounters() {
 	resourceStressMutex.Lock()
 	defer resourceStressMutex.Unlock()
@@ -1731,7 +1731,7 @@ func resetStressCounters() {
 	}
 }
 
-// formatDuration formatta una durata in modo leggibile
+// formatDuration formats a duration readably
 func formatDuration(d time.Duration) string {
 	d = d.Round(time.Second)
 	if d < time.Minute {
@@ -1751,29 +1751,29 @@ func formatDuration(d time.Duration) string {
 }
 
 func tryMitigateIOStress(bot *tgbotapi.BotAPI) {
-	// Trova container con alto I/O (quelli che potrebbero causare il problema)
+	// Find containers with high I/O (potential causes)
 	containers := getContainerList()
 	for _, c := range containers {
 		if !c.Running {
 			continue
 		}
 
-		// Controlla se container usa molte risorse
+		// Check if container uses lots of resources
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		cmd := exec.CommandContext(ctx, "docker", "stats", "--no-stream", "--format", "{{.BlockIO}}", c.Name)
 		out, _ := cmd.Output()
 		cancel()
 
 		blockIO := strings.TrimSpace(string(out))
-		// Se il container ha molto I/O, potrebbe essere candidato per restart
+		// If container has high I/O, could be restart candidate
 		if strings.Contains(blockIO, "GB") {
-			log.Printf("🔍 Container %s con alto BlockIO: %s", c.Name, blockIO)
+			log.Printf("🔍 Container %s high BlockIO: %s", c.Name, blockIO)
 		}
 	}
 }
 
 func handleCriticalRAM(bot *tgbotapi.BotAPI, s Stats) {
-	// RAM critica - trova processi/container che consumano di più
+	// Critical RAM - find heavy processes/containers
 	containers := getContainerList()
 
 	type containerMem struct {
@@ -1797,17 +1797,17 @@ func handleCriticalRAM(bot *tgbotapi.BotAPI, s Stats) {
 		}
 	}
 
-	// Se RAM >98% e abbiamo container pesanti, considera restart
+	// If RAM >98% and we have heavy containers, consider restart
 	if s.RAM >= 98 && len(heavyContainers) > 0 {
-		// Ordina per consumo
+		// Sort by consumption
 		sort.Slice(heavyContainers, func(i, j int) bool {
 			return heavyContainers[i].memPct > heavyContainers[j].memPct
 		})
 
-		// Prova a riavviare il container più pesante (se non già fatto di recente)
+		// Try to restart heaviest container (if not done recently)
 		target := heavyContainers[0]
 		if canAutoRestart(target.name) {
-			log.Printf("> RAM critica (%.1f%%), riavvio automatico: %s (%.1f%%)", s.RAM, target.name, target.memPct)
+			log.Printf("> RAM critical (%.1f%%), auto-restart: %s (%.1f%%)", s.RAM, target.name, target.memPct)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			cmd := exec.CommandContext(ctx, "docker", "restart", target.name)
@@ -1845,7 +1845,7 @@ func canAutoRestart(containerName string) bool {
 	restarts := autoRestarts[containerName]
 	cutoff := time.Now().Add(-1 * time.Hour)
 
-	// Conta restart nell'ultima ora
+	// Count restarts in last hour
 	count := 0
 	for _, t := range restarts {
 		if t.After(cutoff) {
@@ -1885,14 +1885,14 @@ func cleanRestartCounter() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  BACKGROUND STATS COLLECTOR (ottimizzato per NAS lento)
+//  BACKGROUND STATS COLLECTOR (optimized for slow NAS)
 // ═══════════════════════════════════════════════════════════════════
 
 func statsCollector() {
 	var lastIO map[string]disk.IOCountersStat
 	var lastIOTime time.Time
 
-	ticker := time.NewTicker(IntervalloStats)
+	ticker := time.NewTicker(IntervalStats)
 	defer ticker.Stop()
 
 	for {
@@ -2002,13 +2002,13 @@ func getTopProcesses(limit int) (topCPU, topRAM []ProcInfo) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  MONITOR ALLARMI (solo critici, no spam)
+//  MONITOR ALERTS (only critical, no spam)
 // ═══════════════════════════════════════════════════════════════════
 
 var lastCriticalAlert time.Time
 
 func monitorAlerts(bot *tgbotapi.BotAPI) {
-	ticker := time.NewTicker(IntervalloMonitor)
+	ticker := time.NewTicker(IntervalMonitor)
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -2021,7 +2021,7 @@ func monitorAlerts(bot *tgbotapi.BotAPI) {
 			continue
 		}
 
-		// Solo allarmi CRITICI immediati (disco pieno, SMART failure)
+		// Only immediate CRITICAL alerts (disk full, SMART failure)
 		var criticalAlerts []string
 
 		// Disk almost full
@@ -2049,7 +2049,7 @@ func monitorAlerts(bot *tgbotapi.BotAPI) {
 			lastCriticalAlert = time.Now()
 		}
 
-		// Registra sempre gli eventi critici per il report
+		// Always record critical events for report
 		if len(criticalAlerts) > 0 {
 			for _, alert := range criticalAlerts {
 				addReportEvent("critical", alert)
@@ -2057,16 +2057,16 @@ func monitorAlerts(bot *tgbotapi.BotAPI) {
 		}
 
 		// Record warnings for the report
-		if s.CPU >= SogliaCPU {
+		if s.CPU >= ThresholdCPU {
 			addReportEvent("warning", fmt.Sprintf("CPU high: %.1f%%", s.CPU))
 		}
-		if s.RAM >= SogliaRAM && s.RAM < SogliaRAMCritica {
+		if s.RAM >= ThresholdRAM && s.RAM < ThresholdRAMCritical {
 			addReportEvent("warning", fmt.Sprintf("RAM high: %.1f%%", s.RAM))
 		}
-		if s.VolSSD.Used >= SogliaDisco && s.VolSSD.Used < 95 {
+		if s.VolSSD.Used >= ThresholdDisk && s.VolSSD.Used < 95 {
 			addReportEvent("warning", fmt.Sprintf("SSD at %.1f%%", s.VolSSD.Used))
 		}
-		if s.VolHDD.Used >= SogliaDisco && s.VolHDD.Used < 95 {
+		if s.VolHDD.Used >= ThresholdDisk && s.VolHDD.Used < 95 {
 			addReportEvent("warning", fmt.Sprintf("HDD at %.1f%%", s.VolHDD.Used))
 		}
 	}

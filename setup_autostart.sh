@@ -1,7 +1,7 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════
 #  NASBot Autostart Setup
-#  Configura avvio automatico per TerraMaster e sistemi senza systemd
+#  Configures autostart for TerraMaster and systems without systemd
 # ═══════════════════════════════════════════════════════════════════
 
 set -e
@@ -9,7 +9,7 @@ set -e
 # ─── CONFIG ─────────────────────────────────────────
 BOT_DIR="/Volume1/public"
 SCRIPT_PATH="$BOT_DIR/start_bot.sh"
-CRON_SCHEDULE="*/5 * * * *"  # Ogni 5 minuti
+CRON_SCHEDULE="*/5 * * * *"  # Every 5 minutes
 # ────────────────────────────────────────────────────
 
 RED='\033[0;31m'
@@ -22,90 +22,90 @@ echo "  NASBot Autostart Setup"
 echo "═══════════════════════════════════════════════════════════"
 echo ""
 
-# Verifica root
+# Verify root
 if [ "$EUID" -ne 0 ]; then
-    echo -e "${RED}❌ Questo script deve essere eseguito come root${NC}"
-    echo "   Usa: sudo $0"
+    echo -e "${RED}❌ This script runs as root${NC}"
+    echo "   Use: sudo $0"
     exit 1
 fi
 
-# Verifica esistenza script
+# Verify script existence
 if [ ! -f "$SCRIPT_PATH" ]; then
-    echo -e "${RED}❌ Script non trovato: $SCRIPT_PATH${NC}"
-    echo "   Assicurati di aver copiato i file in $BOT_DIR"
+    echo -e "${RED}❌ Script not found: $SCRIPT_PATH${NC}"
+    echo "   Ensure files are copied to $BOT_DIR"
     exit 1
 fi
 
-# Rendi eseguibile lo script
+# Make script executable
 chmod +x "$SCRIPT_PATH"
 chmod +x "$BOT_DIR/nasbot" 2>/dev/null || true
 
-echo "📋 Configurazione:"
+echo "📋 Configuration:"
 echo "   Directory: $BOT_DIR"
 echo "   Script: $SCRIPT_PATH"
-echo "   Cron: $CRON_SCHEDULE (watchdog ogni 5 min)"
+echo "   Cron: $CRON_SCHEDULE (watchdog every 5 min)"
 echo ""
 
-# ─── METODO 1: Cron job ─────────────────────────────
+# ─── METHOD 1: Cron job ─────────────────────────────
 setup_cron() {
-    echo "🔧 Configurazione cron job..."
+    echo "🔧 Configuring cron job..."
     
     CRON_LINE="$CRON_SCHEDULE $SCRIPT_PATH watchdog >/dev/null 2>&1"
-    CRON_COMMENT="# NASBot watchdog - riavvia automaticamente se non attivo"
+    CRON_COMMENT="# NASBot watchdog - automatically restarts if inactive"
     
-    # Rimuovi eventuali entry esistenti
+    # Remove existing entries
     crontab -l 2>/dev/null | grep -v "nasbot\|NASBot\|start_bot.sh" > /tmp/crontab_new || true
     
-    # Aggiungi nuovo cron
+    # Add new cron
     echo "" >> /tmp/crontab_new
     echo "$CRON_COMMENT" >> /tmp/crontab_new
     echo "$CRON_LINE" >> /tmp/crontab_new
     
-    # Aggiungi anche avvio al reboot
-    echo "# NASBot avvio al boot" >> /tmp/crontab_new
+    # Add boot start
+    echo "# NASBot boot start" >> /tmp/crontab_new
     echo "@reboot sleep 60 && $SCRIPT_PATH start >/dev/null 2>&1" >> /tmp/crontab_new
     
     crontab /tmp/crontab_new
     rm /tmp/crontab_new
     
-    echo -e "${GREEN}✅ Cron job configurato${NC}"
+    echo -e "${GREEN}✅ Cron job configured${NC}"
 }
 
-# ─── METODO 2: rc.local (fallback) ──────────────────
+# ─── METHOD 2: rc.local (fallback) ──────────────────
 setup_rclocal() {
-    echo "🔧 Configurazione rc.local (fallback)..."
+    echo "🔧 Configuring rc.local (fallback)..."
     
     RC_LOCAL="/etc/rc.local"
     RC_LINE="$SCRIPT_PATH start &"
     
-    # Crea rc.local se non esiste
+    # Create rc.local if missing
     if [ ! -f "$RC_LOCAL" ]; then
         echo "#!/bin/bash" > "$RC_LOCAL"
-        echo "# rc.local - eseguito al boot" >> "$RC_LOCAL"
+        echo "# rc.local - executed at boot" >> "$RC_LOCAL"
         echo "" >> "$RC_LOCAL"
         echo "exit 0" >> "$RC_LOCAL"
         chmod +x "$RC_LOCAL"
     fi
     
-    # Verifica se già presente
+    # Check if already present
     if grep -q "start_bot.sh\|nasbot" "$RC_LOCAL" 2>/dev/null; then
-        echo "   ℹ️  Entry già presente in rc.local"
+        echo "   ℹ️  Entry already present in rc.local"
     else
-        # Inserisci prima di "exit 0"
+        # Insert before "exit 0"
         sed -i "/^exit 0/i # NASBot autostart\nsleep 60\n$RC_LINE\n" "$RC_LOCAL" 2>/dev/null || {
-            # Se sed non funziona, aggiungi in fondo
+            # If sed fails, append to end
             echo "" >> "$RC_LOCAL"
             echo "# NASBot autostart" >> "$RC_LOCAL"
             echo "sleep 60" >> "$RC_LOCAL"
             echo "$RC_LINE" >> "$RC_LOCAL"
         }
-        echo -e "${GREEN}✅ rc.local configurato${NC}"
+        echo -e "${GREEN}✅ rc.local configured${NC}"
     fi
 }
 
-# ─── METODO 3: init.d (TerraMaster) ─────────────────
+# ─── METHOD 3: init.d (TerraMaster) ─────────────────
 setup_initd() {
-    echo "🔧 Configurazione init.d (TerraMaster)..."
+    echo "🔧 Configuring init.d (TerraMaster)..."
     
     INIT_SCRIPT="/etc/init.d/nasbot"
     
@@ -148,56 +148,56 @@ INITEOF
 
     chmod +x "$INIT_SCRIPT"
     
-    # Abilita su sistemi con update-rc.d
+    # Enable on systems with update-rc.d
     if command -v update-rc.d >/dev/null 2>&1; then
         update-rc.d nasbot defaults 2>/dev/null || true
     fi
     
-    # Abilita su sistemi con chkconfig
+    # Enable on systems with chkconfig
     if command -v chkconfig >/dev/null 2>&1; then
         chkconfig --add nasbot 2>/dev/null || true
         chkconfig nasbot on 2>/dev/null || true
     fi
     
-    echo -e "${GREEN}✅ init.d script creato${NC}"
+    echo -e "${GREEN}✅ init.d script created${NC}"
 }
 
-# ─── ESEGUI SETUP ───────────────────────────────────
-echo "Applicando configurazioni..."
+# ─── EXECUTE SETUP ───────────────────────────────────
+echo "Applying configurations..."
 echo ""
 
-# Prova tutti i metodi per massima compatibilità
+# Try all methods for maximum compatibility
 setup_cron
 echo ""
 
-# Se esiste /etc/init.d, usa anche quello
+# If /etc/init.d exists, use it too
 if [ -d "/etc/init.d" ]; then
     setup_initd
     echo ""
 fi
 
-# Se esiste rc.local, configuralo come backup
+# If rc.local exists, configure it as backup
 if [ -f "/etc/rc.local" ] || [ -d "/etc" ]; then
     setup_rclocal
     echo ""
 fi
 
-# ─── AVVIA SUBITO ───────────────────────────────────
-echo "🚀 Avvio immediato del bot..."
+# ─── START IMMEDIATELY ───────────────────────────────────
+echo "🚀 Starting bot immediately..."
 $SCRIPT_PATH start
 
 echo ""
 echo "═══════════════════════════════════════════════════════════"
-echo -e "${GREEN}✅ Setup completato!${NC}"
+echo -e "${GREEN}✅ Setup completed!${NC}"
 echo "═══════════════════════════════════════════════════════════"
 echo ""
-echo "Il bot ora:"
-echo "  • Si avvia automaticamente al boot (dopo 60 secondi)"
-echo "  • Viene controllato ogni 5 minuti dal watchdog"
-echo "  • Si riavvia automaticamente se crasha"
+echo "The bot now:"
+echo "  • Starts automatically at boot (after 60 seconds)"
+echo "  • Is checked every 5 minutes by the watchdog"
+echo "  • Restarts automatically if it crashes"
 echo ""
-echo "Comandi utili:"
-echo "  $SCRIPT_PATH status    - Verifica stato"
-echo "  $SCRIPT_PATH logs      - Vedi log"
-echo "  crontab -l              - Vedi cron jobs"
+echo "Useful commands:"
+echo "  $SCRIPT_PATH status    - Check status"
+echo "  $SCRIPT_PATH logs      - View logs"
+echo "  crontab -l              - View cron jobs"
 echo ""

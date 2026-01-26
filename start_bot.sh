@@ -1,7 +1,7 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════
 #  NASBot Launcher — start_bot.sh
-#  Auto-recovery e gestione avanzata per TerraMaster F2-212
+#  Auto-recovery and advanced management for TerraMaster F2-212
 # ═══════════════════════════════════════════════════════════════════
 
 # ─── CONFIG ─────────────────────────────────────────
@@ -14,18 +14,18 @@ MAX_LOG_SIZE=$((10*1024*1024))  # 10MB
 
 cd "$BOT_DIR" || exit 1
 
-# Assicura permessi di esecuzione al binario
+# Ensure execution permissions for the binary
 chmod +x "$BOT_DIR/$BOT_NAME" 2>/dev/null
 
-# Funzione per ruotare i log se troppo grandi
+# Function to rotate logs if too large
 rotate_logs() {
     if [ -f "$LOG_FILE" ] && [ $(stat -f%z "$LOG_FILE" 2>/dev/null || stat -c%s "$LOG_FILE" 2>/dev/null) -gt $MAX_LOG_SIZE ]; then
         mv "$LOG_FILE" "$LOG_FILE.old"
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Log ruotato" > "$LOG_FILE"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Log rotated" > "$LOG_FILE"
     fi
 }
 
-# Funzione per verificare se il bot è attivo
+# Function to check if bot is running
 is_running() {
     if [ -f "$PID_FILE" ]; then
         pid=$(cat "$PID_FILE")
@@ -33,11 +33,11 @@ is_running() {
             return 0
         fi
     fi
-    # Fallback: cerca il processo
+    # Fallback: search for process
     pgrep -x "$BOT_NAME" >/dev/null 2>&1
 }
 
-# Funzione per ottenere il PID
+# Function to get PID
 get_pid() {
     if [ -f "$PID_FILE" ]; then
         cat "$PID_FILE"
@@ -46,77 +46,77 @@ get_pid() {
     fi
 }
 
-# Funzione per avviare il bot
+# Function to start bot
 start_bot() {
     if is_running; then
-        echo "⚠️  Bot già attivo (PID: $(get_pid))"
+        echo "⚠️  Bot already running (PID: $(get_pid))"
         return 1
     fi
     
     rotate_logs
     
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Avvio NASBot..." >> "$LOG_FILE"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting NASBot..." >> "$LOG_FILE"
     nohup ./$BOT_NAME >> "$LOG_FILE" 2>&1 &
     echo $! > "$PID_FILE"
     
     sleep 2
     if is_running; then
-        echo "✅ Bot avviato (PID: $(get_pid))"
+        echo "✅ Bot started (PID: $(get_pid))"
         return 0
     else
-        echo "❌ Errore avvio bot. Controlla $LOG_FILE"
+        echo "❌ Error starting bot. Check $LOG_FILE"
         return 1
     fi
 }
 
-# Funzione per fermare il bot
+# Function to stop bot
 stop_bot() {
     if ! is_running; then
-        echo "ℹ️  Bot non attivo"
+        echo "ℹ️  Bot not running"
         rm -f "$PID_FILE"
         return 0
     fi
     
     pid=$(get_pid)
-    echo "⏳ Fermando bot (PID: $pid)..."
+    echo "⏳ Stopping bot (PID: $pid)..."
     
     # Graceful shutdown
     kill -TERM "$pid" 2>/dev/null
     
-    # Aspetta fino a 10 secondi
+    # Wait up to 10 seconds
     for i in {1..10}; do
         if ! is_running; then
-            echo "✅ Bot fermato"
+            echo "✅ Bot stopped"
             rm -f "$PID_FILE"
             return 0
         fi
         sleep 1
     done
     
-    # Force kill se ancora attivo
+    # Force kill if still active
     kill -9 "$pid" 2>/dev/null
     pkill -9 -x "$BOT_NAME" 2>/dev/null
     rm -f "$PID_FILE"
-    echo "⚠️  Bot terminato forzatamente"
+    echo "⚠️  Bot forcibly terminated"
 }
 
-# Funzione per riavviare
+# Function to restart
 restart_bot() {
-    echo "🔄 Riavvio bot..."
+    echo "🔄 Restarting bot..."
     stop_bot
     sleep 2
     start_bot
 }
 
-# Funzione watchdog (per cron)
+# Watchdog function (for cron)
 watchdog() {
     if ! is_running; then
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] WATCHDOG: Bot non attivo, riavvio..." >> "$LOG_FILE"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] WATCHDOG: Bot not running, restarting..." >> "$LOG_FILE"
         start_bot
     fi
 }
 
-# Funzione status dettagliato
+# Detailed status function
 status_bot() {
     echo "═══════════════════════════════════════"
     echo "  NASBot Status"
@@ -124,10 +124,10 @@ status_bot() {
     
     if is_running; then
         pid=$(get_pid)
-        echo "🟢 Stato: ATTIVO"
+        echo "🟢 Status: ACTIVE"
         echo "📋 PID: $pid"
         
-        # Uptime processo
+        # Process uptime
         if [ -f "/proc/$pid/stat" ]; then
             start_time=$(stat -c %Y /proc/$pid 2>/dev/null)
             if [ -n "$start_time" ]; then
@@ -139,13 +139,13 @@ status_bot() {
             fi
         fi
         
-        # Memoria usata
+        # Memory usage
         if command -v ps >/dev/null; then
             mem=$(ps -o rss= -p "$pid" 2>/dev/null | awk '{print $1/1024 "MB"}')
-            echo "💾 Memoria: $mem"
+            echo "💾 Memory: $mem"
         fi
     else
-        echo "🔴 Stato: NON ATTIVO"
+        echo "🔴 Status: INACTIVE"
     fi
     
     echo "───────────────────────────────────────"
@@ -154,22 +154,22 @@ status_bot() {
     
     if [ -f "$LOG_FILE" ]; then
         log_size=$(ls -lh "$LOG_FILE" | awk '{print $5}')
-        echo "📊 Dimensione log: $log_size"
+        echo "📊 Log size: $log_size"
     fi
     
     echo "═══════════════════════════════════════"
 }
 
-# Mostra ultimi log
+# Show last logs
 show_logs() {
     lines=${1:-50}
     if [ -f "$LOG_FILE" ]; then
         echo "═══════════════════════════════════════"
-        echo "  Ultimi $lines log"
+        echo "  Last $lines logs"
         echo "═══════════════════════════════════════"
         tail -n "$lines" "$LOG_FILE"
     else
-        echo "❌ File log non trovato"
+        echo "❌ Log file not found"
     fi
 }
 
@@ -196,13 +196,13 @@ case "${1:-}" in
     *)
         echo "NASBot Manager"
         echo ""
-        echo "Uso: $0 {start|stop|restart|status|watchdog|logs [n]}"
+        echo "Usage: $0 {start|stop|restart|status|watchdog|logs [n]}"
         echo ""
-        echo "  start     - Avvia il bot"
-        echo "  stop      - Ferma il bot"
-        echo "  restart   - Riavvia il bot"
-        echo "  status    - Mostra stato dettagliato"
-        echo "  watchdog  - Riavvia se non attivo (per cron)"
-        echo "  logs [n]  - Mostra ultimi n log (default: 50)"
+        echo "  start     - Start the bot"
+        echo "  stop      - Stop the bot"
+        echo "  restart   - Restart the bot"
+        echo "  status    - Show detailed status"
+        echo "  watchdog  - Restart if inactive (for cron)"
+        echo "  logs [n]  - Show last n logs (default: 50)"
         ;;
 esac
