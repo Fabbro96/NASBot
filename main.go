@@ -33,15 +33,15 @@ import (
 
 const (
 	// Background intervals
-	IntervalStats     = 5 * time.Second  // Refresh stats cache
-	IntervalMonitor   = 30 * time.Second // Check alerts
-	DurationStressDisk = 2 * time.Minute // Threshold for prolonged I/O stress
-	ThresholdIOCritical = 95.0          // % I/O to consider stress
-	ThresholdCPUStress  = 90.0          // CPU stress threshold
-	ThresholdRAMStress  = 90.0          // RAM stress threshold
-	ThresholdSwapStress = 50.0          // Swap stress threshold
-	ThresholdRAMCritical = 95.0         // Critical RAM for autonomous actions
-	MaxRestartContainer = 3             // Max autonomous container restarts/hour
+	IntervalStats        = 5 * time.Second  // Refresh stats cache
+	IntervalMonitor      = 30 * time.Second // Check alerts
+	DurationStressDisk   = 2 * time.Minute  // Threshold for prolonged I/O stress
+	ThresholdIOCritical  = 95.0             // % I/O to consider stress
+	ThresholdCPUStress   = 90.0             // CPU stress threshold
+	ThresholdRAMStress   = 90.0             // RAM stress threshold
+	ThresholdSwapStress  = 50.0             // Swap stress threshold
+	ThresholdRAMCritical = 95.0             // Critical RAM for autonomous actions
+	MaxRestartContainer  = 3                // Max autonomous container restarts/hour
 
 	// Quiet hours (no notifications)
 	QuietHourStart   = 23 // 23:30 silence start
@@ -63,10 +63,10 @@ var (
 	AllowedUserID int64
 
 	// Runtime Configuration (from config.json)
-	PathSSD     = "/Volume1"
-	PathHDD     = "/Volume2"
-	ThresholdCPU   = 90.0
-	ThresholdRAM   = 90.0
+	PathSSD       = "/Volume1"
+	PathHDD       = "/Volume2"
+	ThresholdCPU  = 90.0
+	ThresholdRAM  = 90.0
 	ThresholdDisk = 90.0
 
 	// Global cache with mutex
