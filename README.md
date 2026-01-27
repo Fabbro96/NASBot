@@ -21,8 +21,7 @@ NASBot sends you an interactive dashboard on Telegram: CPU, RAM, disks, Docker c
 | 📨 **Flexible Reports** | Configure 0, 1, or 2 daily reports at custom times |
 | 🌙 **Quiet Hours** | Customizable silence periods |
 | 🛡️ **Autonomous Protection** | Auto-restart containers on critical RAM |
-| 🐳 **Docker Management** | Start/Stop/Restart/Kill containers from Telegram |
-| 🔔 **Smart Alerts** | Fully customizable thresholds per resource |
+| 🐳 **Docker Management** | Start/Stop/Restart/Kill containers from Telegram || 🌐 **Multi-language** | Support for English and Italian 🇬🇧/🇮🇹 || 🔔 **Smart Alerts** | Fully customizable thresholds per resource |
 | 🐳 **Docker Watchdog** | Auto-restart Docker service if unresponsive |
 | 🔄 **Auto-recovery** | Automatic restart after crash/reboot |
 | 🔒 **Single Access** | Only your user ID can command the bot |
@@ -223,6 +222,7 @@ Each resource can be independently enabled/disabled:
 | `/report` | Full detailed report |
 | `/ping` | Check if bot is alive (heartbeat) |
 | `/config` | Show current configuration |
+| `/language` | Change bot language (EN/IT) |
 | `/logs` | Recent system logs |
 | `/reboot` | Reboot the NAS (requires root) |
 | `/shutdown` | Shutdown the NAS (requires root) |

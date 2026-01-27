@@ -191,7 +191,83 @@ var (
 	// Disk usage history for prediction
 	diskUsageHistory      []DiskUsagePoint
 	diskUsageHistoryMutex sync.Mutex
+
+	// Language
+	currentLanguage = "en"
 )
+
+// Translations
+var translations = map[string]map[string]string{
+	"en": {
+		"status_title": "🖥 *NAS* at %s\n\n",
+		"cpu_fmt":      "🧠 CPU  %s %2.0f%%\n",
+		"ram_fmt":      "💾 RAM  %s %2.0f%%\n",
+		"swap_fmt":     "🔄 Swap %s %2.0f%%\n",
+		"ssd_fmt":      "\n💿 SSD %2.0f%% · %s free\n",
+		"hdd_fmt":      "🗄 HDD %2.0f%% · %s free\n",
+		"disk_io_fmt":  "\n📡 Disk I/O at %.0f%%",
+		"disk_rw_fmt":  " (R %.0f / W %.0f MB/s)",
+		"uptime_fmt":   "\n_⏱ Running for %s_",
+		"loading":      "_loading..._",
+		"lang_select":  "🌐 Select Language / Seleziona Lingua",
+		"lang_set_en":  "✅ Language set to English",
+		"lang_set_it":  "✅ Lingua impostata su Italiano",
+		"start":        "▶️ Start",
+		"stop":         "⏹ Stop",
+		"restart":      "🔄 Restart",
+		"kill":         "💀 Force Kill",
+		"logs":         "📝 Logs",
+		"yes":          "✅ Yes",
+		"no":           "❌ No",
+		"confirm_action": "%s *%s*?",
+		"kill_warn":    "\n\n⚠️ _This will forcefully terminate the container!_",
+		"back":         "⬅️ Back",
+	},
+	"it": {
+		"status_title": "🖥 *NAS* alle %s\n\n",
+		"cpu_fmt":      "🧠 CPU  %s %2.0f%%\n",
+		"ram_fmt":      "💾 RAM  %s %2.0f%%\n",
+		"swap_fmt":     "🔄 Swap %s %2.0f%%\n",
+		"ssd_fmt":      "\n💿 SSD %2.0f%% · %s liberi\n",
+		"hdd_fmt":      "🗄 HDD %2.0f%% · %s liberi\n",
+		"disk_io_fmt":  "\n📡 I/O Disco al %.0f%%",
+		"disk_rw_fmt":  " (L %.0f / S %.0f MB/s)",
+		"uptime_fmt":   "\n_⏱ Attivo da %s_",
+		"loading":      "_caricamento..._",
+		"lang_select":  "🌐 Seleziona Lingua",
+		"lang_set_en":  "✅ Language set to English",
+		"lang_set_it":  "✅ Lingua impostata su Italiano",
+		"start":        "▶️ Avvia",
+		"stop":         "⏹ Ferma",
+		"restart":      "🔄 Riavvia",
+		"kill":         "💀 Uccidi",
+		"logs":         "📝 Logs",
+		"yes":          "✅ Si",
+		"no":           "❌ No",
+		"confirm_action": "%s *%s*?",
+		"kill_warn":    "\n\n⚠️ _Questo terminerà forzatamente il container!_",
+		"back":         "⬅️ Indietro",
+	},
+}
+
+func tr(key string) string {
+	if currentLanguage == "" {
+		currentLanguage = "en"
+	}
+	t, ok := translations[currentLanguage]
+	if !ok {
+		t = translations["en"]
+	}
+	if v, ok := t[key]; ok {
+		return v
+	}
+	if tEn, ok := translations["en"]; ok {
+		if v, ok := tEn[key]; ok {
+			return v
+		}
+	}
+	return key
+}
 
 // DiskUsagePoint stores disk usage at a point in time
 type DiskUsagePoint struct {
@@ -222,6 +298,7 @@ type StressTracker struct {
 type BotState struct {
 	LastReportTime time.Time              `json:"last_report_time"`
 	AutoRestarts   map[string][]time.Time `json:"auto_restarts"`
+	Language       string                 `json:"language"`
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -434,6 +511,9 @@ func loadState() {
 	if state.AutoRestarts != nil {
 		autoRestarts = state.AutoRestarts
 	}
+	if state.Language != "" {
+		currentLanguage = state.Language
+	}
 	log.Printf("[+] State restored")
 }
 
@@ -442,6 +522,7 @@ func saveState() {
 	state := BotState{
 		LastReportTime: lastReportTime,
 		AutoRestarts:   autoRestarts,
+		Language:       currentLanguage,
 	}
 	autoRestartsMutex.Unlock()
 
@@ -611,6 +692,8 @@ func handleCommand(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) {
 		askPowerConfirmation(bot, chatID, 0, "reboot")
 	case "shutdown":
 		askPowerConfirmation(bot, chatID, 0, "shutdown")
+	case "language":
+		sendLanguageSelection(bot, chatID)
 	case "help":
 		sendMarkdown(bot, chatID, getHelpText())
 	default:
@@ -624,6 +707,20 @@ func handleCallback(bot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery) {
 	chatID := query.Message.Chat.ID
 	msgID := query.Message.MessageID
 	data := query.Data
+
+	// Language selection
+	if data == "set_lang_en" {
+		currentLanguage = "en"
+		saveState()
+		editMessage(bot, chatID, msgID, tr("lang_set_en"), nil)
+		return
+	}
+	if data == "set_lang_it" {
+		currentLanguage = "it"
+		saveState()
+		editMessage(bot, chatID, msgID, tr("lang_set_it"), nil)
+		return
+	}
 
 	// Power confirmation management
 	if data == "confirm_reboot" || data == "confirm_shutdown" {
@@ -710,31 +807,31 @@ func getStatusText() string {
 	statsMutex.RUnlock()
 
 	if !ready {
-		return "_loading..._"
+		return tr("loading")
 	}
 
 	var b strings.Builder
 
-	b.WriteString(fmt.Sprintf("🖥 *NAS* at %s\n\n", time.Now().Format("15:04")))
+	b.WriteString(fmt.Sprintf(tr("status_title"), time.Now().Format("15:04")))
 
-	b.WriteString(fmt.Sprintf("🧠 CPU %s %2.0f%%\n", makeProgressBar(s.CPU), s.CPU))
-	b.WriteString(fmt.Sprintf("💾 RAM %s %2.0f%%\n", makeProgressBar(s.RAM), s.RAM))
+	b.WriteString(fmt.Sprintf(tr("cpu_fmt"), makeProgressBar(s.CPU), s.CPU))
+	b.WriteString(fmt.Sprintf(tr("ram_fmt"), makeProgressBar(s.RAM), s.RAM))
 	if s.Swap > 5 {
-		b.WriteString(fmt.Sprintf("🔄 Swap %s %2.0f%%\n", makeProgressBar(s.Swap), s.Swap))
+		b.WriteString(fmt.Sprintf(tr("swap_fmt"), makeProgressBar(s.Swap), s.Swap))
 	}
 
-	b.WriteString(fmt.Sprintf("\n💿 SSD %2.0f%% · %s free\n", s.VolSSD.Used, formatBytes(s.VolSSD.Free)))
-	b.WriteString(fmt.Sprintf("🗄 HDD %2.0f%% · %s free\n", s.VolHDD.Used, formatBytes(s.VolHDD.Free)))
+	b.WriteString(fmt.Sprintf(tr("ssd_fmt"), s.VolSSD.Used, formatBytes(s.VolSSD.Free)))
+	b.WriteString(fmt.Sprintf(tr("hdd_fmt"), s.VolHDD.Used, formatBytes(s.VolHDD.Free)))
 
 	if s.DiskUtil > 10 {
-		b.WriteString(fmt.Sprintf("\n📡 Disk I/O at %.0f%%", s.DiskUtil))
+		b.WriteString(fmt.Sprintf(tr("disk_io_fmt"), s.DiskUtil))
 		if s.ReadMBs > 1 || s.WriteMBs > 1 {
-			b.WriteString(fmt.Sprintf(" (R %.0f / W %.0f MB/s)", s.ReadMBs, s.WriteMBs))
+			b.WriteString(fmt.Sprintf(tr("disk_rw_fmt"), s.ReadMBs, s.WriteMBs))
 		}
 		b.WriteString("\n")
 	}
 
-	b.WriteString(fmt.Sprintf("\n_⏱ Running for %s_", formatUptime(s.Uptime)))
+	b.WriteString(fmt.Sprintf(tr("uptime_fmt"), formatUptime(s.Uptime)))
 
 	return b.String()
 }
@@ -1339,6 +1436,18 @@ func getSysInfoText() string {
 }
 
 // handleSpeedtest runs a network speed test
+func sendLanguageSelection(bot *tgbotapi.BotAPI, chatID int64) {
+	msg := tgbotapi.NewMessage(chatID, tr("lang_select"))
+	kb := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🇬🇧 English", "set_lang_en"),
+			tgbotapi.NewInlineKeyboardButtonData("🇮🇹 Italiano", "set_lang_it"),
+		),
+	)
+	msg.ReplyMarkup = kb
+	bot.Send(msg)
+}
+
 func handleSpeedtest(bot *tgbotapi.BotAPI, chatID int64) {
 	// Check if speedtest-cli is available
 	if _, err := exec.LookPath("speedtest-cli"); err != nil {
@@ -1743,20 +1852,20 @@ func showContainerActions(bot *tgbotapi.BotAPI, chatID int64, msgID int, contain
 	var rows [][]tgbotapi.InlineKeyboardButton
 	if container.Running {
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("⏹ Stop", "container_stop_"+containerName),
-			tgbotapi.NewInlineKeyboardButtonData("🔄 Restart", "container_restart_"+containerName),
+			tgbotapi.NewInlineKeyboardButtonData(tr("stop"), "container_stop_"+containerName),
+			tgbotapi.NewInlineKeyboardButtonData(tr("restart"), "container_restart_"+containerName),
 		))
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("� Kill", "container_kill_"+containerName),
-			tgbotapi.NewInlineKeyboardButtonData("�📜 Logs", "container_logs_"+containerName),
+			tgbotapi.NewInlineKeyboardButtonData(tr("kill"), "container_kill_"+containerName),
+			tgbotapi.NewInlineKeyboardButtonData(tr("logs"), "container_logs_"+containerName),
 		))
 	} else {
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("▶️ Start", "container_start_"+containerName),
+			tgbotapi.NewInlineKeyboardButtonData(tr("start"), "container_start_"+containerName),
 		))
 	}
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("⬅️ Back", "show_docker"),
+		tgbotapi.NewInlineKeyboardButtonData(tr("back"), "show_docker"),
 	))
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(rows...)
@@ -1770,21 +1879,21 @@ func confirmContainerAction(bot *tgbotapi.BotAPI, chatID int64, msgID int, conta
 	}
 
 	actionText := map[string]string{
-		"start":   "▶️ Start",
-		"stop":    "⏹ Stop",
-		"restart": "🔄 Restart",
-		"kill":    "💀 Force Kill",
+		"start":   tr("start"),
+		"stop":    tr("stop"),
+		"restart": tr("restart"),
+		"kill":    tr("kill"),
 	}[action]
 
-	text := fmt.Sprintf("%s *%s*?", actionText, containerName)
+	text := fmt.Sprintf(tr("confirm_action"), actionText, containerName)
 	if action == "kill" {
-		text += "\n\n⚠️ _This will forcefully terminate the container!_"
+		text += tr("kill_warn")
 	}
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("✅ Yes", fmt.Sprintf("container_confirm_%s_%s", containerName, action)),
-			tgbotapi.NewInlineKeyboardButtonData("❌ No", "container_cancel_"+containerName),
+			tgbotapi.NewInlineKeyboardButtonData(tr("yes"), fmt.Sprintf("container_confirm_%s_%s", containerName, action)),
+			tgbotapi.NewInlineKeyboardButtonData(tr("no"), "container_cancel_"+containerName),
 		),
 	)
 	editMessage(bot, chatID, msgID, text, &kb)
