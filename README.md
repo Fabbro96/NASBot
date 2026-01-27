@@ -18,11 +18,12 @@ NASBot sends you an interactive dashboard on Telegram: CPU, RAM, disks, Docker c
 | | |
 |---|---|
 | 📊 **Live Dashboard** | Inline buttons for instant updates |
-| 🌅 **Morning Report** | Daily at 07:30 AM with a "Good morning!" status |
-| 🌆 **Evening Report** | Daily at 06:30 PM with a "Good evening!" status |
-| 🛡️ **Autonomous Protection** | Restarts containers if RAM uses critical |
-| 🐳 **Docker Management** | Start/Stop/Restart containers from Telegram |
-| 🔔 **Smart Alerts** | Notifies only on prolonged I/O stress (2+ min) |
+| 📨 **Flexible Reports** | Configure 0, 1, or 2 daily reports at custom times |
+| 🌙 **Quiet Hours** | Customizable silence periods |
+| 🛡️ **Autonomous Protection** | Auto-restart containers on critical RAM |
+| 🐳 **Docker Management** | Start/Stop/Restart/Kill containers from Telegram |
+| 🔔 **Smart Alerts** | Fully customizable thresholds per resource |
+| 🐳 **Docker Watchdog** | Auto-restart Docker service if unresponsive |
 | 🔄 **Auto-recovery** | Automatic restart after crash/reboot |
 | 🔒 **Single Access** | Only your user ID can command the bot |
 | 🪶 **Lightweight** | ~6 MB static binary, zero runtime dependencies |
@@ -48,27 +49,184 @@ NASBot sends you an interactive dashboard on Telegram: CPU, RAM, disks, Docker c
 
 ## ⚙️ Configuration
 
-1. **Rename** `config.example.json` to `config.json`.
-2. **Edit** the file:
-   ```json
-   {
-     "bot_token": "YOUR_234234:ABC...",
-     "allowed_user_id": 12345678,
-     "paths": {
-       "ssd": "/Volume1",
-       "hdd": "/Volume2"
-     },
-     "thresholds": {
-       "cpu": 90.0,
-       "ram": 90.0,
-       "disk": 90.0
-     }
-   }
-   ```
-   *   `bot_token`: From @BotFather.
-   *   `allowed_user_id`: Your numeric Telegram ID (get it from @userinfobot).
-   *   `paths`: Mount points to monitor.
-   *   `thresholds`: Alert percentages.
+NASBot is fully customizable via `config.json`. Copy the example and edit it:
+
+```bash
+cp config.example.json config.json
+nano config.json
+```
+
+### Full Configuration Reference
+
+```json
+{
+  "bot_token": "YOUR_BOT_TOKEN_HERE",
+  "allowed_user_id": 12345678,
+  
+  "paths": {
+    "ssd": "/Volume1",
+    "hdd": "/Volume2"
+  },
+  
+  "timezone": "Europe/Rome",
+  
+  "reports": {
+    "enabled": true,
+    "morning": {
+      "enabled": true,
+      "hour": 7,
+      "minute": 30
+    },
+    "evening": {
+      "enabled": true,
+      "hour": 18,
+      "minute": 30
+    }
+  },
+  
+  "quiet_hours": {
+    "enabled": true,
+    "start_hour": 23,
+    "start_minute": 30,
+    "end_hour": 7,
+    "end_minute": 0
+  },
+  
+  "notifications": {
+    "cpu": {
+      "enabled": true,
+      "warning_threshold": 90.0,
+      "critical_threshold": 95.0
+    },
+    "ram": {
+      "enabled": true,
+      "warning_threshold": 90.0,
+      "critical_threshold": 95.0
+    },
+    "swap": {
+      "enabled": false,
+      "warning_threshold": 50.0,
+      "critical_threshold": 80.0
+    },
+    "disk_ssd": {
+      "enabled": true,
+      "warning_threshold": 90.0,
+      "critical_threshold": 95.0
+    },
+    "disk_hdd": {
+      "enabled": true,
+      "warning_threshold": 90.0,
+      "critical_threshold": 95.0
+    },
+    "disk_io": {
+      "enabled": true,
+      "warning_threshold": 95.0
+    },
+    "smart": {
+      "enabled": true
+    }
+  },
+  
+  "stress_tracking": {
+    "enabled": true,
+    "duration_threshold_minutes": 2
+  },
+  
+  "docker": {
+    "watchdog": {
+      "enabled": true,
+      "timeout_minutes": 2,
+      "auto_restart_service": true
+    },
+    "weekly_prune": {
+      "enabled": true,
+      "day": "sunday",
+      "hour": 4
+    },
+    "auto_restart_on_ram_critical": {
+      "enabled": true,
+      "max_restarts_per_hour": 3,
+      "ram_threshold": 98.0
+    }
+  },
+  
+  "intervals": {
+    "stats_seconds": 5,
+    "monitor_seconds": 30,
+    "critical_alert_cooldown_minutes": 30
+  }
+}
+```
+
+### Configuration Sections Explained
+
+#### 📨 Reports
+- `enabled`: Master switch for periodic reports
+- `morning`/`evening`: Configure each report independently
+  - Set `enabled: false` for only one daily report
+  - Set both to `false` for no automatic reports
+
+#### 🌙 Quiet Hours
+- No notifications during these hours (alerts still logged for reports)
+- Set `enabled: false` to receive notifications 24/7
+
+#### 🔔 Notifications
+Each resource can be independently enabled/disabled:
+- **CPU/RAM**: Warning and critical thresholds
+- **Swap**: Disabled by default (set `enabled: true` if you care about swap)
+- **Disk SSD/HDD**: Space usage thresholds
+- **Disk I/O**: High I/O activity threshold
+- **SMART**: Disk health monitoring
+
+#### 🐳 Docker
+- **Watchdog**: Auto-restart Docker service if no containers for X minutes
+  - Set `auto_restart_service: false` to only notify without restarting
+  - Set `enabled: false` to disable entirely
+- **Weekly Prune**: Clean unused images on specified day/hour
+- **Auto-restart on RAM**: Restart heaviest container when RAM is critical
+
+#### ⏱️ Intervals
+- `stats_seconds`: How often to collect system stats
+- `monitor_seconds`: How often to check for alerts
+- `critical_alert_cooldown_minutes`: Minimum time between critical alerts
+
+---
+
+## 🎮 Commands
+
+### 📊 Monitoring
+| Command | Description |
+|---------|-------------|
+| `/status` | Quick system overview with interactive buttons |
+| `/temp` | CPU and disk temperatures (requires smartmontools) |
+| `/top` | Top processes by CPU usage |
+| `/sysinfo` | Detailed system information (OS, kernel, hardware) |
+| `/diskpred` | Disk space prediction (estimates when disks will be full) |
+
+### 🐳 Docker
+| Command | Description |
+|---------|-------------|
+| `/docker` | Interactive container management menu |
+| `/dstats` | Container resource usage (CPU, RAM, network) |
+| `/kill <name>` | Force kill a container (SIGKILL) |
+| `/restartdocker` | Restart the Docker daemon |
+
+### 🌐 Network
+| Command | Description |
+|---------|-------------|
+| `/net` | Network information (local and public IP) |
+| `/speedtest` | Run a network speed test (requires speedtest-cli) |
+
+### 📋 Reports & System
+| Command | Description |
+|---------|-------------|
+| `/report` | Full detailed report |
+| `/ping` | Check if bot is alive (heartbeat) |
+| `/config` | Show current configuration |
+| `/logs` | Recent system logs |
+| `/reboot` | Reboot the NAS (requires root) |
+| `/shutdown` | Shutdown the NAS (requires root) |
+| `/help` | Show all commands |
 
 ---
 
@@ -102,28 +260,40 @@ This will configure a cron job or startup script to keep the bot running.
 
 ---
 
-## 🎮 Commands
+## 🔧 Optional Dependencies
 
-| Command | Description |
-|---|---|
-| `/start` | Welcome and main menu |
-| `/status` | Complete dashboard (CPU, RAM, Disk, Uptime) |
-| `/docker` | Manage containers (List, Start, Stop, Logs) |
-| `/temp` | Sensors and Disk temperatures |
-| `/reboot` | Reboot the server (requires root) |
-| `/shutdown` | Shutdown the server (requires root) |
-| `/help` | List of commands |
+| Package | Purpose | Install |
+|---------|---------|---------|
+| `smartmontools` | Disk SMART temperatures | `apt install smartmontools` |
+| `speedtest-cli` | Network speed test | `apt install speedtest-cli` |
 
 ---
 
-## 🛡️ Security Note
+## 🛡️ Security Notes
 
 This bot allows executing system commands (`reboot`, `shutdown`, `docker`).
-**Ensure `allowed_user_id` is correctly set in `config.json`.**
-The bot will ignore messages from any other user.
+
+- **Ensure `allowed_user_id` is correctly set in `config.json`**
+- The bot will ignore messages from any other Telegram user
+- Keep your `config.json` private (it's gitignored by default)
+- Consider running as a dedicated user with limited sudo permissions
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ---
 
 ## 📄 License
 
-MIT License. Feel free to fork and modify!
+MIT License — see [LICENSE](LICENSE) for details.
+
+---
+
+## 🙏 Acknowledgments
+
+Built with:
+- [telegram-bot-api](https://github.com/go-telegram-bot-api/telegram-bot-api) — Telegram Bot API for Go
+- [gopsutil](https://github.com/shirou/gopsutil) — Cross-platform system monitoring

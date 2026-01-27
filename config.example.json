@@ -1,13 +1,97 @@
 {
   "bot_token": "YOUR_BOT_TOKEN_HERE",
   "allowed_user_id": 12345678,
+  
   "paths": {
     "ssd": "/Volume1",
     "hdd": "/Volume2"
   },
-  "thresholds": {
-    "cpu": 90.0,
-    "ram": 90.0,
-    "disk": 90.0
+  
+  "timezone": "Europe/Rome",
+  
+  "reports": {
+    "enabled": true,
+    "morning": {
+      "enabled": true,
+      "hour": 7,
+      "minute": 30
+    },
+    "evening": {
+      "enabled": true,
+      "hour": 18,
+      "minute": 30
+    }
+  },
+  
+  "quiet_hours": {
+    "enabled": true,
+    "start_hour": 23,
+    "start_minute": 30,
+    "end_hour": 7,
+    "end_minute": 0
+  },
+  
+  "notifications": {
+    "cpu": {
+      "enabled": true,
+      "warning_threshold": 90.0,
+      "critical_threshold": 95.0
+    },
+    "ram": {
+      "enabled": true,
+      "warning_threshold": 90.0,
+      "critical_threshold": 95.0
+    },
+    "swap": {
+      "enabled": false,
+      "warning_threshold": 50.0,
+      "critical_threshold": 80.0
+    },
+    "disk_ssd": {
+      "enabled": true,
+      "warning_threshold": 90.0,
+      "critical_threshold": 95.0
+    },
+    "disk_hdd": {
+      "enabled": true,
+      "warning_threshold": 90.0,
+      "critical_threshold": 95.0
+    },
+    "disk_io": {
+      "enabled": true,
+      "warning_threshold": 95.0
+    },
+    "smart": {
+      "enabled": true
+    }
+  },
+  
+  "stress_tracking": {
+    "enabled": true,
+    "duration_threshold_minutes": 2
+  },
+  
+  "docker": {
+    "watchdog": {
+      "enabled": true,
+      "timeout_minutes": 2,
+      "auto_restart_service": true
+    },
+    "weekly_prune": {
+      "enabled": true,
+      "day": "sunday",
+      "hour": 4
+    },
+    "auto_restart_on_ram_critical": {
+      "enabled": true,
+      "max_restarts_per_hour": 3,
+      "ram_threshold": 98.0
+    }
+  },
+  
+  "intervals": {
+    "stats_seconds": 5,
+    "monitor_seconds": 30,
+    "critical_alert_cooldown_minutes": 30
   }
 }

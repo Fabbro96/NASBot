@@ -28,56 +28,131 @@ import (
 )
 
 // ═══════════════════════════════════════════════════════════════════
-//  CONFIGURATION
+//  CONFIGURATION STRUCTURES
 // ═══════════════════════════════════════════════════════════════════
 
+// Config holds all configuration from config.json
+type Config struct {
+	BotToken      string `json:"bot_token"`
+	AllowedUserID int64  `json:"allowed_user_id"`
+
+	Paths struct {
+		SSD string `json:"ssd"`
+		HDD string `json:"hdd"`
+	} `json:"paths"`
+
+	Timezone string `json:"timezone"`
+
+	Reports struct {
+		Enabled bool `json:"enabled"`
+		Morning struct {
+			Enabled bool `json:"enabled"`
+			Hour    int  `json:"hour"`
+			Minute  int  `json:"minute"`
+		} `json:"morning"`
+		Evening struct {
+			Enabled bool `json:"enabled"`
+			Hour    int  `json:"hour"`
+			Minute  int  `json:"minute"`
+		} `json:"evening"`
+	} `json:"reports"`
+
+	QuietHours struct {
+		Enabled     bool `json:"enabled"`
+		StartHour   int  `json:"start_hour"`
+		StartMinute int  `json:"start_minute"`
+		EndHour     int  `json:"end_hour"`
+		EndMinute   int  `json:"end_minute"`
+	} `json:"quiet_hours"`
+
+	Notifications struct {
+		CPU struct {
+			Enabled           bool    `json:"enabled"`
+			WarningThreshold  float64 `json:"warning_threshold"`
+			CriticalThreshold float64 `json:"critical_threshold"`
+		} `json:"cpu"`
+		RAM struct {
+			Enabled           bool    `json:"enabled"`
+			WarningThreshold  float64 `json:"warning_threshold"`
+			CriticalThreshold float64 `json:"critical_threshold"`
+		} `json:"ram"`
+		Swap struct {
+			Enabled           bool    `json:"enabled"`
+			WarningThreshold  float64 `json:"warning_threshold"`
+			CriticalThreshold float64 `json:"critical_threshold"`
+		} `json:"swap"`
+		DiskSSD struct {
+			Enabled           bool    `json:"enabled"`
+			WarningThreshold  float64 `json:"warning_threshold"`
+			CriticalThreshold float64 `json:"critical_threshold"`
+		} `json:"disk_ssd"`
+		DiskHDD struct {
+			Enabled           bool    `json:"enabled"`
+			WarningThreshold  float64 `json:"warning_threshold"`
+			CriticalThreshold float64 `json:"critical_threshold"`
+		} `json:"disk_hdd"`
+		DiskIO struct {
+			Enabled          bool    `json:"enabled"`
+			WarningThreshold float64 `json:"warning_threshold"`
+		} `json:"disk_io"`
+		SMART struct {
+			Enabled bool `json:"enabled"`
+		} `json:"smart"`
+	} `json:"notifications"`
+
+	StressTracking struct {
+		Enabled                  bool `json:"enabled"`
+		DurationThresholdMinutes int  `json:"duration_threshold_minutes"`
+	} `json:"stress_tracking"`
+
+	Docker struct {
+		Watchdog struct {
+			Enabled            bool `json:"enabled"`
+			TimeoutMinutes     int  `json:"timeout_minutes"`
+			AutoRestartService bool `json:"auto_restart_service"`
+		} `json:"watchdog"`
+		WeeklyPrune struct {
+			Enabled bool   `json:"enabled"`
+			Day     string `json:"day"`
+			Hour    int    `json:"hour"`
+		} `json:"weekly_prune"`
+		AutoRestartOnRAMCritical struct {
+			Enabled            bool    `json:"enabled"`
+			MaxRestartsPerHour int     `json:"max_restarts_per_hour"`
+			RAMThreshold       float64 `json:"ram_threshold"`
+		} `json:"auto_restart_on_ram_critical"`
+	} `json:"docker"`
+
+	Intervals struct {
+		StatsSeconds              int `json:"stats_seconds"`
+		MonitorSeconds            int `json:"monitor_seconds"`
+		CriticalAlertCooldownMins int `json:"critical_alert_cooldown_minutes"`
+	} `json:"intervals"`
+}
+
+// Default values
 const (
-	// Background intervals
-	IntervalStats        = 5 * time.Second  // Refresh stats cache
-	IntervalMonitor      = 30 * time.Second // Check alerts
-	DurationStressDisk   = 2 * time.Minute  // Threshold for prolonged I/O stress
-	ThresholdIOCritical  = 95.0             // % I/O to consider stress
-	ThresholdCPUStress   = 90.0             // CPU stress threshold
-	ThresholdRAMStress   = 90.0             // RAM stress threshold
-	ThresholdSwapStress  = 50.0             // Swap stress threshold
-	ThresholdRAMCritical = 95.0             // Critical RAM for autonomous actions
-	MaxRestartContainer  = 3                // Max autonomous container restarts/hour
-
-	// Quiet hours (no notifications)
-	QuietHourStart   = 23 // 23:30 silence start
-	QuietHourEnd     = 7  // 07:00 silence end
-	QuietMinuteStart = 30
-
-	// Report schedules (Europe/Rome)
-	ReportMorning = 7  // 07:30
-	ReportEvening = 18 // 18:30
-	ReportMinute  = 30
-	Timezone      = "Europe/Rome"
-
-	// Persistent state (default, overwritten if necessary)
-	StateFile = "nasbot_state.json"
+	DefaultStateFile = "nasbot_state.json"
 )
 
 var (
+	// Global config
+	cfg Config
+
+	// Computed values from config
 	BotToken      string
 	AllowedUserID int64
-
-	// Runtime Configuration (from config.json)
 	PathSSD       = "/Volume1"
 	PathHDD       = "/Volume2"
-	ThresholdCPU  = 90.0
-	ThresholdRAM  = 90.0
-	ThresholdDisk = 90.0
+
+	// Intervals (computed from config)
+	IntervalStats   = 5 * time.Second
+	IntervalMonitor = 30 * time.Second
 
 	// Global cache with mutex
 	statsCache Stats
 	statsMutex sync.RWMutex
 	statsReady bool
-
-	// Stress tracking I/O (HDD)
-	stressStartTime   time.Time
-	stressNotified    bool
-	consecutiveStress int
 
 	// Stress tracking for all resources
 	resourceStress      map[string]*StressTracker
@@ -91,7 +166,7 @@ var (
 	lastReportTime    time.Time
 	reportEvents      []ReportEvent
 	reportEventsMutex sync.Mutex
-	location          *time.Location // Timezone
+	location          *time.Location
 
 	// Pending confirmations
 	pendingAction      string
@@ -102,10 +177,30 @@ var (
 	pendingContainerName   string
 	pendingContainerMutex  sync.Mutex
 
-	// Beta Features variables
-	dockerFailureStart time.Time // When we started not seeing containers
-	pruneDoneToday     bool      // If weekly prune was done
+	// Docker watchdog
+	dockerFailureStart time.Time
+	pruneDoneToday     bool
+
+	// Bot start time for ping
+	botStartTime time.Time
+
+	// Container state tracking for unexpected stops
+	lastContainerStates map[string]bool
+	containerStateMutex sync.Mutex
+
+	// Disk usage history for prediction
+	diskUsageHistory      []DiskUsagePoint
+	diskUsageHistoryMutex sync.Mutex
 )
+
+// DiskUsagePoint stores disk usage at a point in time
+type DiskUsagePoint struct {
+	Time    time.Time
+	SSDUsed float64
+	HDDUsed float64
+	SSDFree uint64
+	HDDFree uint64
+}
 
 // ReportEvent tracks events for the periodic report
 type ReportEvent struct {
@@ -116,11 +211,11 @@ type ReportEvent struct {
 
 // StressTracker tracks stress periods for a resource
 type StressTracker struct {
-	CurrentStart  time.Time     // Start of current stress (zero if not stressed)
-	StressCount   int           // Number of times under stress since last report
-	LongestStress time.Duration // Max stress duration
-	TotalStress   time.Duration // Total time under stress
-	Notified      bool          // If already notified for this stress
+	CurrentStart  time.Time
+	StressCount   int
+	LongestStress time.Duration
+	TotalStress   time.Duration
+	Notified      bool
 }
 
 // BotState for persistence
@@ -134,19 +229,26 @@ type BotState struct {
 // ═══════════════════════════════════════════════════════════════════
 
 func init() {
+	botStartTime = time.Now()
 	loadConfig()
 
 	// Initialize timezone
+	tz := cfg.Timezone
+	if tz == "" {
+		tz = "Europe/Rome"
+	}
 	var err error
-	location, err = time.LoadLocation(Timezone)
+	location, err = time.LoadLocation(tz)
 	if err != nil {
-		log.Printf("[w] Timezone %s not found, using UTC", Timezone)
+		log.Printf("[w] Timezone %s not found, using UTC", tz)
 		location = time.UTC
 	}
 
 	// Initialize maps
 	autoRestarts = make(map[string][]time.Time)
 	resourceStress = make(map[string]*StressTracker)
+	lastContainerStates = make(map[string]bool)
+	diskUsageHistory = make([]DiskUsagePoint, 0, 288) // ~24h of data at 5min intervals
 	for _, res := range []string{"CPU", "RAM", "Swap", "SSD", "HDD"} {
 		resourceStress[res] = &StressTracker{}
 	}
@@ -155,54 +257,20 @@ func init() {
 	loadState()
 }
 
-// loadConfig reads tokens from config.json
+// loadConfig reads configuration from config.json with smart defaults
 func loadConfig() {
-	type Paths struct {
-		SSD string `json:"ssd"`
-		HDD string `json:"hdd"`
-	}
-	type Thresholds struct {
-		CPU  float64 `json:"cpu"`
-		RAM  float64 `json:"ram"`
-		Disk float64 `json:"disk"`
-	}
-	type Config struct {
-		BotToken      string     `json:"bot_token"`
-		AllowedUserID int64      `json:"allowed_user_id"`
-		Paths         Paths      `json:"paths"`
-		Thresholds    Thresholds `json:"thresholds"`
-	}
-
 	data, err := os.ReadFile("config.json")
 	if err != nil {
 		log.Fatalf("❌ Error reading config.json: %v\nCreate the file by copying config.example.json", err)
 	}
 
-	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		log.Fatalf("❌ Error parsing config.json: %v", err)
 	}
 
+	// Required fields
 	BotToken = cfg.BotToken
 	AllowedUserID = cfg.AllowedUserID
-
-	// Overwrite default if present in json
-	if cfg.Paths.SSD != "" {
-		PathSSD = cfg.Paths.SSD
-	}
-	if cfg.Paths.HDD != "" {
-		PathHDD = cfg.Paths.HDD
-	}
-
-	if cfg.Thresholds.CPU > 0 {
-		ThresholdCPU = cfg.Thresholds.CPU
-	}
-	if cfg.Thresholds.RAM > 0 {
-		ThresholdRAM = cfg.Thresholds.RAM
-	}
-	if cfg.Thresholds.Disk > 0 {
-		ThresholdDisk = cfg.Thresholds.Disk
-	}
 
 	if BotToken == "" {
 		log.Fatal("❌ bot_token empty in config.json")
@@ -211,28 +279,148 @@ func loadConfig() {
 		log.Fatal("❌ allowed_user_id empty or invalid in config.json")
 	}
 
+	// Paths with defaults
+	if cfg.Paths.SSD != "" {
+		PathSSD = cfg.Paths.SSD
+	}
+	if cfg.Paths.HDD != "" {
+		PathHDD = cfg.Paths.HDD
+	}
+
+	// Apply sensible defaults for missing config values
+	applyConfigDefaults()
+
+	// Update intervals from config
+	if cfg.Intervals.StatsSeconds > 0 {
+		IntervalStats = time.Duration(cfg.Intervals.StatsSeconds) * time.Second
+	}
+	if cfg.Intervals.MonitorSeconds > 0 {
+		IntervalMonitor = time.Duration(cfg.Intervals.MonitorSeconds) * time.Second
+	}
+
 	log.Println("[✓] Config loaded from config.json")
 }
 
-// isQuietHours checks if we are in night hours (23:30 - 07:00)
+// applyConfigDefaults sets sensible defaults for missing configuration
+func applyConfigDefaults() {
+	// Timezone
+	if cfg.Timezone == "" {
+		cfg.Timezone = "Europe/Rome"
+	}
+
+	// Reports defaults
+	if cfg.Reports.Morning.Hour == 0 && cfg.Reports.Morning.Minute == 0 {
+		cfg.Reports.Morning.Hour = 7
+		cfg.Reports.Morning.Minute = 30
+		cfg.Reports.Morning.Enabled = true
+	}
+	if cfg.Reports.Evening.Hour == 0 && cfg.Reports.Evening.Minute == 0 {
+		cfg.Reports.Evening.Hour = 18
+		cfg.Reports.Evening.Minute = 30
+		cfg.Reports.Evening.Enabled = true
+	}
+
+	// Quiet hours defaults
+	if !cfg.QuietHours.Enabled && cfg.QuietHours.StartHour == 0 {
+		cfg.QuietHours.Enabled = true
+		cfg.QuietHours.StartHour = 23
+		cfg.QuietHours.StartMinute = 30
+		cfg.QuietHours.EndHour = 7
+		cfg.QuietHours.EndMinute = 0
+	}
+
+	// Notification defaults
+	if cfg.Notifications.CPU.WarningThreshold == 0 {
+		cfg.Notifications.CPU.Enabled = true
+		cfg.Notifications.CPU.WarningThreshold = 90.0
+		cfg.Notifications.CPU.CriticalThreshold = 95.0
+	}
+	if cfg.Notifications.RAM.WarningThreshold == 0 {
+		cfg.Notifications.RAM.Enabled = true
+		cfg.Notifications.RAM.WarningThreshold = 90.0
+		cfg.Notifications.RAM.CriticalThreshold = 95.0
+	}
+	if cfg.Notifications.Swap.WarningThreshold == 0 {
+		cfg.Notifications.Swap.WarningThreshold = 50.0
+		cfg.Notifications.Swap.CriticalThreshold = 80.0
+		// Swap disabled by default as per user's example
+	}
+	if cfg.Notifications.DiskSSD.WarningThreshold == 0 {
+		cfg.Notifications.DiskSSD.Enabled = true
+		cfg.Notifications.DiskSSD.WarningThreshold = 90.0
+		cfg.Notifications.DiskSSD.CriticalThreshold = 95.0
+	}
+	if cfg.Notifications.DiskHDD.WarningThreshold == 0 {
+		cfg.Notifications.DiskHDD.Enabled = true
+		cfg.Notifications.DiskHDD.WarningThreshold = 90.0
+		cfg.Notifications.DiskHDD.CriticalThreshold = 95.0
+	}
+	if cfg.Notifications.DiskIO.WarningThreshold == 0 {
+		cfg.Notifications.DiskIO.Enabled = true
+		cfg.Notifications.DiskIO.WarningThreshold = 95.0
+	}
+	if !cfg.Notifications.SMART.Enabled {
+		cfg.Notifications.SMART.Enabled = true
+	}
+
+	// Stress tracking defaults
+	if cfg.StressTracking.DurationThresholdMinutes == 0 {
+		cfg.StressTracking.Enabled = true
+		cfg.StressTracking.DurationThresholdMinutes = 2
+	}
+
+	// Docker defaults
+	if cfg.Docker.Watchdog.TimeoutMinutes == 0 {
+		cfg.Docker.Watchdog.Enabled = true
+		cfg.Docker.Watchdog.TimeoutMinutes = 2
+		cfg.Docker.Watchdog.AutoRestartService = true
+	}
+	if cfg.Docker.WeeklyPrune.Day == "" {
+		cfg.Docker.WeeklyPrune.Enabled = true
+		cfg.Docker.WeeklyPrune.Day = "sunday"
+		cfg.Docker.WeeklyPrune.Hour = 4
+	}
+	if cfg.Docker.AutoRestartOnRAMCritical.RAMThreshold == 0 {
+		cfg.Docker.AutoRestartOnRAMCritical.Enabled = true
+		cfg.Docker.AutoRestartOnRAMCritical.MaxRestartsPerHour = 3
+		cfg.Docker.AutoRestartOnRAMCritical.RAMThreshold = 98.0
+	}
+
+	// Intervals defaults
+	if cfg.Intervals.StatsSeconds == 0 {
+		cfg.Intervals.StatsSeconds = 5
+	}
+	if cfg.Intervals.MonitorSeconds == 0 {
+		cfg.Intervals.MonitorSeconds = 30
+	}
+	if cfg.Intervals.CriticalAlertCooldownMins == 0 {
+		cfg.Intervals.CriticalAlertCooldownMins = 30
+	}
+}
+
+// isQuietHours checks if we are in quiet hours based on config
 func isQuietHours() bool {
+	if !cfg.QuietHours.Enabled {
+		return false
+	}
+
 	now := time.Now().In(location)
 	hour := now.Hour()
 	minute := now.Minute()
+	currentMins := hour*60 + minute
 
-	// After 23:30
-	if hour == QuietHourStart && minute >= QuietMinuteStart {
-		return true
+	startMins := cfg.QuietHours.StartHour*60 + cfg.QuietHours.StartMinute
+	endMins := cfg.QuietHours.EndHour*60 + cfg.QuietHours.EndMinute
+
+	// Handle overnight quiet hours (e.g., 23:30 - 07:00)
+	if startMins > endMins {
+		return currentMins >= startMins || currentMins < endMins
 	}
-	// From 00:00 to 06:59
-	if hour > QuietHourStart || hour < QuietHourEnd {
-		return true
-	}
-	return false
+	return currentMins >= startMins && currentMins < endMins
 }
 
 func loadState() {
-	data, err := os.ReadFile(StateFile)
+	data, err := os.ReadFile(DefaultStateFile)
 	if err != nil {
 		log.Printf("[i] First run - no state")
 		return
@@ -262,7 +450,7 @@ func saveState() {
 		log.Printf("[w] Serialize: %v", err)
 		return
 	}
-	if err := os.WriteFile(StateFile, data, 0644); err != nil {
+	if err := os.WriteFile(DefaultStateFile, data, 0644); err != nil {
 		log.Printf("[w] Save: %v", err)
 	}
 }
@@ -282,20 +470,21 @@ func main() {
 	log.Printf("[+] NASBot @%s", bot.Self.UserName)
 
 	// Startup notification
-	nextReport, isMorning := getNextReportTime()
-	nextReportStr := "18:30"
-	if isMorning {
-		nextReportStr = "07:30"
+	nextReportStr := getNextReportDescription()
+
+	var quietInfo string
+	if cfg.QuietHours.Enabled {
+		quietInfo = fmt.Sprintf("\n🌙 _Quiet: %02d:%02d — %02d:%02d_",
+			cfg.QuietHours.StartHour, cfg.QuietHours.StartMinute,
+			cfg.QuietHours.EndHour, cfg.QuietHours.EndMinute)
 	}
 
 	startupText := fmt.Sprintf(`*NASBot is online* 👋
 
-I'll keep an eye on things.
-Next report at %s
+I'll keep an eye on things.%s%s
 
-_Type /help to see what I can do_`, nextReportStr)
+_Type /help to see what I can do_`, nextReportStr, quietInfo)
 
-	_ = nextReport
 	startupMsg := tgbotapi.NewMessage(AllowedUserID, startupText)
 	startupMsg.ParseMode = "Markdown"
 	bot.Send(startupMsg)
@@ -313,7 +502,9 @@ _Type /help to see what I can do_`, nextReportStr)
 	// Start background goroutines
 	go statsCollector()
 	go monitorAlerts(bot)
-	go periodicReport(bot)
+	if cfg.Reports.Enabled {
+		go periodicReport(bot)
+	}
 	go autonomousManager(bot)
 
 	// Wait for first stats cycle
@@ -337,6 +528,42 @@ _Type /help to see what I can do_`, nextReportStr)
 			go handleCommand(bot, update.Message)
 		}
 	}
+}
+
+// getNextReportDescription returns a description of the next scheduled report
+func getNextReportDescription() string {
+	if !cfg.Reports.Enabled {
+		return "\n📭 _Reports disabled_"
+	}
+
+	morningEnabled := cfg.Reports.Morning.Enabled
+	eveningEnabled := cfg.Reports.Evening.Enabled
+
+	if !morningEnabled && !eveningEnabled {
+		return "\n📭 _No reports scheduled_"
+	}
+
+	now := time.Now().In(location)
+
+	if morningEnabled && eveningEnabled {
+		// Both enabled, find next
+		morning := time.Date(now.Year(), now.Month(), now.Day(),
+			cfg.Reports.Morning.Hour, cfg.Reports.Morning.Minute, 0, 0, location)
+		evening := time.Date(now.Year(), now.Month(), now.Day(),
+			cfg.Reports.Evening.Hour, cfg.Reports.Evening.Minute, 0, 0, location)
+
+		if now.Before(morning) {
+			return fmt.Sprintf("\n📨 _Next report: %02d:%02d_", cfg.Reports.Morning.Hour, cfg.Reports.Morning.Minute)
+		} else if now.Before(evening) {
+			return fmt.Sprintf("\n📨 _Next report: %02d:%02d_", cfg.Reports.Evening.Hour, cfg.Reports.Evening.Minute)
+		}
+		return fmt.Sprintf("\n📨 _Next report: %02d:%02d (tomorrow)_", cfg.Reports.Morning.Hour, cfg.Reports.Morning.Minute)
+	}
+
+	if morningEnabled {
+		return fmt.Sprintf("\n📨 _Daily report: %02d:%02d_", cfg.Reports.Morning.Hour, cfg.Reports.Morning.Minute)
+	}
+	return fmt.Sprintf("\n📨 _Daily report: %02d:%02d_", cfg.Reports.Evening.Hour, cfg.Reports.Evening.Minute)
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -366,6 +593,20 @@ func handleCommand(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) {
 		sendMarkdown(bot, chatID, generateReport(true))
 	case "container":
 		handleContainerCommand(bot, chatID, args)
+	case "kill":
+		handleKillCommand(bot, chatID, args)
+	case "ping":
+		sendMarkdown(bot, chatID, getPingText())
+	case "config":
+		sendMarkdown(bot, chatID, getConfigText())
+	case "sysinfo":
+		sendMarkdown(bot, chatID, getSysInfoText())
+	case "speedtest":
+		handleSpeedtest(bot, chatID)
+	case "diskpred", "prediction":
+		sendMarkdown(bot, chatID, getDiskPredictionText())
+	case "restartdocker":
+		askDockerRestartConfirmation(bot, chatID)
 	case "reboot":
 		askPowerConfirmation(bot, chatID, 0, "reboot")
 	case "shutdown":
@@ -397,6 +638,16 @@ func handleCallback(bot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery) {
 	if data == "pre_confirm_reboot" || data == "pre_confirm_shutdown" {
 		action := strings.TrimPrefix(data, "pre_confirm_")
 		askPowerConfirmation(bot, chatID, msgID, action)
+		return
+	}
+
+	// Docker service restart confirmation
+	if data == "confirm_restart_docker" {
+		executeDockerServiceRestart(bot, chatID, msgID)
+		return
+	}
+	if data == "cancel_restart_docker" {
+		editMessage(bot, chatID, msgID, "❌ Docker restart cancelled", nil)
 		return
 	}
 
@@ -740,20 +991,582 @@ func getTopProcText() string {
 }
 
 func getHelpText() string {
-	return `👋 *Hey! I'm NASBot*
+	var b strings.Builder
+	b.WriteString("👋 *Hey! I'm NASBot*\n\n")
+	b.WriteString("Here's what I can do for you:\n\n")
 
-Here's what I can do for you:
+	b.WriteString("*📊 Monitoring*\n")
+	b.WriteString("/status — quick system overview\n")
+	b.WriteString("/temp — check temperatures\n")
+	b.WriteString("/top — top processes by CPU\n")
+	b.WriteString("/sysinfo — detailed system info\n")
+	b.WriteString("/diskpred — disk space prediction\n\n")
 
-📊 /status — quick system overview
-🌡 /temp — check temperatures
-🐳 /docker — manage containers
-📊 /dstats — container resources
-🌐 /net — network info
-📋 /report — full detailed report
-⚡ /reboot · /shutdown
+	b.WriteString("*🐳 Docker*\n")
+	b.WriteString("/docker — manage containers\n")
+	b.WriteString("/dstats — container resources\n")
+	b.WriteString("/kill `name` — force kill container\n")
+	b.WriteString("/restartdocker — restart Docker service\n\n")
 
-_📨 Daily reports at 7:30 & 18:30_
-_🌙 Quiet hours: 23:30 — 7:00_`
+	b.WriteString("*🌐 Network*\n")
+	b.WriteString("/net — network info\n")
+	b.WriteString("/speedtest — run speed test\n\n")
+
+	b.WriteString("*📋 Reports & System*\n")
+	b.WriteString("/report — full detailed report\n")
+	b.WriteString("/ping — check if bot is alive\n")
+	b.WriteString("/config — show current config\n")
+	b.WriteString("/logs — recent system logs\n")
+	b.WriteString("/reboot · /shutdown — power control\n\n")
+
+	// Report schedule info
+	if cfg.Reports.Enabled {
+		b.WriteString("_📨 Reports: ")
+		if cfg.Reports.Morning.Enabled && cfg.Reports.Evening.Enabled {
+			b.WriteString(fmt.Sprintf("%02d:%02d & %02d:%02d_\n",
+				cfg.Reports.Morning.Hour, cfg.Reports.Morning.Minute,
+				cfg.Reports.Evening.Hour, cfg.Reports.Evening.Minute))
+		} else if cfg.Reports.Morning.Enabled {
+			b.WriteString(fmt.Sprintf("%02d:%02d_\n", cfg.Reports.Morning.Hour, cfg.Reports.Morning.Minute))
+		} else if cfg.Reports.Evening.Enabled {
+			b.WriteString(fmt.Sprintf("%02d:%02d_\n", cfg.Reports.Evening.Hour, cfg.Reports.Evening.Minute))
+		}
+	}
+
+	if cfg.QuietHours.Enabled {
+		b.WriteString(fmt.Sprintf("_🌙 Quiet: %02d:%02d — %02d:%02d_",
+			cfg.QuietHours.StartHour, cfg.QuietHours.StartMinute,
+			cfg.QuietHours.EndHour, cfg.QuietHours.EndMinute))
+	}
+
+	return b.String()
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  NEW COMMANDS: PING, KILL, CONFIG, RESTARTDOCKER
+// ═══════════════════════════════════════════════════════════════════
+
+func getPingText() string {
+	uptime := time.Since(botStartTime)
+
+	statsMutex.RLock()
+	ready := statsReady
+	statsMutex.RUnlock()
+
+	status := "✅"
+	statusText := "All systems operational"
+	if !ready {
+		status = "⚠️"
+		statusText = "Stats not ready yet"
+	}
+
+	return fmt.Sprintf(`%s *Pong!*
+
+%s
+
+🤖 Bot uptime: `+"`%s`"+`
+🖥 Collecting stats: %v
+📡 Last check: `+"`%s`"+`
+
+_I'm alive and watching!_`,
+		status,
+		statusText,
+		formatDuration(uptime),
+		ready,
+		time.Now().In(location).Format("15:04:05"))
+}
+
+func handleKillCommand(bot *tgbotapi.BotAPI, chatID int64, args string) {
+	if args == "" {
+		sendMarkdown(bot, chatID, "Usage: `/kill container_name`\n\nThis will forcefully terminate the container (SIGKILL)")
+		return
+	}
+
+	// Find container
+	containers := getContainerList()
+	var found *ContainerInfo
+	for _, c := range containers {
+		if strings.EqualFold(c.Name, args) {
+			found = &c
+			break
+		}
+	}
+
+	if found == nil {
+		sendMarkdown(bot, chatID, fmt.Sprintf("❓ Container `%s` not found", args))
+		return
+	}
+
+	if !found.Running {
+		sendMarkdown(bot, chatID, fmt.Sprintf("⏸ Container `%s` is not running", args))
+		return
+	}
+
+	// Execute kill
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "docker", "kill", args)
+	output, err := cmd.CombinedOutput()
+
+	if err != nil {
+		errMsg := strings.TrimSpace(string(output))
+		if errMsg == "" {
+			errMsg = err.Error()
+		}
+		sendMarkdown(bot, chatID, fmt.Sprintf("❌ Failed to kill `%s`:\n`%s`", args, errMsg))
+		addReportEvent("warning", fmt.Sprintf("Kill failed: %s - %s", args, errMsg))
+	} else {
+		sendMarkdown(bot, chatID, fmt.Sprintf("💀 Container `%s` killed", args))
+		addReportEvent("action", fmt.Sprintf("Container killed: %s", args))
+	}
+}
+
+func getConfigText() string {
+	var b strings.Builder
+	b.WriteString("⚙️ *Current Configuration*\n\n")
+
+	// Reports
+	b.WriteString("*Reports:* ")
+	if cfg.Reports.Enabled {
+		if cfg.Reports.Morning.Enabled && cfg.Reports.Evening.Enabled {
+			b.WriteString(fmt.Sprintf("✅ %02d:%02d & %02d:%02d\n",
+				cfg.Reports.Morning.Hour, cfg.Reports.Morning.Minute,
+				cfg.Reports.Evening.Hour, cfg.Reports.Evening.Minute))
+		} else if cfg.Reports.Morning.Enabled {
+			b.WriteString(fmt.Sprintf("✅ Morning only (%02d:%02d)\n",
+				cfg.Reports.Morning.Hour, cfg.Reports.Morning.Minute))
+		} else if cfg.Reports.Evening.Enabled {
+			b.WriteString(fmt.Sprintf("✅ Evening only (%02d:%02d)\n",
+				cfg.Reports.Evening.Hour, cfg.Reports.Evening.Minute))
+		} else {
+			b.WriteString("❌ Disabled\n")
+		}
+	} else {
+		b.WriteString("❌ Disabled\n")
+	}
+
+	// Quiet hours
+	b.WriteString("*Quiet Hours:* ")
+	if cfg.QuietHours.Enabled {
+		b.WriteString(fmt.Sprintf("✅ %02d:%02d — %02d:%02d\n",
+			cfg.QuietHours.StartHour, cfg.QuietHours.StartMinute,
+			cfg.QuietHours.EndHour, cfg.QuietHours.EndMinute))
+	} else {
+		b.WriteString("❌ Disabled\n")
+	}
+
+	// Notifications
+	b.WriteString("\n*Notifications:*\n")
+	if cfg.Notifications.CPU.Enabled {
+		b.WriteString(fmt.Sprintf("  CPU: ⚠️ >%.0f%% | 🚨 >%.0f%%\n",
+			cfg.Notifications.CPU.WarningThreshold, cfg.Notifications.CPU.CriticalThreshold))
+	} else {
+		b.WriteString("  CPU: ❌\n")
+	}
+	if cfg.Notifications.RAM.Enabled {
+		b.WriteString(fmt.Sprintf("  RAM: ⚠️ >%.0f%% | 🚨 >%.0f%%\n",
+			cfg.Notifications.RAM.WarningThreshold, cfg.Notifications.RAM.CriticalThreshold))
+	} else {
+		b.WriteString("  RAM: ❌\n")
+	}
+	if cfg.Notifications.Swap.Enabled {
+		b.WriteString(fmt.Sprintf("  Swap: ⚠️ >%.0f%%\n", cfg.Notifications.Swap.WarningThreshold))
+	} else {
+		b.WriteString("  Swap: ❌\n")
+	}
+	if cfg.Notifications.DiskSSD.Enabled {
+		b.WriteString(fmt.Sprintf("  SSD: ⚠️ >%.0f%% | 🚨 >%.0f%%\n",
+			cfg.Notifications.DiskSSD.WarningThreshold, cfg.Notifications.DiskSSD.CriticalThreshold))
+	} else {
+		b.WriteString("  SSD: ❌\n")
+	}
+	if cfg.Notifications.DiskHDD.Enabled {
+		b.WriteString(fmt.Sprintf("  HDD: ⚠️ >%.0f%% | 🚨 >%.0f%%\n",
+			cfg.Notifications.DiskHDD.WarningThreshold, cfg.Notifications.DiskHDD.CriticalThreshold))
+	} else {
+		b.WriteString("  HDD: ❌\n")
+	}
+	if cfg.Notifications.DiskIO.Enabled {
+		b.WriteString(fmt.Sprintf("  I/O: ⚠️ >%.0f%%\n", cfg.Notifications.DiskIO.WarningThreshold))
+	} else {
+		b.WriteString("  I/O: ❌\n")
+	}
+	b.WriteString(fmt.Sprintf("  SMART: %s\n", boolToEmoji(cfg.Notifications.SMART.Enabled)))
+
+	// Docker
+	b.WriteString("\n*Docker:*\n")
+	if cfg.Docker.Watchdog.Enabled {
+		b.WriteString(fmt.Sprintf("  Watchdog: ✅ %dm timeout\n", cfg.Docker.Watchdog.TimeoutMinutes))
+	} else {
+		b.WriteString("  Watchdog: ❌\n")
+	}
+	if cfg.Docker.WeeklyPrune.Enabled {
+		b.WriteString(fmt.Sprintf("  Prune: ✅ %s @ %02d:00\n",
+			strings.Title(cfg.Docker.WeeklyPrune.Day), cfg.Docker.WeeklyPrune.Hour))
+	} else {
+		b.WriteString("  Prune: ❌\n")
+	}
+	if cfg.Docker.AutoRestartOnRAMCritical.Enabled {
+		b.WriteString(fmt.Sprintf("  Auto-restart: ✅ RAM >%.0f%%\n",
+			cfg.Docker.AutoRestartOnRAMCritical.RAMThreshold))
+	} else {
+		b.WriteString("  Auto-restart: ❌\n")
+	}
+
+	// Intervals
+	b.WriteString(fmt.Sprintf("\n*Intervals:* Stats %ds · Monitor %ds",
+		cfg.Intervals.StatsSeconds, cfg.Intervals.MonitorSeconds))
+
+	return b.String()
+}
+
+func boolToEmoji(b bool) string {
+	if b {
+		return "✅"
+	}
+	return "❌"
+}
+
+func askDockerRestartConfirmation(bot *tgbotapi.BotAPI, chatID int64) {
+	text := "🐳 *Restart Docker Service?*\n\n⚠️ This will restart the Docker daemon.\nAll containers will be temporarily stopped."
+
+	kb := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("✅ Yes, restart", "confirm_restart_docker"),
+			tgbotapi.NewInlineKeyboardButtonData("❌ Cancel", "cancel_restart_docker"),
+		),
+	)
+
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ParseMode = "Markdown"
+	msg.ReplyMarkup = kb
+	bot.Send(msg)
+}
+
+func executeDockerServiceRestart(bot *tgbotapi.BotAPI, chatID int64, msgID int) {
+	editMessage(bot, chatID, msgID, "🔄 Restarting Docker service...", nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	// Try systemctl first, then service
+	var cmd *exec.Cmd
+	if _, err := exec.LookPath("systemctl"); err == nil {
+		cmd = exec.CommandContext(ctx, "systemctl", "restart", "docker")
+	} else {
+		cmd = exec.CommandContext(ctx, "service", "docker", "restart")
+	}
+
+	output, err := cmd.CombinedOutput()
+	var resultText string
+	if err != nil {
+		errMsg := strings.TrimSpace(string(output))
+		if errMsg == "" {
+			errMsg = err.Error()
+		}
+		resultText = fmt.Sprintf("❌ Docker restart failed:\n`%s`", errMsg)
+		addReportEvent("critical", fmt.Sprintf("Docker restart failed: %s", errMsg))
+	} else {
+		resultText = "✅ Docker service restarted successfully"
+		addReportEvent("action", "Docker service restarted (manual)")
+	}
+
+	kb := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🐳 Check Containers", "show_docker"),
+			tgbotapi.NewInlineKeyboardButtonData("🏠 Home", "back_main"),
+		),
+	)
+	editMessage(bot, chatID, msgID, resultText, &kb)
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  SYSTEM INFO, SPEEDTEST & DISK PREDICTION
+// ═══════════════════════════════════════════════════════════════════
+
+// getSysInfoText returns detailed system information
+func getSysInfoText() string {
+	var b strings.Builder
+	b.WriteString("🖥 *System Information*\n\n")
+
+	// Host info
+	h, err := host.Info()
+	if err == nil {
+		b.WriteString(fmt.Sprintf("*Hostname:* `%s`\n", h.Hostname))
+		b.WriteString(fmt.Sprintf("*OS:* %s %s\n", h.Platform, h.PlatformVersion))
+		b.WriteString(fmt.Sprintf("*Kernel:* %s\n", h.KernelVersion))
+		b.WriteString(fmt.Sprintf("*Architecture:* %s\n", h.KernelArch))
+		b.WriteString(fmt.Sprintf("*Uptime:* %s\n", formatUptime(h.Uptime)))
+		b.WriteString(fmt.Sprintf("*Boot Time:* %s\n", time.Unix(int64(h.BootTime), 0).In(location).Format("02/01/2006 15:04")))
+	}
+
+	// CPU info
+	cpuInfo, err := cpu.Info()
+	if err == nil && len(cpuInfo) > 0 {
+		b.WriteString(fmt.Sprintf("\n*CPU:* %s\n", cpuInfo[0].ModelName))
+		b.WriteString(fmt.Sprintf("*Cores:* %d physical, %d logical\n", cpuInfo[0].Cores, len(cpuInfo)))
+		if cpuInfo[0].Mhz > 0 {
+			b.WriteString(fmt.Sprintf("*Frequency:* %.0f MHz\n", cpuInfo[0].Mhz))
+		}
+	}
+
+	// Memory info
+	v, err := mem.VirtualMemory()
+	if err == nil {
+		b.WriteString(fmt.Sprintf("\n*Total RAM:* %.1f GB\n", float64(v.Total)/1024/1024/1024))
+	}
+
+	// Disk info
+	for _, path := range []string{PathSSD, PathHDD} {
+		d, err := disk.Usage(path)
+		if err == nil {
+			name := "SSD"
+			if path == PathHDD {
+				name = "HDD"
+			}
+			b.WriteString(fmt.Sprintf("*%s (%s):* %.0f GB total\n", name, path, float64(d.Total)/1024/1024/1024))
+		}
+	}
+
+	// Go runtime info
+	b.WriteString("\n*NASBot Version:* 1.0.0\n")
+	if buildInfo, ok := debug.ReadBuildInfo(); ok {
+		b.WriteString(fmt.Sprintf("*Go Version:* %s\n", buildInfo.GoVersion))
+	}
+
+	return b.String()
+}
+
+// handleSpeedtest runs a network speed test
+func handleSpeedtest(bot *tgbotapi.BotAPI, chatID int64) {
+	// Check if speedtest-cli is available
+	if _, err := exec.LookPath("speedtest-cli"); err != nil {
+		sendMarkdown(bot, chatID, "❌ `speedtest-cli` not installed.\n\nInstall it with:\n`sudo apt install speedtest-cli`")
+		return
+	}
+
+	// Send initial message
+	msg := tgbotapi.NewMessage(chatID, "🚀 Running speed test... (this may take a minute)")
+	sent, _ := bot.Send(msg)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "speedtest-cli", "--simple")
+	output, err := cmd.CombinedOutput()
+
+	var resultText string
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			resultText = "⏱ Speed test timed out"
+		} else {
+			resultText = fmt.Sprintf("❌ Speed test failed:\n`%s`", err.Error())
+		}
+	} else {
+		// Parse output
+		lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+		var ping, download, upload string
+		for _, line := range lines {
+			if strings.HasPrefix(line, "Ping:") {
+				ping = strings.TrimPrefix(line, "Ping: ")
+			} else if strings.HasPrefix(line, "Download:") {
+				download = strings.TrimPrefix(line, "Download: ")
+			} else if strings.HasPrefix(line, "Upload:") {
+				upload = strings.TrimPrefix(line, "Upload: ")
+			}
+		}
+
+		resultText = fmt.Sprintf("🚀 *Speed Test Results*\n\n"+
+			"📡 Ping: `%s`\n"+
+			"⬇️ Download: `%s`\n"+
+			"⬆️ Upload: `%s`",
+			ping, download, upload)
+	}
+
+	// Edit the original message with results
+	edit := tgbotapi.NewEditMessageText(chatID, sent.MessageID, resultText)
+	edit.ParseMode = "Markdown"
+	bot.Send(edit)
+}
+
+// getDiskPredictionText estimates when disks will be full
+func getDiskPredictionText() string {
+	diskUsageHistoryMutex.Lock()
+	history := make([]DiskUsagePoint, len(diskUsageHistory))
+	copy(history, diskUsageHistory)
+	diskUsageHistoryMutex.Unlock()
+
+	var b strings.Builder
+	b.WriteString("📊 *Disk Space Prediction*\n\n")
+
+	if len(history) < 12 { // Need at least 1 hour of data
+		b.WriteString("_Collecting data... need at least 1 hour of history._\n\n")
+		b.WriteString(fmt.Sprintf("_Data points: %d/12_", len(history)))
+		return b.String()
+	}
+
+	// Calculate trend for SSD
+	ssdPred := predictDiskFull(history, true)
+	hddPred := predictDiskFull(history, false)
+
+	statsMutex.RLock()
+	s := statsCache
+	statsMutex.RUnlock()
+
+	// SSD
+	b.WriteString(fmt.Sprintf("💿 *SSD* — %.1f%% used\n", s.VolSSD.Used))
+	if ssdPred.DaysUntilFull < 0 {
+		b.WriteString("   📈 _Usage decreasing or stable_\n")
+	} else if ssdPred.DaysUntilFull > 365 {
+		b.WriteString("   ✅ _More than a year until full_\n")
+	} else if ssdPred.DaysUntilFull > 30 {
+		b.WriteString(fmt.Sprintf("   ✅ ~%d days until full\n", int(ssdPred.DaysUntilFull)))
+	} else if ssdPred.DaysUntilFull > 7 {
+		b.WriteString(fmt.Sprintf("   ⚠️ ~%d days until full\n", int(ssdPred.DaysUntilFull)))
+	} else {
+		b.WriteString(fmt.Sprintf("   🚨 ~%d days until full!\n", int(ssdPred.DaysUntilFull)))
+	}
+	b.WriteString(fmt.Sprintf("   _Rate: %.2f GB/day_\n\n", ssdPred.GBPerDay))
+
+	// HDD
+	b.WriteString(fmt.Sprintf("🗄 *HDD* — %.1f%% used\n", s.VolHDD.Used))
+	if hddPred.DaysUntilFull < 0 {
+		b.WriteString("   📈 _Usage decreasing or stable_\n")
+	} else if hddPred.DaysUntilFull > 365 {
+		b.WriteString("   ✅ _More than a year until full_\n")
+	} else if hddPred.DaysUntilFull > 30 {
+		b.WriteString(fmt.Sprintf("   ✅ ~%d days until full\n", int(hddPred.DaysUntilFull)))
+	} else if hddPred.DaysUntilFull > 7 {
+		b.WriteString(fmt.Sprintf("   ⚠️ ~%d days until full\n", int(hddPred.DaysUntilFull)))
+	} else {
+		b.WriteString(fmt.Sprintf("   🚨 ~%d days until full!\n", int(hddPred.DaysUntilFull)))
+	}
+	b.WriteString(fmt.Sprintf("   _Rate: %.2f GB/day_\n", hddPred.GBPerDay))
+
+	b.WriteString(fmt.Sprintf("\n_Based on %d data points (%s of data)_",
+		len(history),
+		formatDuration(time.Since(history[0].Time))))
+
+	return b.String()
+}
+
+// DiskPrediction holds prediction results
+type DiskPrediction struct {
+	DaysUntilFull float64
+	GBPerDay      float64
+}
+
+// predictDiskFull calculates days until disk is full using linear regression
+func predictDiskFull(history []DiskUsagePoint, isSSD bool) DiskPrediction {
+	if len(history) < 2 {
+		return DiskPrediction{DaysUntilFull: -1}
+	}
+
+	// Simple linear regression on free space
+	first := history[0]
+	last := history[len(history)-1]
+
+	var firstFree, lastFree uint64
+	if isSSD {
+		firstFree = first.SSDFree
+		lastFree = last.SSDFree
+	} else {
+		firstFree = first.HDDFree
+		lastFree = last.HDDFree
+	}
+
+	timeDiff := last.Time.Sub(first.Time).Hours() / 24 // Days
+	if timeDiff < 0.01 {
+		return DiskPrediction{DaysUntilFull: -1}
+	}
+
+	// GB change (negative means filling up)
+	gbChange := float64(int64(lastFree)-int64(firstFree)) / 1024 / 1024 / 1024
+	gbPerDay := gbChange / timeDiff
+
+	if gbPerDay >= 0 {
+		// Disk is freeing up or stable
+		return DiskPrediction{DaysUntilFull: -1, GBPerDay: -gbPerDay}
+	}
+
+	// Days until free space = 0
+	currentFreeGB := float64(lastFree) / 1024 / 1024 / 1024
+	daysUntilFull := currentFreeGB / (-gbPerDay)
+
+	return DiskPrediction{
+		DaysUntilFull: daysUntilFull,
+		GBPerDay:      -gbPerDay,
+	}
+}
+
+// recordDiskUsage adds current disk usage to history
+func recordDiskUsage() {
+	statsMutex.RLock()
+	s := statsCache
+	ready := statsReady
+	statsMutex.RUnlock()
+
+	if !ready {
+		return
+	}
+
+	diskUsageHistoryMutex.Lock()
+	defer diskUsageHistoryMutex.Unlock()
+
+	point := DiskUsagePoint{
+		Time:    time.Now(),
+		SSDUsed: s.VolSSD.Used,
+		HDDUsed: s.VolHDD.Used,
+		SSDFree: s.VolSSD.Free,
+		HDDFree: s.VolHDD.Free,
+	}
+
+	diskUsageHistory = append(diskUsageHistory, point)
+
+	// Keep max 7 days of data (at 5-min intervals = 2016 points)
+	if len(diskUsageHistory) > 2016 {
+		diskUsageHistory = diskUsageHistory[1:]
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  CONTAINER STATE MONITORING (unexpected stops)
+// ═══════════════════════════════════════════════════════════════════
+
+// checkContainerStates monitors for unexpected container stops
+func checkContainerStates(bot *tgbotapi.BotAPI) {
+	containers := getContainerList()
+	if containers == nil {
+		return
+	}
+
+	containerStateMutex.Lock()
+	defer containerStateMutex.Unlock()
+
+	// Build current state map
+	currentStates := make(map[string]bool)
+	for _, c := range containers {
+		currentStates[c.Name] = c.Running
+	}
+
+	// Check for containers that stopped unexpectedly
+	for name, wasRunning := range lastContainerStates {
+		isRunning, exists := currentStates[name]
+		if exists && wasRunning && !isRunning {
+			// Container was running but now stopped
+			if !isQuietHours() {
+				msg := fmt.Sprintf("⚠️ *Container Stopped*\n\n`%s` has stopped unexpectedly.", name)
+				m := tgbotapi.NewMessage(AllowedUserID, msg)
+				m.ParseMode = "Markdown"
+				bot.Send(m)
+			}
+			addReportEvent("warning", fmt.Sprintf("Container stopped: %s", name))
+		}
+	}
+
+	// Update last states
+	lastContainerStates = currentStates
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -868,13 +1681,13 @@ func handleContainerCallback(bot *tgbotapi.BotAPI, chatID int64, msgID int, data
 	action := parts[1]
 
 	switch action {
-	case "select", "start", "stop", "restart", "logs", "cancel":
+	case "select", "start", "stop", "restart", "logs", "kill", "cancel":
 		// Container name is everything after parts[1]
 		containerName := strings.Join(parts[2:], "_")
 		switch action {
 		case "select":
 			showContainerActions(bot, chatID, msgID, containerName)
-		case "start", "stop", "restart", "logs":
+		case "start", "stop", "restart", "logs", "kill":
 			confirmContainerAction(bot, chatID, msgID, containerName, action)
 		case "cancel":
 			text, kb := getDockerMenuText()
@@ -934,7 +1747,8 @@ func showContainerActions(bot *tgbotapi.BotAPI, chatID int64, msgID int, contain
 			tgbotapi.NewInlineKeyboardButtonData("🔄 Restart", "container_restart_"+containerName),
 		))
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📜 Logs", "container_logs_"+containerName),
+			tgbotapi.NewInlineKeyboardButtonData("� Kill", "container_kill_"+containerName),
+			tgbotapi.NewInlineKeyboardButtonData("�📜 Logs", "container_logs_"+containerName),
 		))
 	} else {
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
@@ -959,9 +1773,13 @@ func confirmContainerAction(bot *tgbotapi.BotAPI, chatID int64, msgID int, conta
 		"start":   "▶️ Start",
 		"stop":    "⏹ Stop",
 		"restart": "🔄 Restart",
+		"kill":    "💀 Force Kill",
 	}[action]
 
 	text := fmt.Sprintf("%s *%s*?", actionText, containerName)
+	if action == "kill" {
+		text += "\n\n⚠️ _This will forcefully terminate the container!_"
+	}
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
@@ -986,6 +1804,8 @@ func executeContainerAction(bot *tgbotapi.BotAPI, chatID int64, msgID int, conta
 		cmd = exec.CommandContext(ctx, "docker", "stop", containerName)
 	case "restart":
 		cmd = exec.CommandContext(ctx, "docker", "restart", containerName)
+	case "kill":
+		cmd = exec.CommandContext(ctx, "docker", "kill", containerName)
 	default:
 		return
 	}
@@ -1000,7 +1820,7 @@ func executeContainerAction(bot *tgbotapi.BotAPI, chatID int64, msgID int, conta
 		resultText = fmt.Sprintf("❌ Couldn't %s *%s*\n`%s`", action, containerName, errMsg)
 		addReportEvent("warning", fmt.Sprintf("Error %s container %s: %s", action, containerName, errMsg))
 	} else {
-		actionPast := map[string]string{"start": "started ▶️", "stop": "stopped ⏹", "restart": "restarted 🔄"}[action]
+		actionPast := map[string]string{"start": "started ▶️", "stop": "stopped ⏹", "restart": "restarted 🔄", "kill": "killed 💀"}[action]
 		resultText = fmt.Sprintf("✅ *%s* %s", containerName, actionPast)
 		addReportEvent("info", fmt.Sprintf("Container %s: %s (manual)", containerName, action))
 	}
@@ -1197,26 +2017,48 @@ func handlePowerConfirm(bot *tgbotapi.BotAPI, chatID int64, msgID int, data stri
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  DAILY REPORTS (07:30 and 18:30)
+//  DAILY REPORTS (configurable times)
 // ═══════════════════════════════════════════════════════════════════
 
-// getNextReportTime calculates the next report time (07:30 or 18:30)
+// getNextReportTime calculates the next report time based on config
 func getNextReportTime() (time.Time, bool) {
 	now := time.Now().In(location)
 
-	// Morning (07:30) and evening (18:30) reports
-	morningReport := time.Date(now.Year(), now.Month(), now.Day(), ReportMorning, ReportMinute, 0, 0, location)
-	eveningReport := time.Date(now.Year(), now.Month(), now.Day(), ReportEvening, ReportMinute, 0, 0, location)
+	morningEnabled := cfg.Reports.Morning.Enabled
+	eveningEnabled := cfg.Reports.Evening.Enabled
 
-	// Determine next report
-	if now.Before(morningReport) {
-		return morningReport, true // true = morning
-	} else if now.Before(eveningReport) {
-		return eveningReport, false // false = evening
-	} else {
-		// After 18:30, next is tomorrow morning
+	if !morningEnabled && !eveningEnabled {
+		// No reports enabled, return far future
+		return now.Add(24 * 365 * time.Hour), false
+	}
+
+	morningReport := time.Date(now.Year(), now.Month(), now.Day(),
+		cfg.Reports.Morning.Hour, cfg.Reports.Morning.Minute, 0, 0, location)
+	eveningReport := time.Date(now.Year(), now.Month(), now.Day(),
+		cfg.Reports.Evening.Hour, cfg.Reports.Evening.Minute, 0, 0, location)
+
+	// Determine next report based on what's enabled
+	if morningEnabled && eveningEnabled {
+		if now.Before(morningReport) {
+			return morningReport, true
+		} else if now.Before(eveningReport) {
+			return eveningReport, false
+		}
 		return morningReport.Add(24 * time.Hour), true
 	}
+
+	if morningEnabled {
+		if now.Before(morningReport) {
+			return morningReport, true
+		}
+		return morningReport.Add(24 * time.Hour), true
+	}
+
+	// Only evening enabled
+	if now.Before(eveningReport) {
+		return eveningReport, false
+	}
+	return eveningReport.Add(24 * time.Hour), false
 }
 
 func periodicReport(bot *tgbotapi.BotAPI) {
@@ -1224,6 +2066,13 @@ func periodicReport(bot *tgbotapi.BotAPI) {
 	time.Sleep(IntervalStats * 2)
 
 	for {
+		// Check if reports are enabled
+		if !cfg.Reports.Enabled || (!cfg.Reports.Morning.Enabled && !cfg.Reports.Evening.Enabled) {
+			// Sleep for a while and check again (config might change on restart)
+			time.Sleep(1 * time.Hour)
+			continue
+		}
+
 		// Calculate next report time
 		nextReport, isMorning := getNextReportTime()
 		sleepDuration := time.Until(nextReport)
@@ -1339,10 +2188,23 @@ func getHealthStatus(s Stats) (icon, text string, hasProblems bool) {
 	}
 	reportEventsMutex.Unlock()
 
-	if criticalCount > 0 || s.CPU > ThresholdCPU || s.RAM > ThresholdRAMCritical || s.VolSSD.Used > 95 || s.VolHDD.Used > 95 {
+	// Use config thresholds
+	cpuCritical := cfg.Notifications.CPU.CriticalThreshold
+	ramCritical := cfg.Notifications.RAM.CriticalThreshold
+	ssdCritical := cfg.Notifications.DiskSSD.CriticalThreshold
+	hddCritical := cfg.Notifications.DiskHDD.CriticalThreshold
+
+	if criticalCount > 0 || s.CPU > cpuCritical || s.RAM > ramCritical || s.VolSSD.Used > ssdCritical || s.VolHDD.Used > hddCritical {
 		return "⚠️", "Some issues to look at", true
 	}
-	if warningCount > 0 || s.CPU > 80 || s.RAM > 85 || s.DiskUtil > 90 || s.VolSSD.Used > ThresholdDisk || s.VolHDD.Used > ThresholdDisk {
+
+	cpuWarn := cfg.Notifications.CPU.WarningThreshold
+	ramWarn := cfg.Notifications.RAM.WarningThreshold
+	ssdWarn := cfg.Notifications.DiskSSD.WarningThreshold
+	hddWarn := cfg.Notifications.DiskHDD.WarningThreshold
+	ioWarn := cfg.Notifications.DiskIO.WarningThreshold
+
+	if warningCount > 0 || s.CPU > cpuWarn*0.9 || s.RAM > ramWarn*0.95 || s.DiskUtil > ioWarn*0.95 || s.VolSSD.Used > ssdWarn || s.VolHDD.Used > hddWarn {
 		return "👀", "A few things need attention", true
 	}
 	return "✨", "Everything's running smoothly", false
@@ -1467,52 +2329,82 @@ func filterSignificantEvents(events []ReportEvent) []ReportEvent {
 
 func autonomousManager(bot *tgbotapi.BotAPI) {
 	ticker := time.NewTicker(10 * time.Second)
+	diskTicker := time.NewTicker(5 * time.Minute) // Record disk usage every 5 minutes
 	defer ticker.Stop()
+	defer diskTicker.Stop()
 
-	for range ticker.C {
-		statsMutex.RLock()
-		s := statsCache
-		ready := statsReady
-		statsMutex.RUnlock()
+	for {
+		select {
+		case <-ticker.C:
+			statsMutex.RLock()
+			s := statsCache
+			ready := statsReady
+			statsMutex.RUnlock()
 
-		if !ready {
-			continue
+			if !ready {
+				continue
+			}
+
+			// Check stress for enabled resources only
+			if cfg.StressTracking.Enabled {
+				if cfg.Notifications.DiskIO.Enabled {
+					checkResourceStress(bot, "HDD", s.DiskUtil, cfg.Notifications.DiskIO.WarningThreshold)
+				}
+				if cfg.Notifications.CPU.Enabled {
+					checkResourceStress(bot, "CPU", s.CPU, cfg.Notifications.CPU.WarningThreshold)
+				}
+				if cfg.Notifications.RAM.Enabled {
+					checkResourceStress(bot, "RAM", s.RAM, cfg.Notifications.RAM.WarningThreshold)
+				}
+				if cfg.Notifications.Swap.Enabled {
+					checkResourceStress(bot, "Swap", s.Swap, cfg.Notifications.Swap.WarningThreshold)
+				}
+				if cfg.Notifications.DiskSSD.Enabled {
+					checkResourceStress(bot, "SSD", s.VolSSD.Used, cfg.Notifications.DiskSSD.WarningThreshold)
+				}
+			}
+
+			// Check critical RAM for auto-restart
+			if cfg.Docker.AutoRestartOnRAMCritical.Enabled {
+				if s.RAM >= cfg.Docker.AutoRestartOnRAMCritical.RAMThreshold {
+					handleCriticalRAM(bot, s)
+				}
+			}
+
+			// Clean restart counter (every hour)
+			cleanRestartCounter()
+
+			// Docker watchdog
+			if cfg.Docker.Watchdog.Enabled {
+				checkDockerHealth(bot)
+			}
+
+			// Check for unexpected container stops
+			checkContainerStates(bot)
+
+			// Weekly prune
+			if cfg.Docker.WeeklyPrune.Enabled {
+				checkWeeklyPrune(bot)
+			}
+
+		case <-diskTicker.C:
+			// Record disk usage for prediction
+			recordDiskUsage()
 		}
-
-		// Check stress for all resources
-		checkResourceStress(bot, "HDD", s.DiskUtil, ThresholdIOCritical)
-		checkResourceStress(bot, "CPU", s.CPU, ThresholdCPUStress)
-		checkResourceStress(bot, "RAM", s.RAM, ThresholdRAMStress)
-		checkResourceStress(bot, "Swap", s.Swap, ThresholdSwapStress)
-		checkResourceStress(bot, "SSD", s.VolSSD.Used, ThresholdDisk)
-
-		// Check critical RAM
-		if s.RAM >= ThresholdRAMCritical {
-			handleCriticalRAM(bot, s)
-		}
-
-		// Clean restart counter (every hour)
-		cleanRestartCounter()
-
-		// ════════════ BETA FEATURES ════════════
-		checkDockerHealth(bot)
-		checkWeeklyPrune(bot)
 	}
 }
 
 func checkDockerHealth(bot *tgbotapi.BotAPI) {
 	// Check if Docker service responds and has containers
-	// getContainerList returns nil on error (e.g. docker not running)
-	// or empty list if docker runs but no containers.
 	containers := getContainerList()
 
-	isHealthy := containers != nil && len(containers) > 0
+	isHealthy := len(containers) > 0
 
 	if isHealthy {
 		// All good, reset timer
 		if !dockerFailureStart.IsZero() {
 			dockerFailureStart = time.Time{}
-			log.Println("[Beta] Docker recovered/populated.")
+			log.Println("[Docker] Recovered/populated.")
 		}
 		return
 	}
@@ -1520,39 +2412,59 @@ func checkDockerHealth(bot *tgbotapi.BotAPI) {
 	// Detected problem (error or 0 containers)
 	if dockerFailureStart.IsZero() {
 		dockerFailureStart = time.Now()
-		log.Println("[Beta] Docker warning: 0 containers or service down. Start timer 2m.")
+		log.Printf("[Docker] Warning: 0 containers or service down. Timer started (%dm).", cfg.Docker.Watchdog.TimeoutMinutes)
 		return
 	}
 
-	// If in failure state for > 2 minutes
-	if time.Since(dockerFailureStart) > 2*time.Minute {
-		log.Println("[Beta] ⚠️ Docker down > 2m. Attempting restart...")
+	timeout := time.Duration(cfg.Docker.Watchdog.TimeoutMinutes) * time.Minute
 
-		bot.Send(tgbotapi.NewMessage(AllowedUserID, "⚠️ *Docker Watchdog*\n\nNo containers detected for 2 minutes.\nRestarting Docker service..."))
+	// If in failure state for > configured timeout
+	if time.Since(dockerFailureStart) > timeout {
+		log.Printf("[Docker] ⚠️ Down > %dm.", cfg.Docker.Watchdog.TimeoutMinutes)
+
+		// Reset timer to avoid immediate loop
+		dockerFailureStart = time.Now()
+
+		// Only restart if configured to do so
+		if !cfg.Docker.Watchdog.AutoRestartService {
+			if !isQuietHours() {
+				bot.Send(tgbotapi.NewMessage(AllowedUserID,
+					fmt.Sprintf("⚠️ *Docker Watchdog*\n\nNo containers detected for %d minutes.\n_Auto-restart disabled in config_",
+						cfg.Docker.Watchdog.TimeoutMinutes)))
+			}
+			addReportEvent("warning", "Docker watchdog triggered (restart disabled)")
+			return
+		}
+
+		if !isQuietHours() {
+			bot.Send(tgbotapi.NewMessage(AllowedUserID,
+				fmt.Sprintf("⚠️ *Docker Watchdog*\n\nNo containers detected for %d minutes.\nRestarting Docker service...",
+					cfg.Docker.Watchdog.TimeoutMinutes)))
+		}
 
 		addReportEvent("action", "Docker watchdog restart triggered")
-
-		// Reset timer to avoid immediate loop (wait another 2 min after restart)
-		dockerFailureStart = time.Now()
 
 		// Execute restart command
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
 		defer cancel()
 
-		cmd := exec.CommandContext(ctx, "systemctl", "restart", "docker")
-		// Fallback for init.d systems if systemctl is missing
-		if _, err := exec.LookPath("systemctl"); err != nil {
-			cmd = exec.CommandContext(ctx, "/etc/init.d/nasbot", "restart") // No, restart docker
-			// Try standard service command
+		var cmd *exec.Cmd
+		if _, err := exec.LookPath("systemctl"); err == nil {
+			cmd = exec.CommandContext(ctx, "systemctl", "restart", "docker")
+		} else {
 			cmd = exec.CommandContext(ctx, "service", "docker", "restart")
 		}
 
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			bot.Send(tgbotapi.NewMessage(AllowedUserID, fmt.Sprintf("❌ Docker restart error:\n`%v`", err)))
+			if !isQuietHours() {
+				bot.Send(tgbotapi.NewMessage(AllowedUserID, fmt.Sprintf("❌ Docker restart error:\n`%v`", err)))
+			}
 			log.Printf("[!] Docker restart fail: %v\n%s", err, string(out))
 		} else {
-			bot.Send(tgbotapi.NewMessage(AllowedUserID, "✅ Restart command sent."))
+			if !isQuietHours() {
+				bot.Send(tgbotapi.NewMessage(AllowedUserID, "✅ Docker restart command sent."))
+			}
 		}
 	}
 }
@@ -1560,16 +2472,33 @@ func checkDockerHealth(bot *tgbotapi.BotAPI) {
 func checkWeeklyPrune(bot *tgbotapi.BotAPI) {
 	now := time.Now().In(location)
 
-	// Run ONLY on Sunday at 04:xx AM
-	isTime := now.Weekday() == time.Sunday && now.Hour() == 4
+	// Get target day from config
+	targetDay := time.Sunday
+	switch strings.ToLower(cfg.Docker.WeeklyPrune.Day) {
+	case "monday":
+		targetDay = time.Monday
+	case "tuesday":
+		targetDay = time.Tuesday
+	case "wednesday":
+		targetDay = time.Wednesday
+	case "thursday":
+		targetDay = time.Thursday
+	case "friday":
+		targetDay = time.Friday
+	case "saturday":
+		targetDay = time.Saturday
+	case "sunday":
+		targetDay = time.Sunday
+	}
+
+	isTime := now.Weekday() == targetDay && now.Hour() == cfg.Docker.WeeklyPrune.Hour
 
 	if isTime {
 		if !pruneDoneToday {
-			log.Println("[Beta] Running Weekly Prune...")
+			log.Println("[Docker] Running Weekly Prune...")
 			pruneDoneToday = true
 
 			go func() {
-				// docker system prune -a (all images) -f (force)
 				cmd := exec.Command("docker", "system", "prune", "-a", "-f")
 				out, err := cmd.CombinedOutput()
 
@@ -1577,30 +2506,29 @@ func checkWeeklyPrune(bot *tgbotapi.BotAPI) {
 				if err != nil {
 					msg = fmt.Sprintf("🧹 *Weekly Prune Error*\n\n`%v`", err)
 				} else {
-					// Extract useful info from output (space reclaimed)
 					output := string(out)
 					lines := strings.Split(output, "\n")
 					lastLine := ""
-					if len(lines) > 0 {
-						for i := len(lines) - 1; i >= 0; i-- {
-							if strings.TrimSpace(lines[i]) != "" {
-								lastLine = lines[i]
-								break
-							}
+					for i := len(lines) - 1; i >= 0; i-- {
+						if strings.TrimSpace(lines[i]) != "" {
+							lastLine = lines[i]
+							break
 						}
 					}
 					msg = fmt.Sprintf("🧹 *Weekly Prune*\n\nUnused images removed.\n`%s`", lastLine)
 					addReportEvent("info", "Weekly docker prune completed")
 				}
 
-				m := tgbotapi.NewMessage(AllowedUserID, msg)
-				m.ParseMode = "Markdown"
-				bot.Send(m)
+				if !isQuietHours() {
+					m := tgbotapi.NewMessage(AllowedUserID, msg)
+					m.ParseMode = "Markdown"
+					bot.Send(m)
+				}
 			}()
 		}
 	} else {
-		// Reset flag when not in hour X anymore (so ready for next week)
-		if now.Hour() != 4 {
+		// Reset flag when not in target hour anymore
+		if now.Hour() != cfg.Docker.WeeklyPrune.Hour {
 			pruneDoneToday = false
 		}
 	}
@@ -1618,6 +2546,7 @@ func checkResourceStress(bot *tgbotapi.BotAPI, resource string, currentValue, th
 	}
 
 	isStressed := currentValue >= threshold
+	stressDurationThreshold := time.Duration(cfg.StressTracking.DurationThresholdMinutes) * time.Minute
 
 	if isStressed {
 		// Start new stress period
@@ -1627,25 +2556,25 @@ func checkResourceStress(bot *tgbotapi.BotAPI, resource string, currentValue, th
 			tracker.Notified = false
 		}
 
-		// Notify if prolonged stress (>2 min) and not already notified and not in quiet hours
+		// Notify if prolonged stress and not already notified and not in quiet hours
 		stressDuration := time.Since(tracker.CurrentStart)
-		if stressDuration >= DurationStressDisk && !tracker.Notified && !isQuietHours() {
+		if stressDuration >= stressDurationThreshold && !tracker.Notified && !isQuietHours() {
 			var emoji, unit string
 			switch resource {
 			case "HDD":
-				emoji = "~"
+				emoji = "💾"
 				unit = "I/O"
 			case "SSD":
-				emoji = "~"
+				emoji = "💿"
 				unit = "Usage"
 			case "CPU":
-				emoji = "~"
+				emoji = "🧠"
 				unit = "Usage"
 			case "RAM":
-				emoji = "~"
+				emoji = "💾"
 				unit = "Usage"
 			case "Swap":
-				emoji = "~"
+				emoji = "🔄"
 				unit = "Usage"
 			}
 
@@ -1675,7 +2604,7 @@ func checkResourceStress(bot *tgbotapi.BotAPI, resource string, currentValue, th
 
 			// Notify stress end if it was notified and not in quiet hours
 			if tracker.Notified && !isQuietHours() {
-				msg := fmt.Sprintf("✓ *%s back to normal* after `%s`", resource, stressDuration.Round(time.Second))
+				msg := fmt.Sprintf("✅ *%s back to normal* after `%s`", resource, stressDuration.Round(time.Second))
 				m := tgbotapi.NewMessage(AllowedUserID, msg)
 				m.ParseMode = "Markdown"
 				bot.Send(m)
@@ -1797,8 +2726,9 @@ func handleCriticalRAM(bot *tgbotapi.BotAPI, s Stats) {
 		}
 	}
 
-	// If RAM >98% and we have heavy containers, consider restart
-	if s.RAM >= 98 && len(heavyContainers) > 0 {
+	// If RAM exceeds threshold and we have heavy containers, consider restart
+	ramThreshold := cfg.Docker.AutoRestartOnRAMCritical.RAMThreshold
+	if s.RAM >= ramThreshold && len(heavyContainers) > 0 {
 		// Sort by consumption
 		sort.Slice(heavyContainers, func(i, j int) bool {
 			return heavyContainers[i].memPct > heavyContainers[j].memPct
@@ -1818,22 +2748,24 @@ func handleCriticalRAM(bot *tgbotapi.BotAPI, s Stats) {
 
 			var msgText string
 			if err != nil {
-				msgText = fmt.Sprintf("! *Auto-restart failed*\n\n"+
+				msgText = fmt.Sprintf("❌ *Auto-restart failed*\n\n"+
 					"RAM critical: `%.1f%%`\n"+
 					"Container: `%s`\n"+
 					"Error: %v", s.RAM, target.name, err)
 				addReportEvent("critical", fmt.Sprintf("Auto-restart failed: %s (%v)", target.name, err))
 			} else {
-				msgText = fmt.Sprintf("> *Auto-restart done*\n\n"+
+				msgText = fmt.Sprintf("🔄 *Auto-restart done*\n\n"+
 					"RAM was critical: `%.1f%%`\n"+
 					"Restarted: `%s` (`%.1f%%` mem)\n\n"+
 					"_Watching..._", s.RAM, target.name, target.memPct)
 				addReportEvent("action", fmt.Sprintf("Auto-restart: %s (RAM %.1f%%)", target.name, s.RAM))
 			}
 
-			msg := tgbotapi.NewMessage(AllowedUserID, msgText)
-			msg.ParseMode = "Markdown"
-			bot.Send(msg)
+			if !isQuietHours() {
+				msg := tgbotapi.NewMessage(AllowedUserID, msgText)
+				msg.ParseMode = "Markdown"
+				bot.Send(msg)
+			}
 		}
 	}
 }
@@ -1853,7 +2785,12 @@ func canAutoRestart(containerName string) bool {
 		}
 	}
 
-	return count < MaxRestartContainer
+	maxRestarts := cfg.Docker.AutoRestartOnRAMCritical.MaxRestartsPerHour
+	if maxRestarts <= 0 {
+		maxRestarts = 3
+	}
+
+	return count < maxRestarts
 }
 
 func recordAutoRestart(containerName string) {
@@ -2024,25 +2961,36 @@ func monitorAlerts(bot *tgbotapi.BotAPI) {
 		// Only immediate CRITICAL alerts (disk full, SMART failure)
 		var criticalAlerts []string
 
-		// Disk almost full
-		if s.VolSSD.Used >= 95 {
-			criticalAlerts = append(criticalAlerts, fmt.Sprintf("SSD critical: `%.1f%%`", s.VolSSD.Used))
+		// Disk almost full (using config thresholds)
+		if cfg.Notifications.DiskSSD.Enabled && s.VolSSD.Used >= cfg.Notifications.DiskSSD.CriticalThreshold {
+			criticalAlerts = append(criticalAlerts, fmt.Sprintf("💿 SSD critical: `%.1f%%`", s.VolSSD.Used))
 		}
-		if s.VolHDD.Used >= 95 {
-			criticalAlerts = append(criticalAlerts, fmt.Sprintf("HDD critical: `%.1f%%`", s.VolHDD.Used))
+		if cfg.Notifications.DiskHDD.Enabled && s.VolHDD.Used >= cfg.Notifications.DiskHDD.CriticalThreshold {
+			criticalAlerts = append(criticalAlerts, fmt.Sprintf("🗄 HDD critical: `%.1f%%`", s.VolHDD.Used))
 		}
 
 		// Check SMART
-		for _, dev := range []string{"sda", "sdb"} {
-			_, health := readDiskSMART(dev)
-			if strings.Contains(strings.ToUpper(health), "FAIL") {
-				criticalAlerts = append(criticalAlerts, fmt.Sprintf("Disk %s FAILING — backup now!", dev))
+		if cfg.Notifications.SMART.Enabled {
+			for _, dev := range []string{"sda", "sdb"} {
+				_, health := readDiskSMART(dev)
+				if strings.Contains(strings.ToUpper(health), "FAIL") {
+					criticalAlerts = append(criticalAlerts, fmt.Sprintf("🚨 Disk %s FAILING — backup now!", dev))
+				}
 			}
 		}
 
-		// Send critical alerts with 30min cooldown
-		if len(criticalAlerts) > 0 && time.Since(lastCriticalAlert).Minutes() >= 30 && !isQuietHours() {
-			msg := "! *Critical*\n\n" + strings.Join(criticalAlerts, "\n")
+		// Critical CPU/RAM
+		if cfg.Notifications.CPU.Enabled && s.CPU >= cfg.Notifications.CPU.CriticalThreshold {
+			criticalAlerts = append(criticalAlerts, fmt.Sprintf("🧠 CPU critical: `%.1f%%`", s.CPU))
+		}
+		if cfg.Notifications.RAM.Enabled && s.RAM >= cfg.Notifications.RAM.CriticalThreshold {
+			criticalAlerts = append(criticalAlerts, fmt.Sprintf("💾 RAM critical: `%.1f%%`", s.RAM))
+		}
+
+		// Send critical alerts with configurable cooldown
+		cooldown := time.Duration(cfg.Intervals.CriticalAlertCooldownMins) * time.Minute
+		if len(criticalAlerts) > 0 && time.Since(lastCriticalAlert) >= cooldown && !isQuietHours() {
+			msg := "🚨 *Critical*\n\n" + strings.Join(criticalAlerts, "\n")
 			m := tgbotapi.NewMessage(AllowedUserID, msg)
 			m.ParseMode = "Markdown"
 			bot.Send(m)
@@ -2056,17 +3004,20 @@ func monitorAlerts(bot *tgbotapi.BotAPI) {
 			}
 		}
 
-		// Record warnings for the report
-		if s.CPU >= ThresholdCPU {
+		// Record warnings for the report (only if notifications enabled for that resource)
+		if cfg.Notifications.CPU.Enabled && s.CPU >= cfg.Notifications.CPU.WarningThreshold && s.CPU < cfg.Notifications.CPU.CriticalThreshold {
 			addReportEvent("warning", fmt.Sprintf("CPU high: %.1f%%", s.CPU))
 		}
-		if s.RAM >= ThresholdRAM && s.RAM < ThresholdRAMCritical {
+		if cfg.Notifications.RAM.Enabled && s.RAM >= cfg.Notifications.RAM.WarningThreshold && s.RAM < cfg.Notifications.RAM.CriticalThreshold {
 			addReportEvent("warning", fmt.Sprintf("RAM high: %.1f%%", s.RAM))
 		}
-		if s.VolSSD.Used >= ThresholdDisk && s.VolSSD.Used < 95 {
+		if cfg.Notifications.Swap.Enabled && s.Swap >= cfg.Notifications.Swap.WarningThreshold {
+			addReportEvent("warning", fmt.Sprintf("Swap high: %.1f%%", s.Swap))
+		}
+		if cfg.Notifications.DiskSSD.Enabled && s.VolSSD.Used >= cfg.Notifications.DiskSSD.WarningThreshold && s.VolSSD.Used < cfg.Notifications.DiskSSD.CriticalThreshold {
 			addReportEvent("warning", fmt.Sprintf("SSD at %.1f%%", s.VolSSD.Used))
 		}
-		if s.VolHDD.Used >= ThresholdDisk && s.VolHDD.Used < 95 {
+		if cfg.Notifications.DiskHDD.Enabled && s.VolHDD.Used >= cfg.Notifications.DiskHDD.WarningThreshold && s.VolHDD.Used < cfg.Notifications.DiskHDD.CriticalThreshold {
 			addReportEvent("warning", fmt.Sprintf("HDD at %.1f%%", s.VolHDD.Used))
 		}
 	}

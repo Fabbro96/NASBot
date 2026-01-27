@@ -1,5 +1,36 @@
-config.json
+# Binaries
 nasbot
+nasbot_test
+*.exe
+
+# Config with secrets (contains bot token!)
+config.json
+
+# State files
 nasbot_state.json
-nasbot.log
-nasbot.pid
+*.state
+*.pid
+
+# Logs
+*.log
+logs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+
+# Test coverage
+coverage.out
+coverage.html
+nasbot-arm64

@@ -7,7 +7,8 @@
 set -e
 
 # ─── CONFIG ─────────────────────────────────────────
-BOT_DIR="/Volume1/public"
+# Detect the directory where the script is located
+BOT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 SCRIPT_PATH="$BOT_DIR/start_bot.sh"
 CRON_SCHEDULE="*/5 * * * *"  # Every 5 minutes
 # ────────────────────────────────────────────────────

@@ -5,7 +5,8 @@
 # ═══════════════════════════════════════════════════════════════════
 
 # ─── CONFIG ─────────────────────────────────────────
-BOT_DIR="/Volume1/public"
+# Detect the directory where the script is located
+BOT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 BOT_NAME="nasbot"
 LOG_FILE="$BOT_DIR/nasbot.log"
 PID_FILE="$BOT_DIR/nasbot.pid"
