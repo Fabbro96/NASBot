@@ -192,61 +192,130 @@ var (
 	diskUsageHistory      []DiskUsagePoint
 	diskUsageHistoryMutex sync.Mutex
 
-	// Language
+	// User settings (persistent)
 	currentLanguage = "en"
+	reportMode      = 2 // 0=disabled, 1=once daily, 2=twice daily
+
+	// Runtime config (overridable by user)
+	reportMorningHour   = 7
+	reportMorningMinute = 30
+	reportEveningHour   = 18
+	reportEveningMinute = 30
+
+	quietHoursEnabled = true
+	quietStartHour    = 23
+	quietStartMinute  = 30
+	quietEndHour      = 7
+	quietEndMinute    = 0
+
+	dockerPruneEnabled = true
+	dockerPruneDay     = "sunday"
+	dockerPruneHour    = 4
 )
 
 // Translations
 var translations = map[string]map[string]string{
 	"en": {
-		"status_title": "🖥 *NAS* at %s\n\n",
-		"cpu_fmt":      "🧠 CPU  %s %2.0f%%\n",
-		"ram_fmt":      "💾 RAM  %s %2.0f%%\n",
-		"swap_fmt":     "🔄 Swap %s %2.0f%%\n",
-		"ssd_fmt":      "\n💿 SSD %2.0f%% · %s free\n",
-		"hdd_fmt":      "🗄 HDD %2.0f%% · %s free\n",
-		"disk_io_fmt":  "\n📡 Disk I/O at %.0f%%",
-		"disk_rw_fmt":  " (R %.0f / W %.0f MB/s)",
-		"uptime_fmt":   "\n_⏱ Running for %s_",
-		"loading":      "_loading..._",
-		"lang_select":  "🌐 Select Language / Seleziona Lingua",
-		"lang_set_en":  "✅ Language set to English",
-		"lang_set_it":  "✅ Lingua impostata su Italiano",
-		"start":        "▶️ Start",
-		"stop":         "⏹ Stop",
-		"restart":      "🔄 Restart",
-		"kill":         "💀 Force Kill",
-		"logs":         "📝 Logs",
-		"yes":          "✅ Yes",
-		"no":           "❌ No",
-		"confirm_action": "%s *%s*?",
-		"kill_warn":    "\n\n⚠️ _This will forcefully terminate the container!_",
-		"back":         "⬅️ Back",
+		"status_title":     "🖥 *NAS* at %s\n\n",
+		"cpu_fmt":          "🧠 CPU  %s %2.0f%%\n",
+		"ram_fmt":          "💾 RAM  %s %2.0f%%\n",
+		"swap_fmt":         "🔄 Swap %s %2.0f%%\n",
+		"ssd_fmt":          "\n💿 SSD %2.0f%% · %s free\n",
+		"hdd_fmt":          "🗄 HDD %2.0f%% · %s free\n",
+		"disk_io_fmt":      "\n📡 Disk I/O at %.0f%%",
+		"disk_rw_fmt":      " (R %.0f / W %.0f MB/s)",
+		"uptime_fmt":       "\n_⏱ Running for %s_",
+		"loading":          "_loading..._",
+		"lang_select":      "🌐 Select Language / Seleziona Lingua",
+		"lang_set_en":      "✅ Language set to English",
+		"lang_set_it":      "✅ Lingua impostata su Italiano",
+		"start":            "▶️ Start",
+		"stop":             "⏹ Stop",
+		"restart":          "🔄 Restart",
+		"kill":             "💀 Force Kill",
+		"logs":             "📝 Logs",
+		"yes":              "✅ Yes",
+		"no":               "❌ No",
+		"confirm_action":   "%s *%s*?",
+		"kill_warn":        "\n\n⚠️ _This will forcefully terminate the container!_",
+		"back":             "⬅️ Back",
+		"settings_title":   "⚙️ *Settings*",
+		"settings_lang":    "🌐 Language",
+		"settings_reports": "📨 Daily Reports",
+		"settings_quiet":   "🌙 Quiet Hours",
+		"settings_prune":   "🧹 Docker Prune",
+		"report_disabled":  "Disabled",
+		"report_once":      "Once daily",
+		"report_twice":     "Twice daily",
+		"settings_saved":   "✅ Settings saved",
+		"quiet_enabled":    "Enabled",
+		"quiet_disabled":   "Disabled",
+		"prune_enabled":    "Enabled",
+		"prune_disabled":   "Disabled",
+		"set_time":         "Set Time",
+		"enabled":          "Enabled",
+		"disabled":         "Disabled",
+		"enable":           "Enable",
+		"disable":          "Disable",
+		"schedule":         "Schedule",
+		"monday":           "Monday",
+		"tuesday":          "Tuesday",
+		"wednesday":        "Wednesday",
+		"thursday":         "Thursday",
+		"friday":           "Friday",
+		"saturday":         "Saturday",
+		"sunday":           "Sunday",
 	},
 	"it": {
-		"status_title": "🖥 *NAS* alle %s\n\n",
-		"cpu_fmt":      "🧠 CPU  %s %2.0f%%\n",
-		"ram_fmt":      "💾 RAM  %s %2.0f%%\n",
-		"swap_fmt":     "🔄 Swap %s %2.0f%%\n",
-		"ssd_fmt":      "\n💿 SSD %2.0f%% · %s liberi\n",
-		"hdd_fmt":      "🗄 HDD %2.0f%% · %s liberi\n",
-		"disk_io_fmt":  "\n📡 I/O Disco al %.0f%%",
-		"disk_rw_fmt":  " (L %.0f / S %.0f MB/s)",
-		"uptime_fmt":   "\n_⏱ Attivo da %s_",
-		"loading":      "_caricamento..._",
-		"lang_select":  "🌐 Seleziona Lingua",
-		"lang_set_en":  "✅ Language set to English",
-		"lang_set_it":  "✅ Lingua impostata su Italiano",
-		"start":        "▶️ Avvia",
-		"stop":         "⏹ Ferma",
-		"restart":      "🔄 Riavvia",
-		"kill":         "💀 Uccidi",
-		"logs":         "📝 Logs",
-		"yes":          "✅ Si",
-		"no":           "❌ No",
-		"confirm_action": "%s *%s*?",
-		"kill_warn":    "\n\n⚠️ _Questo terminerà forzatamente il container!_",
-		"back":         "⬅️ Indietro",
+		"status_title":     "🖥 *NAS* alle %s\n\n",
+		"cpu_fmt":          "🧠 CPU  %s %2.0f%%\n",
+		"ram_fmt":          "💾 RAM  %s %2.0f%%\n",
+		"swap_fmt":         "🔄 Swap %s %2.0f%%\n",
+		"ssd_fmt":          "\n💿 SSD %2.0f%% · %s liberi\n",
+		"hdd_fmt":          "🗄 HDD %2.0f%% · %s liberi\n",
+		"disk_io_fmt":      "\n📡 I/O Disco al %.0f%%",
+		"disk_rw_fmt":      " (L %.0f / S %.0f MB/s)",
+		"uptime_fmt":       "\n_⏱ Attivo da %s_",
+		"loading":          "_caricamento..._",
+		"lang_select":      "🌐 Seleziona Lingua",
+		"lang_set_en":      "✅ Language set to English",
+		"lang_set_it":      "✅ Lingua impostata su Italiano",
+		"start":            "▶️ Avvia",
+		"stop":             "⏹ Ferma",
+		"restart":          "🔄 Riavvia",
+		"kill":             "💀 Uccidi",
+		"logs":             "📝 Logs",
+		"yes":              "✅ Si",
+		"no":               "❌ No",
+		"confirm_action":   "%s *%s*?",
+		"kill_warn":        "\n\n⚠️ _Questo terminerà forzatamente il container!_",
+		"back":             "⬅️ Indietro",
+		"settings_title":   "⚙️ *Impostazioni*",
+		"settings_lang":    "🌐 Lingua",
+		"settings_reports": "📨 Report Giornalieri",
+		"settings_quiet":   "🌙 Ore Silenziose",
+		"settings_prune":   "🧹 Pulizia Docker",
+		"report_disabled":  "Disabilitati",
+		"report_once":      "Una volta al giorno",
+		"report_twice":     "Due volte al giorno",
+		"settings_saved":   "✅ Impostazioni salvate",
+		"quiet_enabled":    "Abilitate",
+		"quiet_disabled":   "Disabilitate",
+		"prune_enabled":    "Abilitata",
+		"prune_disabled":   "Disabilitata",
+		"set_time":         "Imposta Orario",
+		"enabled":          "Abilitato",
+		"disabled":         "Disabilitato",
+		"enable":           "Abilita",
+		"disable":          "Disabilita",
+		"schedule":         "Programmazione",
+		"monday":           "Lunedì",
+		"tuesday":          "Martedì",
+		"wednesday":        "Mercoledì",
+		"thursday":         "Giovedì",
+		"friday":           "Venerdì",
+		"saturday":         "Sabato",
+		"sunday":           "Domenica",
 	},
 }
 
@@ -299,6 +368,23 @@ type BotState struct {
 	LastReportTime time.Time              `json:"last_report_time"`
 	AutoRestarts   map[string][]time.Time `json:"auto_restarts"`
 	Language       string                 `json:"language"`
+	ReportMode     int                    `json:"report_mode"` // 0=disabled, 1=once, 2=twice
+
+	// User-configurable settings
+	ReportMorningHour   int `json:"report_morning_hour"`
+	ReportMorningMinute int `json:"report_morning_minute"`
+	ReportEveningHour   int `json:"report_evening_hour"`
+	ReportEveningMinute int `json:"report_evening_minute"`
+
+	QuietHoursEnabled bool `json:"quiet_hours_enabled"`
+	QuietStartHour    int  `json:"quiet_start_hour"`
+	QuietStartMinute  int  `json:"quiet_start_minute"`
+	QuietEndHour      int  `json:"quiet_end_hour"`
+	QuietEndMinute    int  `json:"quiet_end_minute"`
+
+	DockerPruneEnabled bool   `json:"docker_prune_enabled"`
+	DockerPruneDay     string `json:"docker_prune_day"`
+	DockerPruneHour    int    `json:"docker_prune_hour"`
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -477,7 +563,7 @@ func applyConfigDefaults() {
 
 // isQuietHours checks if we are in quiet hours based on config
 func isQuietHours() bool {
-	if !cfg.QuietHours.Enabled {
+	if !quietHoursEnabled {
 		return false
 	}
 
@@ -486,8 +572,8 @@ func isQuietHours() bool {
 	minute := now.Minute()
 	currentMins := hour*60 + minute
 
-	startMins := cfg.QuietHours.StartHour*60 + cfg.QuietHours.StartMinute
-	endMins := cfg.QuietHours.EndHour*60 + cfg.QuietHours.EndMinute
+	startMins := quietStartHour*60 + quietStartMinute
+	endMins := quietEndHour*60 + quietEndMinute
 
 	// Handle overnight quiet hours (e.g., 23:30 - 07:00)
 	if startMins > endMins {
@@ -514,15 +600,56 @@ func loadState() {
 	if state.Language != "" {
 		currentLanguage = state.Language
 	}
+	if state.ReportMode > 0 {
+		reportMode = state.ReportMode
+	}
+
+	// Load user-configurable settings
+	if state.ReportMorningHour > 0 || state.ReportMorningMinute > 0 {
+		reportMorningHour = state.ReportMorningHour
+		reportMorningMinute = state.ReportMorningMinute
+	}
+	if state.ReportEveningHour > 0 || state.ReportEveningMinute > 0 {
+		reportEveningHour = state.ReportEveningHour
+		reportEveningMinute = state.ReportEveningMinute
+	}
+
+	if state.QuietStartHour > 0 || state.QuietStartMinute > 0 {
+		quietHoursEnabled = state.QuietHoursEnabled
+		quietStartHour = state.QuietStartHour
+		quietStartMinute = state.QuietStartMinute
+		quietEndHour = state.QuietEndHour
+		quietEndMinute = state.QuietEndMinute
+	}
+
+	if state.DockerPruneDay != "" {
+		dockerPruneEnabled = state.DockerPruneEnabled
+		dockerPruneDay = state.DockerPruneDay
+		dockerPruneHour = state.DockerPruneHour
+	}
+
 	log.Printf("[+] State restored")
 }
 
 func saveState() {
 	autoRestartsMutex.Lock()
 	state := BotState{
-		LastReportTime: lastReportTime,
-		AutoRestarts:   autoRestarts,
-		Language:       currentLanguage,
+		LastReportTime:      lastReportTime,
+		AutoRestarts:        autoRestarts,
+		Language:            currentLanguage,
+		ReportMode:          reportMode,
+		ReportMorningHour:   reportMorningHour,
+		ReportMorningMinute: reportMorningMinute,
+		ReportEveningHour:   reportEveningHour,
+		ReportEveningMinute: reportEveningMinute,
+		QuietHoursEnabled:   quietHoursEnabled,
+		QuietStartHour:      quietStartHour,
+		QuietStartMinute:    quietStartMinute,
+		QuietEndHour:        quietEndHour,
+		QuietEndMinute:      quietEndMinute,
+		DockerPruneEnabled:  dockerPruneEnabled,
+		DockerPruneDay:      dockerPruneDay,
+		DockerPruneHour:     dockerPruneHour,
 	}
 	autoRestartsMutex.Unlock()
 
@@ -554,10 +681,10 @@ func main() {
 	nextReportStr := getNextReportDescription()
 
 	var quietInfo string
-	if cfg.QuietHours.Enabled {
+	if quietHoursEnabled {
 		quietInfo = fmt.Sprintf("\n🌙 _Quiet: %02d:%02d — %02d:%02d_",
-			cfg.QuietHours.StartHour, cfg.QuietHours.StartMinute,
-			cfg.QuietHours.EndHour, cfg.QuietHours.EndMinute)
+			quietStartHour, quietStartMinute,
+			quietEndHour, quietEndMinute)
 	}
 
 	startupText := fmt.Sprintf(`*NASBot is online* 👋
@@ -583,9 +710,7 @@ _Type /help to see what I can do_`, nextReportStr, quietInfo)
 	// Start background goroutines
 	go statsCollector()
 	go monitorAlerts(bot)
-	if cfg.Reports.Enabled {
-		go periodicReport(bot)
-	}
+	go periodicReport(bot)
 	go autonomousManager(bot)
 
 	// Wait for first stats cycle
@@ -613,38 +738,29 @@ _Type /help to see what I can do_`, nextReportStr, quietInfo)
 
 // getNextReportDescription returns a description of the next scheduled report
 func getNextReportDescription() string {
-	if !cfg.Reports.Enabled {
+	if reportMode == 0 {
 		return "\n📭 _Reports disabled_"
-	}
-
-	morningEnabled := cfg.Reports.Morning.Enabled
-	eveningEnabled := cfg.Reports.Evening.Enabled
-
-	if !morningEnabled && !eveningEnabled {
-		return "\n📭 _No reports scheduled_"
 	}
 
 	now := time.Now().In(location)
 
-	if morningEnabled && eveningEnabled {
+	if reportMode == 2 {
 		// Both enabled, find next
 		morning := time.Date(now.Year(), now.Month(), now.Day(),
-			cfg.Reports.Morning.Hour, cfg.Reports.Morning.Minute, 0, 0, location)
+			reportMorningHour, reportMorningMinute, 0, 0, location)
 		evening := time.Date(now.Year(), now.Month(), now.Day(),
-			cfg.Reports.Evening.Hour, cfg.Reports.Evening.Minute, 0, 0, location)
+			reportEveningHour, reportEveningMinute, 0, 0, location)
 
 		if now.Before(morning) {
-			return fmt.Sprintf("\n📨 _Next report: %02d:%02d_", cfg.Reports.Morning.Hour, cfg.Reports.Morning.Minute)
+			return fmt.Sprintf("\n📨 _Next report: %02d:%02d_", reportMorningHour, reportMorningMinute)
 		} else if now.Before(evening) {
-			return fmt.Sprintf("\n📨 _Next report: %02d:%02d_", cfg.Reports.Evening.Hour, cfg.Reports.Evening.Minute)
+			return fmt.Sprintf("\n📨 _Next report: %02d:%02d_", reportEveningHour, reportEveningMinute)
 		}
-		return fmt.Sprintf("\n📨 _Next report: %02d:%02d (tomorrow)_", cfg.Reports.Morning.Hour, cfg.Reports.Morning.Minute)
+		return fmt.Sprintf("\n📨 _Next report: %02d:%02d (tomorrow)_", reportMorningHour, reportMorningMinute)
 	}
 
-	if morningEnabled {
-		return fmt.Sprintf("\n📨 _Daily report: %02d:%02d_", cfg.Reports.Morning.Hour, cfg.Reports.Morning.Minute)
-	}
-	return fmt.Sprintf("\n📨 _Daily report: %02d:%02d_", cfg.Reports.Evening.Hour, cfg.Reports.Evening.Minute)
+	// Once daily (morning)
+	return fmt.Sprintf("\n📨 _Daily report: %02d:%02d_", reportMorningHour, reportMorningMinute)
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -694,6 +810,8 @@ func handleCommand(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) {
 		askPowerConfirmation(bot, chatID, 0, "shutdown")
 	case "language":
 		sendLanguageSelection(bot, chatID)
+	case "settings":
+		sendSettingsMenu(bot, chatID)
 	case "help":
 		sendMarkdown(bot, chatID, getHelpText())
 	default:
@@ -719,6 +837,111 @@ func handleCallback(bot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery) {
 		currentLanguage = "it"
 		saveState()
 		editMessage(bot, chatID, msgID, tr("lang_set_it"), nil)
+		return
+	}
+
+	// Settings menu
+	if data == "settings_change_lang" {
+		msg := tgbotapi.NewEditMessageText(chatID, msgID, tr("lang_select"))
+		kb := tgbotapi.NewInlineKeyboardMarkup(
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("🇬🇧 English", "set_lang_en_settings"),
+				tgbotapi.NewInlineKeyboardButtonData("🇮🇹 Italiano", "set_lang_it_settings"),
+			),
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData(tr("back"), "back_settings"),
+			),
+		)
+		msg.ReplyMarkup = &kb
+		bot.Send(msg)
+		return
+	}
+	if data == "set_lang_en_settings" {
+		currentLanguage = "en"
+		saveState()
+		text, kb := getSettingsMenuText()
+		editMessage(bot, chatID, msgID, text, &kb)
+		return
+	}
+	if data == "set_lang_it_settings" {
+		currentLanguage = "it"
+		saveState()
+		text, kb := getSettingsMenuText()
+		editMessage(bot, chatID, msgID, text, &kb)
+		return
+	}
+	if data == "settings_change_reports" {
+		text, kb := getReportSettingsText()
+		editMessage(bot, chatID, msgID, text, &kb)
+		return
+	}
+	if strings.HasPrefix(data, "set_reports_") {
+		mode := 0
+		if data == "set_reports_1" {
+			mode = 1
+		} else if data == "set_reports_2" {
+			mode = 2
+		}
+		reportMode = mode
+		saveState()
+		text, kb := getSettingsMenuText()
+		editMessage(bot, chatID, msgID, text, &kb)
+		return
+	}
+	if data == "back_settings" {
+		text, kb := getSettingsMenuText()
+		editMessage(bot, chatID, msgID, text, &kb)
+		return
+	}
+	if data == "settings_change_quiet" {
+		text, kb := getQuietHoursSettingsText()
+		editMessage(bot, chatID, msgID, text, &kb)
+		return
+	}
+	if data == "quiet_enable" {
+		quietHoursEnabled = true
+		saveState()
+		text, kb := getQuietHoursSettingsText()
+		editMessage(bot, chatID, msgID, text, &kb)
+		return
+	}
+	if data == "quiet_disable" {
+		quietHoursEnabled = false
+		saveState()
+		text, kb := getQuietHoursSettingsText()
+		editMessage(bot, chatID, msgID, text, &kb)
+		return
+	}
+	if data == "settings_change_prune" {
+		text, kb := getDockerPruneSettingsText()
+		editMessage(bot, chatID, msgID, text, &kb)
+		return
+	}
+	if data == "prune_enable" {
+		dockerPruneEnabled = true
+		saveState()
+		text, kb := getDockerPruneSettingsText()
+		editMessage(bot, chatID, msgID, text, &kb)
+		return
+	}
+	if data == "prune_disable" {
+		dockerPruneEnabled = false
+		saveState()
+		text, kb := getDockerPruneSettingsText()
+		editMessage(bot, chatID, msgID, text, &kb)
+		return
+	}
+	if data == "prune_change_schedule" {
+		text, kb := getPruneScheduleText()
+		editMessage(bot, chatID, msgID, text, &kb)
+		return
+	}
+	if strings.HasPrefix(data, "prune_day_") {
+		day := strings.TrimPrefix(data, "prune_day_")
+		dockerPruneDay = day
+		saveState()
+		text, kb := getDockerPruneSettingsText()
+		editMessage(bot, chatID, msgID, text, &kb)
 		return
 	}
 
@@ -1109,7 +1332,8 @@ func getHelpText() string {
 	b.WriteString("/net — network info\n")
 	b.WriteString("/speedtest — run speed test\n\n")
 
-	b.WriteString("*📋 Reports & System*\n")
+	b.WriteString("*⚙️ Settings & System*\n")
+	b.WriteString("/settings — *configure everything*\n")
 	b.WriteString("/report — full detailed report\n")
 	b.WriteString("/ping — check if bot is alive\n")
 	b.WriteString("/config — show current config\n")
@@ -1117,23 +1341,21 @@ func getHelpText() string {
 	b.WriteString("/reboot · /shutdown — power control\n\n")
 
 	// Report schedule info
-	if cfg.Reports.Enabled {
+	if reportMode > 0 {
 		b.WriteString("_📨 Reports: ")
-		if cfg.Reports.Morning.Enabled && cfg.Reports.Evening.Enabled {
+		if reportMode == 2 {
 			b.WriteString(fmt.Sprintf("%02d:%02d & %02d:%02d_\n",
-				cfg.Reports.Morning.Hour, cfg.Reports.Morning.Minute,
-				cfg.Reports.Evening.Hour, cfg.Reports.Evening.Minute))
-		} else if cfg.Reports.Morning.Enabled {
-			b.WriteString(fmt.Sprintf("%02d:%02d_\n", cfg.Reports.Morning.Hour, cfg.Reports.Morning.Minute))
-		} else if cfg.Reports.Evening.Enabled {
-			b.WriteString(fmt.Sprintf("%02d:%02d_\n", cfg.Reports.Evening.Hour, cfg.Reports.Evening.Minute))
+				reportMorningHour, reportMorningMinute,
+				reportEveningHour, reportEveningMinute))
+		} else {
+			b.WriteString(fmt.Sprintf("%02d:%02d_\n", reportMorningHour, reportMorningMinute))
 		}
 	}
 
-	if cfg.QuietHours.Enabled {
+	if quietHoursEnabled {
 		b.WriteString(fmt.Sprintf("_🌙 Quiet: %02d:%02d — %02d:%02d_",
-			cfg.QuietHours.StartHour, cfg.QuietHours.StartMinute,
-			cfg.QuietHours.EndHour, cfg.QuietHours.EndMinute))
+			quietStartHour, quietStartMinute,
+			quietEndHour, quietEndMinute))
 	}
 
 	return b.String()
@@ -1446,6 +1668,203 @@ func sendLanguageSelection(bot *tgbotapi.BotAPI, chatID int64) {
 	)
 	msg.ReplyMarkup = kb
 	bot.Send(msg)
+}
+
+func sendSettingsMenu(bot *tgbotapi.BotAPI, chatID int64) {
+	text, kb := getSettingsMenuText()
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ParseMode = "Markdown"
+	msg.ReplyMarkup = kb
+	bot.Send(msg)
+}
+
+func getSettingsMenuText() (string, tgbotapi.InlineKeyboardMarkup) {
+	langName := "English 🇬🇧"
+	if currentLanguage == "it" {
+		langName = "Italiano 🇮🇹"
+	}
+
+	reportText := tr("report_disabled")
+	if reportMode == 1 {
+		reportText = tr("report_once")
+	} else if reportMode == 2 {
+		reportText = tr("report_twice")
+	}
+
+	quietText := tr("quiet_disabled")
+	if quietHoursEnabled {
+		quietText = fmt.Sprintf("%02d:%02d - %02d:%02d", quietStartHour, quietStartMinute, quietEndHour, quietEndMinute)
+	}
+
+	pruneText := tr("prune_disabled")
+	if dockerPruneEnabled {
+		pruneText = fmt.Sprintf("%s %02d:00", tr(dockerPruneDay), dockerPruneHour)
+	}
+
+	text := fmt.Sprintf("%s\n\n", tr("settings_title"))
+	text += fmt.Sprintf("🌐 %s: %s\n", tr("settings_lang"), langName)
+	text += fmt.Sprintf("📨 %s: %s\n", tr("settings_reports"), reportText)
+	text += fmt.Sprintf("🌙 %s: %s\n", tr("settings_quiet"), quietText)
+	text += fmt.Sprintf("🧹 %s: %s\n", tr("settings_prune"), pruneText)
+
+	kb := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🌐 "+tr("settings_lang"), "settings_change_lang"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("📨 "+tr("settings_reports"), "settings_change_reports"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🌙 "+tr("settings_quiet"), "settings_change_quiet"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🧹 "+tr("settings_prune"), "settings_change_prune"),
+		),
+	)
+
+	return text, kb
+}
+
+func getReportSettingsText() (string, tgbotapi.InlineKeyboardMarkup) {
+	var text string
+	if currentLanguage == "it" {
+		text = "📨 *Report Giornalieri*\n\nSeleziona la frequenza dei report automatici:"
+	} else {
+		text = "📨 *Daily Reports*\n\nSelect automatic report frequency:"
+	}
+
+	checkDisabled := " "
+	checkOnce := " "
+	checkTwice := " "
+
+	if reportMode == 0 {
+		checkDisabled = "✓"
+	} else if reportMode == 1 {
+		checkOnce = "✓"
+	} else if reportMode == 2 {
+		checkTwice = "✓"
+	}
+
+	kb := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(checkDisabled+" "+tr("report_disabled"), "set_reports_0"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(checkOnce+" "+tr("report_once"), "set_reports_1"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(checkTwice+" "+tr("report_twice"), "set_reports_2"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(tr("back"), "back_settings"),
+		),
+	)
+
+	return text, kb
+}
+
+func getQuietHoursSettingsText() (string, tgbotapi.InlineKeyboardMarkup) {
+	var text string
+	if currentLanguage == "it" {
+		text = "🌙 *Ore Silenziose*\n\nDurante questo periodo non riceverai notifiche.\n\n"
+	} else {
+		text = "🌙 *Quiet Hours*\n\nNo notifications during this period.\n\n"
+	}
+
+	if quietHoursEnabled {
+		text += fmt.Sprintf("Attualmente: %02d:%02d - %02d:%02d\n", quietStartHour, quietStartMinute, quietEndHour, quietEndMinute)
+	} else {
+		text += tr("disabled") + "\n"
+	}
+
+	toggleText := tr("enable")
+	toggleData := "quiet_enable"
+	if quietHoursEnabled {
+		toggleText = tr("disable")
+		toggleData = "quiet_disable"
+	}
+
+	kb := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(toggleText, toggleData),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(tr("back"), "back_settings"),
+		),
+	)
+
+	return text, kb
+}
+
+func getDockerPruneSettingsText() (string, tgbotapi.InlineKeyboardMarkup) {
+	var text string
+	if currentLanguage == "it" {
+		text = "🧹 *Pulizia Docker*\n\nPulizia automatica delle immagini inutilizzate.\n\n"
+	} else {
+		text = "🧹 *Docker Prune*\n\nAutomatic cleanup of unused images.\n\n"
+	}
+
+	if dockerPruneEnabled {
+		dayName := tr(dockerPruneDay)
+		text += fmt.Sprintf("%s: %s %02d:00\n", tr("schedule"), dayName, dockerPruneHour)
+	} else {
+		text += tr("disabled") + "\n"
+	}
+
+	toggleText := tr("enable")
+	toggleData := "prune_enable"
+	if dockerPruneEnabled {
+		toggleText = tr("disable")
+		toggleData = "prune_disable"
+	}
+
+	rows := [][]tgbotapi.InlineKeyboardButton{
+		{tgbotapi.NewInlineKeyboardButtonData(toggleText, toggleData)},
+	}
+
+	if dockerPruneEnabled {
+		rows = append(rows, []tgbotapi.InlineKeyboardButton{
+			tgbotapi.NewInlineKeyboardButtonData(tr("schedule"), "prune_change_schedule"),
+		})
+	}
+
+	rows = append(rows, []tgbotapi.InlineKeyboardButton{
+		tgbotapi.NewInlineKeyboardButtonData(tr("back"), "back_settings"),
+	})
+
+	kb := tgbotapi.NewInlineKeyboardMarkup(rows...)
+
+	return text, kb
+}
+
+func getPruneScheduleText() (string, tgbotapi.InlineKeyboardMarkup) {
+	var text string
+	if currentLanguage == "it" {
+		text = "📅 *Programmazione Pulizia*\n\nSeleziona il giorno:"
+	} else {
+		text = "📅 *Prune Schedule*\n\nSelect day:"
+	}
+
+	days := []string{"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
+	var rows [][]tgbotapi.InlineKeyboardButton
+
+	for _, day := range days {
+		check := " "
+		if dockerPruneDay == day {
+			check = "✓"
+		}
+		rows = append(rows, []tgbotapi.InlineKeyboardButton{
+			tgbotapi.NewInlineKeyboardButtonData(check+" "+tr(day), "prune_day_"+day),
+		})
+	}
+
+	rows = append(rows, []tgbotapi.InlineKeyboardButton{
+		tgbotapi.NewInlineKeyboardButtonData(tr("back"), "settings_change_prune"),
+	})
+
+	kb := tgbotapi.NewInlineKeyboardMarkup(rows...)
+
+	return text, kb
 }
 
 func handleSpeedtest(bot *tgbotapi.BotAPI, chatID int64) {
@@ -2129,25 +2548,23 @@ func handlePowerConfirm(bot *tgbotapi.BotAPI, chatID int64, msgID int, data stri
 //  DAILY REPORTS (configurable times)
 // ═══════════════════════════════════════════════════════════════════
 
-// getNextReportTime calculates the next report time based on config
+// getNextReportTime calculates the next report time based on reportMode
 func getNextReportTime() (time.Time, bool) {
 	now := time.Now().In(location)
 
-	morningEnabled := cfg.Reports.Morning.Enabled
-	eveningEnabled := cfg.Reports.Evening.Enabled
-
-	if !morningEnabled && !eveningEnabled {
+	if reportMode == 0 {
 		// No reports enabled, return far future
 		return now.Add(24 * 365 * time.Hour), false
 	}
 
 	morningReport := time.Date(now.Year(), now.Month(), now.Day(),
-		cfg.Reports.Morning.Hour, cfg.Reports.Morning.Minute, 0, 0, location)
+		reportMorningHour, reportMorningMinute, 0, 0, location)
 	eveningReport := time.Date(now.Year(), now.Month(), now.Day(),
-		cfg.Reports.Evening.Hour, cfg.Reports.Evening.Minute, 0, 0, location)
+		reportEveningHour, reportEveningMinute, 0, 0, location)
 
-	// Determine next report based on what's enabled
-	if morningEnabled && eveningEnabled {
+	// Determine next report based on reportMode
+	if reportMode == 2 {
+		// Twice daily
 		if now.Before(morningReport) {
 			return morningReport, true
 		} else if now.Before(eveningReport) {
@@ -2156,18 +2573,11 @@ func getNextReportTime() (time.Time, bool) {
 		return morningReport.Add(24 * time.Hour), true
 	}
 
-	if morningEnabled {
-		if now.Before(morningReport) {
-			return morningReport, true
-		}
-		return morningReport.Add(24 * time.Hour), true
+	// Once daily (morning)
+	if now.Before(morningReport) {
+		return morningReport, true
 	}
-
-	// Only evening enabled
-	if now.Before(eveningReport) {
-		return eveningReport, false
-	}
-	return eveningReport.Add(24 * time.Hour), false
+	return morningReport.Add(24 * time.Hour), true
 }
 
 func periodicReport(bot *tgbotapi.BotAPI) {
@@ -2176,8 +2586,8 @@ func periodicReport(bot *tgbotapi.BotAPI) {
 
 	for {
 		// Check if reports are enabled
-		if !cfg.Reports.Enabled || (!cfg.Reports.Morning.Enabled && !cfg.Reports.Evening.Enabled) {
-			// Sleep for a while and check again (config might change on restart)
+		if reportMode == 0 {
+			// Sleep for a while and check again (mode might change)
 			time.Sleep(1 * time.Hour)
 			continue
 		}
@@ -2579,11 +2989,15 @@ func checkDockerHealth(bot *tgbotapi.BotAPI) {
 }
 
 func checkWeeklyPrune(bot *tgbotapi.BotAPI) {
+	if !dockerPruneEnabled {
+		return
+	}
+
 	now := time.Now().In(location)
 
 	// Get target day from config
 	targetDay := time.Sunday
-	switch strings.ToLower(cfg.Docker.WeeklyPrune.Day) {
+	switch strings.ToLower(dockerPruneDay) {
 	case "monday":
 		targetDay = time.Monday
 	case "tuesday":
@@ -2600,7 +3014,7 @@ func checkWeeklyPrune(bot *tgbotapi.BotAPI) {
 		targetDay = time.Sunday
 	}
 
-	isTime := now.Weekday() == targetDay && now.Hour() == cfg.Docker.WeeklyPrune.Hour
+	isTime := now.Weekday() == targetDay && now.Hour() == dockerPruneHour
 
 	if isTime {
 		if !pruneDoneToday {
