@@ -18,15 +18,20 @@ NASBot sends you an interactive dashboard on Telegram: CPU, RAM, disks, Docker c
 | | |
 |---|---|
 | 📊 **Live Dashboard** | Inline buttons for instant updates |
+| ⚡ **Quick Status** | Ultra-compact one-liner with trend graphs |
 | 📨 **Flexible Reports** | Configure 0, 1, or 2 daily reports at custom times |
 | 🤖 **AI Summaries** | Optional Gemini AI-powered report summaries |
 | 🌙 **Quiet Hours** | Customizable silence periods |
 | 🛡️ **Autonomous Protection** | Auto-restart containers on critical RAM |
 | 🐳 **Docker Management** | Start/Stop/Restart/Kill containers from Telegram |
+| 🔍 **Log Search** | Search container logs for specific keywords |
 | 🌐 **Multi-language** | Support for English and Italian 🇬🇧/🇮🇹 |
 | 🔔 **Smart Alerts** | Fully customizable thresholds per resource |
+| 🌡️ **Temperature Alerts** | CPU and disk temperature monitoring |
+| 📈 **Trend Graphs** | ASCII spark lines show CPU/RAM history |
+| 🚨 **Critical Containers** | Priority alerts for important containers |
 | 🐳 **Docker Watchdog** | Auto-restart Docker service if unresponsive |
-| 🔄 **Auto-recovery** | Automatic restart after crash/reboot |
+| 🔄 **Auto-recovery** | Automatic restart after crash/reboot/kernel panic |
 | 🔒 **Single Access** | Only your user ID can command the bot |
 | 🪶 **Lightweight** | ~6 MB static binary, zero runtime dependencies |
 
@@ -200,6 +205,31 @@ Each resource can be independently enabled/disabled:
 - `monitor_seconds`: How often to check for alerts
 - `critical_alert_cooldown_minutes`: Minimum time between critical alerts
 
+#### 🌡️ Temperature Monitoring
+```json
+"temperature": {
+  "enabled": true,
+  "warning_threshold": 70.0,
+  "critical_threshold": 85.0
+}
+```
+- Alerts when CPU temperature exceeds thresholds
+
+#### 🚨 Critical Containers
+```json
+"critical_containers": ["plex", "homeassistant", "nginx"]
+```
+- List container names that are critical for your setup
+- Immediate alerts if any of these containers stop
+
+#### 🗄️ Cache Settings
+```json
+"cache": {
+  "docker_ttl_seconds": 10
+}
+```
+- Reduces Docker API calls by caching container list
+
 ---
 
 ## 🎮 Commands
@@ -208,8 +238,9 @@ Each resource can be independently enabled/disabled:
 | Command | Description |
 |---------|-------------|
 | `/status` | Quick system overview with interactive buttons |
+| `/quick` | ⚡ Ultra-compact one-liner with trend graphs |
 | `/temp` | CPU and disk temperatures (requires smartmontools) |
-| `/top` | Top processes by CPU usage |
+| `/top` | Top processes by CPU/RAM usage |
 | `/sysinfo` | Detailed system information (OS, kernel, hardware) |
 | `/diskpred` | Disk space prediction (estimates when disks will be full) |
 
@@ -218,6 +249,7 @@ Each resource can be independently enabled/disabled:
 |---------|-------------|
 | `/docker` | Interactive container management menu |
 | `/dstats` | Container resource usage (CPU, RAM, network) |
+| `/logsearch <container> <keyword>` | Search container logs for a keyword |
 | `/kill <name>` | Force kill a container (SIGKILL) |
 | `/restartdocker` | Restart the Docker daemon |
 
@@ -268,6 +300,17 @@ chmod +x setup_autostart.sh
 ```
 
 This will configure a cron job or startup script to keep the bot running.
+
+### Option C: Kernel Panic Auto-Recovery
+
+If you can't physically access your NAS, configure automatic reboot after kernel panic:
+
+```bash
+sudo chmod +x setup_kernel_panic.sh
+sudo ./setup_kernel_panic.sh
+```
+
+This configures the kernel to automatically reboot 10 seconds after a panic, so your NAS recovers without manual intervention.
 
 ---
 

@@ -1,29 +1,30 @@
 ===================================================================
-COMANDI PER BOTFATHER
+🤖 COMANDI PER BOTFATHER
 ===================================================================
 Copia e incolla questi comandi in BotFather quando configuri il bot
 (Menu principale → /mybots → Scegli il bot → Edit Bot → Edit Commands)
 
-status - Quick system overview
-quick - Ultra-compact one-liner status
-docker - Manage Docker containers
-dstats - Container resource usage
-top - Top processes by CPU
-temp - Check system temperatures
-net - Network information
-logs - View recent system logs
-logsearch - Search container logs
-report - Generate full system report
-ping - Check bot availability
-config - Show current configuration
-sysinfo - Detailed system information
-speedtest - Run internet speed test
-diskpred - Disk space prediction
-settings - Configure bot settings
-container - Manage specific container
-kill - Force kill a container
-restartdocker - Restart Docker service
-reboot - Reboot the system
-shutdown - Shutdown the system
-help - Show all available commands
+status - 📊 Quick system overview
+quick - ⚡ Ultra-compact one-liner status
+docker - 🐳 Manage Docker containers
+dstats - 📈 Container resource usage
+top - 🔝 Top processes by CPU/RAM
+temp - 🌡 Check system temperatures
+net - 🌐 Network information
+logs - 📝 View recent system logs
+logsearch - 🔍 Search container logs
+report - 📋 Generate full system report
+ping - 🏓 Check bot availability
+config - ⚙️ Show current configuration
+sysinfo - 💻 Detailed system information
+speedtest - 🚀 Run internet speed test
+diskpred - 💾 Disk space prediction
+settings - 🔧 Configure bot settings
+language - 🌍 Change language (EN/IT)
+container - 📦 Manage specific container
+kill - 💀 Force kill a container
+restartdocker - 🔄 Restart Docker service
+reboot - 🔁 Reboot the system
+shutdown - ⏹ Shutdown the system
+help - ❓ Show all available commands
 ===================================================================
