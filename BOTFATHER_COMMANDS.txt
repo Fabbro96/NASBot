@@ -19,6 +19,7 @@ config - ⚙️ Show current configuration
 sysinfo - 💻 Detailed system information
 speedtest - 🚀 Run internet speed test
 diskpred - 💾 Disk space prediction
+diskinfo - 📀 Detailed disk status
 settings - 🔧 Configure bot settings
 language - 🌍 Change language (EN/IT)
 container - 📦 Manage specific container

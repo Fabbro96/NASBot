@@ -204,6 +204,7 @@ _Type /help to see what I can do_`, nextReportStr, quietInfo)
 	go monitorAlerts(bot)
 	go periodicReport(bot)
 	go autonomousManager(bot)
+	go RunFSWatchdog(bot) // Filesystem watchdog (lazy evaluation)
 
 	// Wait for first stats cycle
 	time.Sleep(IntervalStats + 500*time.Millisecond)

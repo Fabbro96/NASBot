@@ -117,6 +117,16 @@ type Config struct {
 	Cache struct {
 		DockerTTLSeconds int `json:"docker_ttl_seconds"`
 	} `json:"cache"`
+
+	FSWatchdog struct {
+		Enabled            bool     `json:"enabled"`
+		CheckIntervalMins  int      `json:"check_interval_minutes"`
+		WarningThreshold   float64  `json:"warning_threshold"`
+		CriticalThreshold  float64  `json:"critical_threshold"`
+		DeepScanPaths      []string `json:"deep_scan_paths"`
+		ExcludePatterns    []string `json:"exclude_patterns"`
+		TopNFiles          int      `json:"top_n_files"`
+	} `json:"fs_watchdog"`
 }
 
 // loadConfig reads configuration from config.json with smart defaults
@@ -268,5 +278,16 @@ func applyConfigDefaults() {
 	// Cache defaults
 	if cfg.Cache.DockerTTLSeconds == 0 {
 		cfg.Cache.DockerTTLSeconds = 10
+	}
+
+	// FSWatchdog defaults
+	if cfg.FSWatchdog.CheckIntervalMins == 0 {
+		cfg.FSWatchdog.Enabled = true
+		cfg.FSWatchdog.CheckIntervalMins = 30
+		cfg.FSWatchdog.WarningThreshold = 85.0
+		cfg.FSWatchdog.CriticalThreshold = 90.0
+		cfg.FSWatchdog.DeepScanPaths = []string{"/"}
+		cfg.FSWatchdog.ExcludePatterns = []string{"/proc", "/sys", "/dev", "/run", "/snap"}
+		cfg.FSWatchdog.TopNFiles = 10
 	}
 }

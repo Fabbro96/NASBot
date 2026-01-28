@@ -106,5 +106,15 @@
   
   "cache": {
     "docker_ttl_seconds": 10
+  },
+  
+  "fs_watchdog": {
+    "enabled": true,
+    "check_interval_minutes": 30,
+    "warning_threshold": 85.0,
+    "critical_threshold": 90.0,
+    "deep_scan_paths": ["/"],
+    "exclude_patterns": ["/proc", "/sys", "/dev", "/run", "/snap"],
+    "top_n_files": 10
   }
 }

@@ -53,6 +53,8 @@ func handleCommand(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) {
 		handleSpeedtest(bot, chatID)
 	case "diskpred", "prediction":
 		sendMarkdown(bot, chatID, getDiskPredictionText())
+	case "diskinfo", "disk":
+		sendMarkdown(bot, chatID, GetDiskInfoText())
 	case "restartdocker":
 		askDockerRestartConfirmation(bot, chatID)
 	case "reboot":

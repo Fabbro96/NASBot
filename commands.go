@@ -197,7 +197,8 @@ func getHelpText() string {
 	b.WriteString("/temp — check temperatures\n")
 	b.WriteString("/top — top processes by CPU\n")
 	b.WriteString("/sysinfo — detailed system info\n")
-	b.WriteString("/diskpred — disk space prediction\n\n")
+	b.WriteString("/diskpred — disk space prediction\n")
+	b.WriteString("/diskinfo — detailed disk status\n\n")
 
 	b.WriteString("*🐳 Docker*\n")
 	b.WriteString("/docker — manage containers\n")
