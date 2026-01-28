@@ -21,6 +21,8 @@ func handleCommand(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) {
 	switch msg.Command() {
 	case "status", "start":
 		sendWithKeyboard(bot, chatID, getStatusText())
+	case "quick", "q":
+		sendMarkdown(bot, chatID, getQuickText())
 	case "docker":
 		sendDockerMenu(bot, chatID)
 	case "dstats":
@@ -33,6 +35,8 @@ func handleCommand(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) {
 		sendMarkdown(bot, chatID, getNetworkText())
 	case "logs":
 		sendMarkdown(bot, chatID, getLogsText())
+	case "logsearch":
+		sendMarkdown(bot, chatID, getLogSearchText(args))
 	case "report":
 		sendMarkdown(bot, chatID, generateReport(true))
 	case "container":

@@ -67,6 +67,14 @@
     }
   },
   
+  "temperature": {
+    "enabled": true,
+    "warning_threshold": 70.0,
+    "critical_threshold": 85.0
+  },
+  
+  "critical_containers": [],
+  
   "stress_tracking": {
     "enabled": true,
     "duration_threshold_minutes": 2
@@ -94,5 +102,9 @@
     "stats_seconds": 5,
     "monitor_seconds": 30,
     "critical_alert_cooldown_minutes": 30
+  },
+  
+  "cache": {
+    "docker_ttl_seconds": 10
   }
 }

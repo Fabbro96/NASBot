@@ -64,6 +64,10 @@ var translations = map[string]map[string]string{
 		"health_warning":     "A few things need attention",
 		"health_ok":          "Everything's running smoothly",
 		"ai_summary":         "AI Summary",
+		"temp_critical":      "CPU temperature critical!",
+		"temp_warning":       "CPU temperature high",
+		"trend_last_hour":    "Last hour",
+		"critical_container": "Critical container down",
 	},
 	"it": {
 		"status_title":       "🖥 *NAS* alle %s\n\n",
@@ -127,6 +131,10 @@ var translations = map[string]map[string]string{
 		"health_warning":     "Alcune cose richiedono attenzione",
 		"health_ok":          "Tutto funziona correttamente",
 		"ai_summary":         "Riepilogo AI",
+		"temp_critical":      "Temperatura CPU critica!",
+		"temp_warning":       "Temperatura CPU alta",
+		"trend_last_hour":    "Ultima ora",
+		"critical_container": "Container critico fermo",
 	},
 }
 

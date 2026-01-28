@@ -5,12 +5,14 @@ Copia e incolla questi comandi in BotFather quando configuri il bot
 (Menu principale → /mybots → Scegli il bot → Edit Bot → Edit Commands)
 
 status - Quick system overview
+quick - Ultra-compact one-liner status
 docker - Manage Docker containers
 dstats - Container resource usage
 top - Top processes by CPU
 temp - Check system temperatures
 net - Network information
 logs - View recent system logs
+logsearch - Search container logs
 report - Generate full system report
 ping - Check bot availability
 config - Show current configuration

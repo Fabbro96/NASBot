@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"runtime/debug"
@@ -75,6 +76,29 @@ var (
 	diskUsageHistory      []DiskUsagePoint
 	diskUsageHistoryMutex sync.Mutex
 
+	// Trend history (last 6 hours, sampled every 5 min = 72 points max)
+	cpuTrend      []TrendPoint
+	ramTrend      []TrendPoint
+	trendMutex    sync.Mutex
+	maxTrendPoints = 72
+
+	// Docker container cache with TTL
+	dockerCache      DockerCache
+	dockerCacheMutex sync.RWMutex
+
+	// Shared HTTP client (reuse connections)
+	httpClient = &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			MaxIdleConns:        5,
+			MaxIdleConnsPerHost: 2,
+			IdleConnTimeout:     90 * time.Second,
+		},
+	}
+
+	// Temperature alert tracking
+	lastTempAlert time.Time
+
 	// User settings (persistent)
 	currentLanguage = "en"
 	reportMode      = 2 // 0=disabled, 1=once daily, 2=twice daily
@@ -121,6 +145,8 @@ func init() {
 	resourceStress = make(map[string]*StressTracker)
 	lastContainerStates = make(map[string]bool)
 	diskUsageHistory = make([]DiskUsagePoint, 0, 288)
+	cpuTrend = make([]TrendPoint, 0, maxTrendPoints)
+	ramTrend = make([]TrendPoint, 0, maxTrendPoints)
 	for _, res := range []string{"CPU", "RAM", "Swap", "SSD", "HDD"} {
 		resourceStress[res] = &StressTracker{}
 	}

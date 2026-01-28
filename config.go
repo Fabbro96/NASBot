@@ -105,6 +105,18 @@ type Config struct {
 		MonitorSeconds            int `json:"monitor_seconds"`
 		CriticalAlertCooldownMins int `json:"critical_alert_cooldown_minutes"`
 	} `json:"intervals"`
+
+	Temperature struct {
+		Enabled           bool    `json:"enabled"`
+		WarningThreshold  float64 `json:"warning_threshold"`
+		CriticalThreshold float64 `json:"critical_threshold"`
+	} `json:"temperature"`
+
+	CriticalContainers []string `json:"critical_containers"`
+
+	Cache struct {
+		DockerTTLSeconds int `json:"docker_ttl_seconds"`
+	} `json:"cache"`
 }
 
 // loadConfig reads configuration from config.json with smart defaults
@@ -244,5 +256,17 @@ func applyConfigDefaults() {
 	}
 	if cfg.Intervals.CriticalAlertCooldownMins == 0 {
 		cfg.Intervals.CriticalAlertCooldownMins = 30
+	}
+
+	// Temperature defaults
+	if cfg.Temperature.WarningThreshold == 0 {
+		cfg.Temperature.Enabled = true
+		cfg.Temperature.WarningThreshold = 70.0
+		cfg.Temperature.CriticalThreshold = 85.0
+	}
+
+	// Cache defaults
+	if cfg.Cache.DockerTTLSeconds == 0 {
+		cfg.Cache.DockerTTLSeconds = 10
 	}
 }

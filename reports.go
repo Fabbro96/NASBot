@@ -273,8 +273,7 @@ func callGeminiAPI(prompt string) string {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		log.Printf("[Gemini] Error calling API: %v", err)
 		return ""

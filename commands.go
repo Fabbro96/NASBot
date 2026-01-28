@@ -193,6 +193,7 @@ func getHelpText() string {
 
 	b.WriteString("*📊 Monitoring*\n")
 	b.WriteString("/status — quick system overview\n")
+	b.WriteString("/quick — ultra-compact one-liner\n")
 	b.WriteString("/temp — check temperatures\n")
 	b.WriteString("/top — top processes by CPU\n")
 	b.WriteString("/sysinfo — detailed system info\n")
@@ -202,6 +203,7 @@ func getHelpText() string {
 	b.WriteString("/docker — manage containers\n")
 	b.WriteString("/dstats — container resources\n")
 	b.WriteString("/kill `name` — force kill container\n")
+	b.WriteString("/logsearch `name` `keyword` — search logs\n")
 	b.WriteString("/restartdocker — restart Docker service\n\n")
 
 	b.WriteString("*🌐 Network*\n")
@@ -549,4 +551,138 @@ func recordDiskUsage() {
 	if len(diskUsageHistory) > 2016 {
 		diskUsageHistory = diskUsageHistory[1:]
 	}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  QUICK STATUS (ultra-compact one-liner)
+// ═══════════════════════════════════════════════════════════════════
+
+func getQuickText() string {
+	statsMutex.RLock()
+	s := statsCache
+	ready := statsReady
+	statsMutex.RUnlock()
+
+	if !ready {
+		return "⏳"
+	}
+
+	// Get trend graphs
+	cpuGraph, ramGraph := getTrendSummary()
+
+	// Container count
+	containers := getCachedContainerList()
+	running := 0
+	for _, c := range containers {
+		if c.Running {
+			running++
+		}
+	}
+
+	// Temperature
+	temp := readCPUTemp()
+	tempStr := ""
+	if temp > 0 {
+		tempIcon := "🌡"
+		if temp > 70 {
+			tempIcon = "🔥"
+		}
+		tempStr = fmt.Sprintf(" %s%.0f°", tempIcon, temp)
+	}
+
+	// Health emoji
+	healthEmoji := "✅"
+	if s.CPU > 90 || s.RAM > 90 {
+		healthEmoji = "⚠️"
+	}
+	if s.CPU > 95 || s.RAM > 95 || s.VolSSD.Used > 95 || s.VolHDD.Used > 95 {
+		healthEmoji = "🚨"
+	}
+
+	// Build compact line with optional trends
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("%s ", healthEmoji))
+
+	// CPU with trend
+	b.WriteString(fmt.Sprintf("CPU %.0f%%", s.CPU))
+	if cpuGraph != "" {
+		b.WriteString(fmt.Sprintf(" `%s`", cpuGraph))
+	}
+
+	// RAM with trend
+	b.WriteString(fmt.Sprintf(" · RAM %.0f%%", s.RAM))
+	if ramGraph != "" {
+		b.WriteString(fmt.Sprintf(" `%s`", ramGraph))
+	}
+
+	// Disks
+	b.WriteString(fmt.Sprintf(" · SSD %.0f%% · HDD %.0f%%", s.VolSSD.Used, s.VolHDD.Used))
+
+	// Docker
+	b.WriteString(fmt.Sprintf(" · 🐳%d", running))
+
+	// Temp
+	b.WriteString(tempStr)
+
+	return b.String()
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  LOG SEARCH
+// ═══════════════════════════════════════════════════════════════════
+
+func getLogSearchText(args string) string {
+	// Parse: container keyword
+	parts := strings.SplitN(strings.TrimSpace(args), " ", 2)
+	if len(parts) < 2 {
+		return "Usage: `/logsearch <container> <keyword>`\n\nExample: `/logsearch plex error`"
+	}
+
+	container := parts[0]
+	keyword := parts[1]
+
+	// Search logs
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "docker", "logs", "--tail", "500", container)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Sprintf("❌ Error: `%v`", err)
+	}
+
+	// Filter lines containing keyword
+	lines := strings.Split(string(out), "\n")
+	var matches []string
+	keywordLower := strings.ToLower(keyword)
+
+	for _, line := range lines {
+		if strings.Contains(strings.ToLower(line), keywordLower) {
+			// Truncate long lines
+			if len(line) > 100 {
+				line = line[:97] + "..."
+			}
+			matches = append(matches, line)
+		}
+	}
+
+	if len(matches) == 0 {
+		return fmt.Sprintf("🔍 No matches for `%s` in `%s` logs", keyword, container)
+	}
+
+	// Limit to last 10 matches
+	if len(matches) > 10 {
+		matches = matches[len(matches)-10:]
+	}
+
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("🔍 *Log Search*: `%s` in `%s`\n\n", keyword, container))
+	b.WriteString(fmt.Sprintf("Found %d matches (showing last %d):\n\n", len(matches), len(matches)))
+	b.WriteString("```\n")
+	for _, m := range matches {
+		b.WriteString(m + "\n")
+	}
+	b.WriteString("```")
+
+	return b.String()
 }

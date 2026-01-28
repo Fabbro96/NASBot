@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -25,8 +26,10 @@ import (
 func autonomousManager(bot *tgbotapi.BotAPI) {
 	ticker := time.NewTicker(10 * time.Second)
 	diskTicker := time.NewTicker(5 * time.Minute)
+	trendTicker := time.NewTicker(5 * time.Minute) // Sample trends every 5 min
 	defer ticker.Stop()
 	defer diskTicker.Stop()
+	defer trendTicker.Stop()
 
 	for {
 		select {
@@ -59,6 +62,11 @@ func autonomousManager(bot *tgbotapi.BotAPI) {
 				}
 			}
 
+			// Check temperature
+			if cfg.Temperature.Enabled {
+				checkTemperatureAlert(bot)
+			}
+
 			// Check critical RAM for auto-restart
 			if cfg.Docker.AutoRestartOnRAMCritical.Enabled {
 				if s.RAM >= cfg.Docker.AutoRestartOnRAMCritical.RAMThreshold {
@@ -77,6 +85,9 @@ func autonomousManager(bot *tgbotapi.BotAPI) {
 			// Check for unexpected container stops
 			checkContainerStates(bot)
 
+			// Check critical containers
+			checkCriticalContainers(bot)
+
 			// Weekly prune
 			if cfg.Docker.WeeklyPrune.Enabled {
 				checkWeeklyPrune(bot)
@@ -84,6 +95,9 @@ func autonomousManager(bot *tgbotapi.BotAPI) {
 
 		case <-diskTicker.C:
 			recordDiskUsage()
+
+		case <-trendTicker.C:
+			recordTrendPoint()
 		}
 	}
 }
@@ -542,4 +556,196 @@ func getTopProcesses(limit int) (topCPU, topRAM []ProcInfo) {
 	}
 
 	return topCPU, topRAM
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  TEMPERATURE MONITORING
+// ═══════════════════════════════════════════════════════════════════
+
+func checkTemperatureAlert(bot *tgbotapi.BotAPI) {
+	temp := readCPUTemp()
+	if temp <= 0 {
+		return
+	}
+
+	// Only alert once every 30 minutes
+	if time.Since(lastTempAlert) < 30*time.Minute {
+		return
+	}
+
+	if temp >= cfg.Temperature.CriticalThreshold {
+		if !isQuietHours() {
+			msg := fmt.Sprintf("🔥 *CPU Temperature Critical!*\n\n"+
+				"Current: `%.1f°C`\n"+
+				"Threshold: `%.0f°C`\n\n"+
+				"_Consider checking cooling or reducing load_",
+				temp, cfg.Temperature.CriticalThreshold)
+			m := tgbotapi.NewMessage(AllowedUserID, msg)
+			m.ParseMode = "Markdown"
+			bot.Send(m)
+		}
+		lastTempAlert = time.Now()
+		addReportEvent("critical", fmt.Sprintf("CPU temp critical: %.1f°C", temp))
+	} else if temp >= cfg.Temperature.WarningThreshold {
+		if !isQuietHours() {
+			msg := fmt.Sprintf("🌡 *CPU Temperature Warning*\n\n"+
+				"Current: `%.1f°C`\n"+
+				"Threshold: `%.0f°C`",
+				temp, cfg.Temperature.WarningThreshold)
+			m := tgbotapi.NewMessage(AllowedUserID, msg)
+			m.ParseMode = "Markdown"
+			bot.Send(m)
+		}
+		lastTempAlert = time.Now()
+		addReportEvent("warning", fmt.Sprintf("CPU temp high: %.1f°C", temp))
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  TREND TRACKING (for mini-graphs)
+// ═══════════════════════════════════════════════════════════════════
+
+func recordTrendPoint() {
+	statsMutex.RLock()
+	s := statsCache
+	ready := statsReady
+	statsMutex.RUnlock()
+
+	if !ready {
+		return
+	}
+
+	now := time.Now()
+
+	trendMutex.Lock()
+	defer trendMutex.Unlock()
+
+	// Add new points
+	cpuTrend = append(cpuTrend, TrendPoint{Time: now, Value: s.CPU})
+	ramTrend = append(ramTrend, TrendPoint{Time: now, Value: s.RAM})
+
+	// Keep only last maxTrendPoints (6 hours at 5 min intervals = 72 points)
+	if len(cpuTrend) > maxTrendPoints {
+		cpuTrend = cpuTrend[len(cpuTrend)-maxTrendPoints:]
+	}
+	if len(ramTrend) > maxTrendPoints {
+		ramTrend = ramTrend[len(ramTrend)-maxTrendPoints:]
+	}
+}
+
+// getMiniGraph generates a tiny ASCII spark line (12 chars max)
+func getMiniGraph(points []TrendPoint, maxPoints int) string {
+	if len(points) == 0 {
+		return ""
+	}
+
+	// Use last N points for the graph
+	if len(points) > maxPoints {
+		points = points[len(points)-maxPoints:]
+	}
+
+	chars := []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
+	var result strings.Builder
+
+	for _, p := range points {
+		// Map 0-100% to character index 0-7
+		idx := int(p.Value / 12.5)
+		if idx < 0 {
+			idx = 0
+		}
+		if idx > 7 {
+			idx = 7
+		}
+		result.WriteRune(chars[idx])
+	}
+
+	return result.String()
+}
+
+// getTrendSummary returns trend graphs for status display
+func getTrendSummary() (cpuGraph, ramGraph string) {
+	trendMutex.Lock()
+	defer trendMutex.Unlock()
+
+	// Get last 12 points (1 hour at 5 min intervals)
+	cpuGraph = getMiniGraph(cpuTrend, 12)
+	ramGraph = getMiniGraph(ramTrend, 12)
+	return
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  CRITICAL CONTAINERS MONITORING
+// ═══════════════════════════════════════════════════════════════════
+
+var lastCriticalContainerAlert = make(map[string]time.Time)
+var criticalContainerMutex sync.Mutex
+
+func checkCriticalContainers(bot *tgbotapi.BotAPI) {
+	if len(cfg.CriticalContainers) == 0 {
+		return
+	}
+
+	containers := getCachedContainerList()
+	containerMap := make(map[string]bool)
+	for _, c := range containers {
+		containerMap[c.Name] = c.Running
+	}
+
+	criticalContainerMutex.Lock()
+	defer criticalContainerMutex.Unlock()
+
+	for _, name := range cfg.CriticalContainers {
+		running, exists := containerMap[name]
+
+		if !exists || !running {
+			// Only alert once every 10 minutes per container
+			if lastAlert, ok := lastCriticalContainerAlert[name]; ok {
+				if time.Since(lastAlert) < 10*time.Minute {
+					continue
+				}
+			}
+
+			if !isQuietHours() {
+				status := "not running"
+				if !exists {
+					status = "not found"
+				}
+				msg := fmt.Sprintf("🚨 *Critical Container Alert*\n\n"+
+					"Container `%s` is %s!\n\n"+
+					"_This container is marked as critical_",
+					name, status)
+				m := tgbotapi.NewMessage(AllowedUserID, msg)
+				m.ParseMode = "Markdown"
+				bot.Send(m)
+			}
+
+			lastCriticalContainerAlert[name] = time.Now()
+			addReportEvent("critical", fmt.Sprintf("Critical container %s down", name))
+		}
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  DOCKER CACHE (reduce overhead)
+// ═══════════════════════════════════════════════════════════════════
+
+func getCachedContainerList() []ContainerInfo {
+	dockerCacheMutex.RLock()
+	ttl := time.Duration(cfg.Cache.DockerTTLSeconds) * time.Second
+	if time.Since(dockerCache.LastUpdate) < ttl && len(dockerCache.Containers) > 0 {
+		result := dockerCache.Containers
+		dockerCacheMutex.RUnlock()
+		return result
+	}
+	dockerCacheMutex.RUnlock()
+
+	// Need to refresh
+	containers := getContainerList()
+
+	dockerCacheMutex.Lock()
+	dockerCache.Containers = containers
+	dockerCache.LastUpdate = time.Now()
+	dockerCacheMutex.Unlock()
+
+	return containers
 }

@@ -67,3 +67,15 @@ type DiskPrediction struct {
 	DaysUntilFull float64
 	GBPerDay      float64
 }
+
+// TrendPoint stores a single metric at a point in time
+type TrendPoint struct {
+	Time  time.Time
+	Value float64
+}
+
+// DockerCache holds cached container list with TTL
+type DockerCache struct {
+	Containers []ContainerInfo
+	LastUpdate time.Time
+}
