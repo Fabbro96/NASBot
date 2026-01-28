@@ -19,9 +19,12 @@ NASBot sends you an interactive dashboard on Telegram: CPU, RAM, disks, Docker c
 |---|---|
 | 📊 **Live Dashboard** | Inline buttons for instant updates |
 | 📨 **Flexible Reports** | Configure 0, 1, or 2 daily reports at custom times |
+| 🤖 **AI Summaries** | Optional Gemini AI-powered report summaries |
 | 🌙 **Quiet Hours** | Customizable silence periods |
 | 🛡️ **Autonomous Protection** | Auto-restart containers on critical RAM |
-| 🐳 **Docker Management** | Start/Stop/Restart/Kill containers from Telegram || 🌐 **Multi-language** | Support for English and Italian 🇬🇧/🇮🇹 || 🔔 **Smart Alerts** | Fully customizable thresholds per resource |
+| 🐳 **Docker Management** | Start/Stop/Restart/Kill containers from Telegram |
+| 🌐 **Multi-language** | Support for English and Italian 🇬🇧/🇮🇹 |
+| 🔔 **Smart Alerts** | Fully customizable thresholds per resource |
 | 🐳 **Docker Watchdog** | Auto-restart Docker service if unresponsive |
 | 🔄 **Auto-recovery** | Automatic restart after crash/reboot |
 | 🔒 **Single Access** | Only your user ID can command the bot |
@@ -61,6 +64,7 @@ nano config.json
 {
   "bot_token": "YOUR_BOT_TOKEN_HERE",
   "allowed_user_id": 12345678,
+  "gemini_api_key": "",
   
   "paths": {
     "ssd": "/Volume1",
@@ -158,6 +162,13 @@ nano config.json
 ```
 
 ### Configuration Sections Explained
+
+#### 🤖 AI Summaries (Gemini 3.0 Flash)
+- `gemini_api_key`: Your Google Gemini API key (optional)
+  - Get your free API key at [Google AI Studio](https://aistudio.google.com/apikey)
+  - When configured, morning and evening reports will include an AI-generated summary (Gemini 3.0 Flash)
+  - If empty or invalid, reports fall back to standard health status messages
+  - The AI respects your language setting (English/Italian)
 
 #### 📨 Reports
 - `enabled`: Master switch for periodic reports

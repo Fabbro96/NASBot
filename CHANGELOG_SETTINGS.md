@@ -5,6 +5,13 @@
 ### 1. **Controllo Completo via Telegram** 
 Ora puoi configurare TUTTO tramite il bot senza toccare il file config.json:
 
+#### 🤖 **AI Summaries (Gemini 3.0 Flash)**
+- Report mattina/sera con riassunto generato da Gemini 3.0 Flash
+- Configurazione semplice: basta inserire `gemini_api_key` nel config.json
+- Ottieni la tua API key gratuita su [Google AI Studio](https://aistudio.google.com/apikey)
+- Se la chiave non è configurata o non è valida, usa il fallback standard
+- Rispetta la lingua configurata (Italiano/Inglese)
+
 #### 📨 **Report Giornalieri**
 - Scegli tra: Disabilitati / Una volta al giorno / Due volte al giorno
 - Gli orari rimangono quelli configurati nel config.json (mattina/sera)

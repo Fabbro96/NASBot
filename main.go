@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -35,6 +36,7 @@ import (
 type Config struct {
 	BotToken      string `json:"bot_token"`
 	AllowedUserID int64  `json:"allowed_user_id"`
+	GeminiAPIKey  string `json:"gemini_api_key"`
 
 	Paths struct {
 		SSD string `json:"ssd"`
@@ -265,6 +267,18 @@ var translations = map[string]map[string]string{
 		"friday":           "Friday",
 		"saturday":         "Saturday",
 		"sunday":           "Sunday",
+		"good_morning":     "Good morning! ☀️",
+		"good_evening":     "Good evening! 🌙",
+		"report_events":    "Events",
+		"report_resources": "Resources",
+		"report_stress":    "Been under stress:",
+		"containers_running": "containers running",
+		"container_running":  "container running",
+		"containers_stopped": "stopped",
+		"health_critical":    "Some issues to look at",
+		"health_warning":     "A few things need attention",
+		"health_ok":          "Everything's running smoothly",
+		"ai_summary":         "AI Summary",
 	},
 	"it": {
 		"status_title":     "🖥 *NAS* alle %s\n\n",
@@ -285,7 +299,7 @@ var translations = map[string]map[string]string{
 		"restart":          "🔄 Riavvia",
 		"kill":             "💀 Uccidi",
 		"logs":             "📝 Logs",
-		"yes":              "✅ Si",
+		"yes":              "✅ Sì",
 		"no":               "❌ No",
 		"confirm_action":   "%s *%s*?",
 		"kill_warn":        "\n\n⚠️ _Questo terminerà forzatamente il container!_",
@@ -316,6 +330,18 @@ var translations = map[string]map[string]string{
 		"friday":           "Venerdì",
 		"saturday":         "Sabato",
 		"sunday":           "Domenica",
+		"good_morning":     "Buongiorno! ☀️",
+		"good_evening":     "Buonasera! 🌙",
+		"report_events":    "Eventi",
+		"report_resources": "Risorse",
+		"report_stress":    "Sotto stress:",
+		"containers_running": "container attivi",
+		"container_running":  "container attivo",
+		"containers_stopped": "fermati",
+		"health_critical":    "Alcuni problemi da verificare",
+		"health_warning":     "Alcune cose richiedono attenzione",
+		"health_ok":          "Tutto funziona correttamente",
+		"ai_summary":         "Riepilogo AI",
 	},
 }
 
@@ -2596,16 +2622,16 @@ func periodicReport(bot *tgbotapi.BotAPI) {
 		nextReport, isMorning := getNextReportTime()
 		sleepDuration := time.Until(nextReport)
 
-		greeting := "Good morning! ☀️"
+		greeting := tr("good_morning")
 		if !isMorning {
-			greeting = "Good evening! 🌙"
+			greeting = tr("good_evening")
 		}
 
 		log.Printf("> Next report: %s", nextReport.Format("02/01 15:04"))
 		time.Sleep(sleepDuration)
 
 		// Generate and send report
-		report := generateDailyReport(greeting)
+		report := generateDailyReport(greeting, isMorning)
 		msg := tgbotapi.NewMessage(AllowedUserID, report)
 		msg.ParseMode = "Markdown"
 		bot.Send(msg)
@@ -2618,7 +2644,7 @@ func periodicReport(bot *tgbotapi.BotAPI) {
 	}
 }
 
-func generateDailyReport(greeting string) string {
+func generateDailyReport(greeting string, isMorning bool) string {
 	statsMutex.RLock()
 	s := statsCache
 	statsMutex.RUnlock()
@@ -2629,15 +2655,23 @@ func generateDailyReport(greeting string) string {
 	b.WriteString(fmt.Sprintf("*%s*\n", greeting))
 	b.WriteString(fmt.Sprintf("_%s_\n\n", now.Format("Mon 02/01")))
 
-	healthIcon, healthText, _ := getHealthStatus(s)
-	b.WriteString(fmt.Sprintf("%s %s\n\n", healthIcon, healthText))
-
+	// Get events for AI summary
 	reportEventsMutex.Lock()
 	events := filterSignificantEvents(reportEvents)
 	reportEventsMutex.Unlock()
 
+	// Try to get AI summary first
+	aiSummary := generateAISummary(s, events, isMorning)
+	if aiSummary != "" {
+		b.WriteString(fmt.Sprintf("🤖 _%s_\n\n", aiSummary))
+	} else {
+		// Fallback to standard health status
+		healthIcon, healthText, _ := getHealthStatus(s)
+		b.WriteString(fmt.Sprintf("%s %s\n\n", healthIcon, healthText))
+	}
+
 	if len(events) > 0 {
-		b.WriteString("*Events*\n")
+		b.WriteString(fmt.Sprintf("*%s*\n", tr("report_events")))
 		for _, e := range events {
 			icon := "·"
 			switch e.Type {
@@ -2654,7 +2688,7 @@ func generateDailyReport(greeting string) string {
 		b.WriteString("\n")
 	}
 
-	b.WriteString("*Resources*\n")
+	b.WriteString(fmt.Sprintf("*%s*\n", tr("report_resources")))
 	b.WriteString(fmt.Sprintf("🧠 CPU %s %2.0f%%\n", makeProgressBar(s.CPU), s.CPU))
 	b.WriteString(fmt.Sprintf("💾 RAM %s %2.0f%%\n", makeProgressBar(s.RAM), s.RAM))
 	if s.Swap > 5 {
@@ -2673,18 +2707,18 @@ func generateDailyReport(greeting string) string {
 			stopped++
 		}
 	}
-	b.WriteString(fmt.Sprintf("\n🐳 %d container", running))
-	if running != 1 {
-		b.WriteString("s")
+	containerLabel := tr("containers_running")
+	if running == 1 {
+		containerLabel = tr("container_running")
 	}
-	b.WriteString(" running")
+	b.WriteString(fmt.Sprintf("\n🐳 %d %s", running, containerLabel))
 	if stopped > 0 {
-		b.WriteString(fmt.Sprintf(", %d stopped", stopped))
+		b.WriteString(fmt.Sprintf(", %d %s", stopped, tr("containers_stopped")))
 	}
 
 	stressSummary := getStressSummary()
 	if stressSummary != "" {
-		b.WriteString("\n\n💨 *Been under stress:*\n")
+		b.WriteString(fmt.Sprintf("\n\n💨 *%s*\n", tr("report_stress")))
 		b.WriteString(stressSummary)
 	}
 
@@ -2692,6 +2726,144 @@ func generateDailyReport(greeting string) string {
 
 	resetStressCounters()
 	return b.String()
+}
+
+// generateAISummary calls Gemini API to generate a brief summary of the NAS status
+func generateAISummary(s Stats, events []ReportEvent, isMorning bool) string {
+	if cfg.GeminiAPIKey == "" {
+		return ""
+	}
+
+	// Build a context for the AI
+	var context strings.Builder
+	context.WriteString("NAS System Status:\n")
+	context.WriteString(fmt.Sprintf("- CPU: %.1f%%\n", s.CPU))
+	context.WriteString(fmt.Sprintf("- RAM: %.1f%%\n", s.RAM))
+	if s.Swap > 5 {
+		context.WriteString(fmt.Sprintf("- Swap: %.1f%%\n", s.Swap))
+	}
+	context.WriteString(fmt.Sprintf("- SSD: %.1f%% used, %s free\n", s.VolSSD.Used, formatBytes(s.VolSSD.Free)))
+	context.WriteString(fmt.Sprintf("- HDD: %.1f%% used, %s free\n", s.VolHDD.Used, formatBytes(s.VolHDD.Free)))
+	context.WriteString(fmt.Sprintf("- Uptime: %s\n", formatUptime(s.Uptime)))
+
+	// Add container info
+	containers := getContainerList()
+	running, stopped := 0, 0
+	for _, c := range containers {
+		if c.Running {
+			running++
+		} else {
+			stopped++
+		}
+	}
+	context.WriteString(fmt.Sprintf("- Docker: %d running, %d stopped\n", running, stopped))
+
+	// Add events
+	if len(events) > 0 {
+		context.WriteString("\nRecent Events:\n")
+		for _, e := range events {
+			context.WriteString(fmt.Sprintf("- [%s] %s: %s\n", e.Time.In(location).Format("15:04"), e.Type, e.Message))
+		}
+	}
+
+	// Determine time of day for context
+	timeOfDay := "morning"
+	if !isMorning {
+		timeOfDay = "evening"
+	}
+
+	// Language for response
+	lang := "English"
+	if currentLanguage == "it" {
+		lang = "Italian"
+	}
+
+	prompt := fmt.Sprintf(`You are a friendly NAS monitoring assistant. Based on the following system status, write a brief (1-2 sentences max) %s summary in %s. Be conversational and helpful. If everything is fine, be positive. If there are issues, mention them briefly. Do not use markdown formatting.
+
+%s
+
+Time: %s report`, timeOfDay, lang, context.String(), timeOfDay)
+
+	// Call Gemini API
+	summary := callGeminiAPI(prompt)
+	return summary
+}
+
+// callGeminiAPI makes a request to the Gemini API
+func callGeminiAPI(prompt string) string {
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-flash:generateContent?key=%s", cfg.GeminiAPIKey)
+
+	requestBody := map[string]interface{}{
+		"contents": []map[string]interface{}{
+			{
+				"parts": []map[string]string{
+					{"text": prompt},
+				},
+			},
+		},
+		"generationConfig": map[string]interface{}{
+			"temperature":     0.7,
+			"maxOutputTokens": 100,
+		},
+	}
+
+	jsonBody, err := json.Marshal(requestBody)
+	if err != nil {
+		log.Printf("[Gemini] Error marshaling request: %v", err)
+		return ""
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		log.Printf("[Gemini] Error creating request: %v", err)
+		return ""
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[Gemini] Error calling API: %v", err)
+		return ""
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("[Gemini] API error (status %d): %s", resp.StatusCode, string(body))
+		return ""
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("[Gemini] Error reading response: %v", err)
+		return ""
+	}
+
+	// Parse response
+	var result struct {
+		Candidates []struct {
+			Content struct {
+				Parts []struct {
+					Text string `json:"text"`
+				} `json:"parts"`
+			} `json:"content"`
+		} `json:"candidates"`
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		log.Printf("[Gemini] Error parsing response: %v", err)
+		return ""
+	}
+
+	if len(result.Candidates) > 0 && len(result.Candidates[0].Content.Parts) > 0 {
+		return strings.TrimSpace(result.Candidates[0].Content.Parts[0].Text)
+	}
+
+	return ""
 }
 
 func getHealthStatus(s Stats) (icon, text string, hasProblems bool) {
@@ -2714,7 +2886,7 @@ func getHealthStatus(s Stats) (icon, text string, hasProblems bool) {
 	hddCritical := cfg.Notifications.DiskHDD.CriticalThreshold
 
 	if criticalCount > 0 || s.CPU > cpuCritical || s.RAM > ramCritical || s.VolSSD.Used > ssdCritical || s.VolHDD.Used > hddCritical {
-		return "⚠️", "Some issues to look at", true
+		return "⚠️", tr("health_critical"), true
 	}
 
 	cpuWarn := cfg.Notifications.CPU.WarningThreshold
@@ -2724,15 +2896,15 @@ func getHealthStatus(s Stats) (icon, text string, hasProblems bool) {
 	ioWarn := cfg.Notifications.DiskIO.WarningThreshold
 
 	if warningCount > 0 || s.CPU > cpuWarn*0.9 || s.RAM > ramWarn*0.95 || s.DiskUtil > ioWarn*0.95 || s.VolSSD.Used > ssdWarn || s.VolHDD.Used > hddWarn {
-		return "👀", "A few things need attention", true
+		return "👀", tr("health_warning"), true
 	}
-	return "✨", "Everything's running smoothly", false
+	return "✨", tr("health_ok"), false
 }
 
 // generateReport for manual requests (/report)
 func generateReport(manual bool) string {
 	if !manual {
-		return generateDailyReport("> *Report NAS*")
+		return generateDailyReport("> *Report NAS*", true)
 	}
 
 	statsMutex.RLock()
