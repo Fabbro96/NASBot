@@ -1,0 +1,545 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"os/exec"
+	"sort"
+	"strings"
+	"time"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/disk"
+	"github.com/shirou/gopsutil/v3/host"
+	"github.com/shirou/gopsutil/v3/load"
+	"github.com/shirou/gopsutil/v3/mem"
+	"github.com/shirou/gopsutil/v3/process"
+)
+
+// ═══════════════════════════════════════════════════════════════════
+//  AUTONOMOUS MANAGER (automatic decisions)
+// ═══════════════════════════════════════════════════════════════════
+
+func autonomousManager(bot *tgbotapi.BotAPI) {
+	ticker := time.NewTicker(10 * time.Second)
+	diskTicker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	defer diskTicker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			statsMutex.RLock()
+			s := statsCache
+			ready := statsReady
+			statsMutex.RUnlock()
+
+			if !ready {
+				continue
+			}
+
+			// Check stress for enabled resources only
+			if cfg.StressTracking.Enabled {
+				if cfg.Notifications.DiskIO.Enabled {
+					checkResourceStress(bot, "HDD", s.DiskUtil, cfg.Notifications.DiskIO.WarningThreshold)
+				}
+				if cfg.Notifications.CPU.Enabled {
+					checkResourceStress(bot, "CPU", s.CPU, cfg.Notifications.CPU.WarningThreshold)
+				}
+				if cfg.Notifications.RAM.Enabled {
+					checkResourceStress(bot, "RAM", s.RAM, cfg.Notifications.RAM.WarningThreshold)
+				}
+				if cfg.Notifications.Swap.Enabled {
+					checkResourceStress(bot, "Swap", s.Swap, cfg.Notifications.Swap.WarningThreshold)
+				}
+				if cfg.Notifications.DiskSSD.Enabled {
+					checkResourceStress(bot, "SSD", s.VolSSD.Used, cfg.Notifications.DiskSSD.WarningThreshold)
+				}
+			}
+
+			// Check critical RAM for auto-restart
+			if cfg.Docker.AutoRestartOnRAMCritical.Enabled {
+				if s.RAM >= cfg.Docker.AutoRestartOnRAMCritical.RAMThreshold {
+					handleCriticalRAM(bot, s)
+				}
+			}
+
+			// Clean restart counter (every hour)
+			cleanRestartCounter()
+
+			// Docker watchdog
+			if cfg.Docker.Watchdog.Enabled {
+				checkDockerHealth(bot)
+			}
+
+			// Check for unexpected container stops
+			checkContainerStates(bot)
+
+			// Weekly prune
+			if cfg.Docker.WeeklyPrune.Enabled {
+				checkWeeklyPrune(bot)
+			}
+
+		case <-diskTicker.C:
+			recordDiskUsage()
+		}
+	}
+}
+
+func checkDockerHealth(bot *tgbotapi.BotAPI) {
+	containers := getContainerList()
+
+	isHealthy := len(containers) > 0
+
+	if isHealthy {
+		if !dockerFailureStart.IsZero() {
+			dockerFailureStart = time.Time{}
+			log.Println("[Docker] Recovered/populated.")
+		}
+		return
+	}
+
+	if dockerFailureStart.IsZero() {
+		dockerFailureStart = time.Now()
+		log.Printf("[Docker] Warning: 0 containers or service down. Timer started (%dm).", cfg.Docker.Watchdog.TimeoutMinutes)
+		return
+	}
+
+	timeout := time.Duration(cfg.Docker.Watchdog.TimeoutMinutes) * time.Minute
+
+	if time.Since(dockerFailureStart) > timeout {
+		log.Printf("[Docker] ⚠️ Down > %dm.", cfg.Docker.Watchdog.TimeoutMinutes)
+
+		dockerFailureStart = time.Now()
+
+		if !cfg.Docker.Watchdog.AutoRestartService {
+			if !isQuietHours() {
+				bot.Send(tgbotapi.NewMessage(AllowedUserID,
+					fmt.Sprintf("⚠️ *Docker Watchdog*\n\nNo containers detected for %d minutes.\n_Auto-restart disabled in config_",
+						cfg.Docker.Watchdog.TimeoutMinutes)))
+			}
+			addReportEvent("warning", "Docker watchdog triggered (restart disabled)")
+			return
+		}
+
+		if !isQuietHours() {
+			bot.Send(tgbotapi.NewMessage(AllowedUserID,
+				fmt.Sprintf("⚠️ *Docker Watchdog*\n\nNo containers detected for %d minutes.\nRestarting Docker service...",
+					cfg.Docker.Watchdog.TimeoutMinutes)))
+		}
+
+		addReportEvent("action", "Docker watchdog restart triggered")
+
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+		defer cancel()
+
+		var cmd *exec.Cmd
+		if _, err := exec.LookPath("systemctl"); err == nil {
+			cmd = exec.CommandContext(ctx, "systemctl", "restart", "docker")
+		} else {
+			cmd = exec.CommandContext(ctx, "service", "docker", "restart")
+		}
+
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			if !isQuietHours() {
+				bot.Send(tgbotapi.NewMessage(AllowedUserID, fmt.Sprintf("❌ Docker restart error:\n`%v`", err)))
+			}
+			log.Printf("[!] Docker restart fail: %v\n%s", err, string(out))
+		} else {
+			if !isQuietHours() {
+				bot.Send(tgbotapi.NewMessage(AllowedUserID, "✅ Docker restart command sent."))
+			}
+		}
+	}
+}
+
+func checkWeeklyPrune(bot *tgbotapi.BotAPI) {
+	if !dockerPruneEnabled {
+		return
+	}
+
+	now := time.Now().In(location)
+
+	targetDay := time.Sunday
+	switch strings.ToLower(dockerPruneDay) {
+	case "monday":
+		targetDay = time.Monday
+	case "tuesday":
+		targetDay = time.Tuesday
+	case "wednesday":
+		targetDay = time.Wednesday
+	case "thursday":
+		targetDay = time.Thursday
+	case "friday":
+		targetDay = time.Friday
+	case "saturday":
+		targetDay = time.Saturday
+	case "sunday":
+		targetDay = time.Sunday
+	}
+
+	isTime := now.Weekday() == targetDay && now.Hour() == dockerPruneHour
+
+	if isTime {
+		if !pruneDoneToday {
+			log.Println("[Docker] Running Weekly Prune...")
+			pruneDoneToday = true
+
+			go func() {
+				cmd := exec.Command("docker", "system", "prune", "-a", "-f")
+				out, err := cmd.CombinedOutput()
+
+				var msg string
+				if err != nil {
+					msg = fmt.Sprintf("🧹 *Weekly Prune Error*\n\n`%v`", err)
+				} else {
+					output := string(out)
+					lines := strings.Split(output, "\n")
+					lastLine := ""
+					for i := len(lines) - 1; i >= 0; i-- {
+						if strings.TrimSpace(lines[i]) != "" {
+							lastLine = lines[i]
+							break
+						}
+					}
+					msg = fmt.Sprintf("🧹 *Weekly Prune*\n\nUnused images removed.\n`%s`", lastLine)
+					addReportEvent("info", "Weekly docker prune completed")
+				}
+
+				if !isQuietHours() {
+					m := tgbotapi.NewMessage(AllowedUserID, msg)
+					m.ParseMode = "Markdown"
+					bot.Send(m)
+				}
+			}()
+		}
+	} else {
+		if now.Hour() != cfg.Docker.WeeklyPrune.Hour {
+			pruneDoneToday = false
+		}
+	}
+}
+
+// checkResourceStress tracks stress for a resource and notifies if necessary
+func checkResourceStress(bot *tgbotapi.BotAPI, resource string, currentValue, threshold float64) {
+	resourceStressMutex.Lock()
+	defer resourceStressMutex.Unlock()
+
+	tracker := resourceStress[resource]
+	if tracker == nil {
+		tracker = &StressTracker{}
+		resourceStress[resource] = tracker
+	}
+
+	isStressed := currentValue >= threshold
+	stressDurationThreshold := time.Duration(cfg.StressTracking.DurationThresholdMinutes) * time.Minute
+
+	if isStressed {
+		if tracker.CurrentStart.IsZero() {
+			tracker.CurrentStart = time.Now()
+			tracker.StressCount++
+			tracker.Notified = false
+		}
+
+		stressDuration := time.Since(tracker.CurrentStart)
+		if stressDuration >= stressDurationThreshold && !tracker.Notified && !isQuietHours() {
+			var emoji, unit string
+			switch resource {
+			case "HDD":
+				emoji = "💾"
+				unit = "I/O"
+			case "SSD":
+				emoji = "💿"
+				unit = "Usage"
+			case "CPU":
+				emoji = "🧠"
+				unit = "Usage"
+			case "RAM":
+				emoji = "💾"
+				unit = "Usage"
+			case "Swap":
+				emoji = "🔄"
+				unit = "Usage"
+			}
+
+			msg := fmt.Sprintf("%s *%s stress*\n\n"+
+				"%s: `%.0f%%` for `%s`\n\n"+
+				"_Watching..._",
+				emoji, resource, unit, currentValue,
+				stressDuration.Round(time.Second))
+
+			m := tgbotapi.NewMessage(AllowedUserID, msg)
+			m.ParseMode = "Markdown"
+			bot.Send(m)
+
+			tracker.Notified = true
+			addReportEvent("warning", fmt.Sprintf("%s high (%.0f%%) for %s", resource, currentValue, stressDuration.Round(time.Second)))
+		}
+	} else {
+		if !tracker.CurrentStart.IsZero() {
+			stressDuration := time.Since(tracker.CurrentStart)
+			tracker.TotalStress += stressDuration
+
+			if stressDuration > tracker.LongestStress {
+				tracker.LongestStress = stressDuration
+			}
+
+			if tracker.Notified && !isQuietHours() {
+				msg := fmt.Sprintf("✅ *%s back to normal* after `%s`", resource, stressDuration.Round(time.Second))
+				m := tgbotapi.NewMessage(AllowedUserID, msg)
+				m.ParseMode = "Markdown"
+				bot.Send(m)
+				addReportEvent("info", fmt.Sprintf("%s normalized after %s", resource, stressDuration.Round(time.Second)))
+			}
+
+			tracker.CurrentStart = time.Time{}
+			tracker.Notified = false
+		}
+	}
+}
+
+// getStressSummary returns a summary of significant stress events
+func getStressSummary() string {
+	resourceStressMutex.Lock()
+	defer resourceStressMutex.Unlock()
+
+	var parts []string
+
+	for _, res := range []string{"CPU", "RAM", "Swap", "SSD", "HDD"} {
+		tracker := resourceStress[res]
+		if tracker == nil || tracker.StressCount == 0 {
+			continue
+		}
+
+		if tracker.LongestStress < 5*time.Minute {
+			continue
+		}
+
+		entry := fmt.Sprintf("%s %dx", res, tracker.StressCount)
+		if tracker.LongestStress > 0 {
+			entry += fmt.Sprintf(" `%s`", formatDuration(tracker.LongestStress))
+		}
+		parts = append(parts, entry)
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, " · ")
+}
+
+// resetStressCounters resets stress counters for new report period
+func resetStressCounters() {
+	resourceStressMutex.Lock()
+	defer resourceStressMutex.Unlock()
+
+	for _, tracker := range resourceStress {
+		tracker.StressCount = 0
+		tracker.LongestStress = 0
+		tracker.TotalStress = 0
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MONITOR ALERTS (only critical, no spam)
+// ═══════════════════════════════════════════════════════════════════
+
+var lastCriticalAlert time.Time
+
+func monitorAlerts(bot *tgbotapi.BotAPI) {
+	ticker := time.NewTicker(IntervalMonitor)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		statsMutex.RLock()
+		s := statsCache
+		ready := statsReady
+		statsMutex.RUnlock()
+
+		if !ready {
+			continue
+		}
+
+		var criticalAlerts []string
+
+		// Disk almost full
+		if cfg.Notifications.DiskSSD.Enabled && s.VolSSD.Used >= cfg.Notifications.DiskSSD.CriticalThreshold {
+			criticalAlerts = append(criticalAlerts, fmt.Sprintf("💿 SSD critical: `%.1f%%`", s.VolSSD.Used))
+		}
+		if cfg.Notifications.DiskHDD.Enabled && s.VolHDD.Used >= cfg.Notifications.DiskHDD.CriticalThreshold {
+			criticalAlerts = append(criticalAlerts, fmt.Sprintf("🗄 HDD critical: `%.1f%%`", s.VolHDD.Used))
+		}
+
+		// Check SMART
+		if cfg.Notifications.SMART.Enabled {
+			for _, dev := range []string{"sda", "sdb"} {
+				_, health := readDiskSMART(dev)
+				if strings.Contains(strings.ToUpper(health), "FAIL") {
+					criticalAlerts = append(criticalAlerts, fmt.Sprintf("🚨 Disk %s FAILING — backup now!", dev))
+				}
+			}
+		}
+
+		// Critical CPU/RAM
+		if cfg.Notifications.CPU.Enabled && s.CPU >= cfg.Notifications.CPU.CriticalThreshold {
+			criticalAlerts = append(criticalAlerts, fmt.Sprintf("🧠 CPU critical: `%.1f%%`", s.CPU))
+		}
+		if cfg.Notifications.RAM.Enabled && s.RAM >= cfg.Notifications.RAM.CriticalThreshold {
+			criticalAlerts = append(criticalAlerts, fmt.Sprintf("💾 RAM critical: `%.1f%%`", s.RAM))
+		}
+
+		// Send critical alerts with configurable cooldown
+		cooldown := time.Duration(cfg.Intervals.CriticalAlertCooldownMins) * time.Minute
+		if len(criticalAlerts) > 0 && time.Since(lastCriticalAlert) >= cooldown && !isQuietHours() {
+			msg := "🚨 *Critical*\n\n" + strings.Join(criticalAlerts, "\n")
+			m := tgbotapi.NewMessage(AllowedUserID, msg)
+			m.ParseMode = "Markdown"
+			bot.Send(m)
+			lastCriticalAlert = time.Now()
+		}
+
+		// Always record critical events for report
+		if len(criticalAlerts) > 0 {
+			for _, alert := range criticalAlerts {
+				addReportEvent("critical", alert)
+			}
+		}
+
+		// Record warnings for the report
+		if cfg.Notifications.CPU.Enabled && s.CPU >= cfg.Notifications.CPU.WarningThreshold && s.CPU < cfg.Notifications.CPU.CriticalThreshold {
+			addReportEvent("warning", fmt.Sprintf("CPU high: %.1f%%", s.CPU))
+		}
+		if cfg.Notifications.RAM.Enabled && s.RAM >= cfg.Notifications.RAM.WarningThreshold && s.RAM < cfg.Notifications.RAM.CriticalThreshold {
+			addReportEvent("warning", fmt.Sprintf("RAM high: %.1f%%", s.RAM))
+		}
+		if cfg.Notifications.Swap.Enabled && s.Swap >= cfg.Notifications.Swap.WarningThreshold {
+			addReportEvent("warning", fmt.Sprintf("Swap high: %.1f%%", s.Swap))
+		}
+		if cfg.Notifications.DiskSSD.Enabled && s.VolSSD.Used >= cfg.Notifications.DiskSSD.WarningThreshold && s.VolSSD.Used < cfg.Notifications.DiskSSD.CriticalThreshold {
+			addReportEvent("warning", fmt.Sprintf("SSD at %.1f%%", s.VolSSD.Used))
+		}
+		if cfg.Notifications.DiskHDD.Enabled && s.VolHDD.Used >= cfg.Notifications.DiskHDD.WarningThreshold && s.VolHDD.Used < cfg.Notifications.DiskHDD.CriticalThreshold {
+			addReportEvent("warning", fmt.Sprintf("HDD at %.1f%%", s.VolHDD.Used))
+		}
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  BACKGROUND STATS COLLECTOR
+// ═══════════════════════════════════════════════════════════════════
+
+func statsCollector() {
+	var lastIO map[string]disk.IOCountersStat
+	var lastIOTime time.Time
+
+	ticker := time.NewTicker(IntervalStats)
+	defer ticker.Stop()
+
+	for {
+		c, _ := cpu.Percent(0, false)
+		v, _ := mem.VirtualMemory()
+		sw, _ := mem.SwapMemory()
+		l, _ := load.Avg()
+		h, _ := host.Info()
+		dSSD, _ := disk.Usage(PathSSD)
+		dHDD, _ := disk.Usage(PathHDD)
+
+		currentIO, _ := disk.IOCounters()
+		var readMBs, writeMBs, diskUtil float64
+		if lastIO != nil && !lastIOTime.IsZero() {
+			elapsed := time.Since(lastIOTime).Seconds()
+			if elapsed > 0 {
+				var rBytes, wBytes uint64
+				var maxUtil float64
+				for k, curr := range currentIO {
+					if prev, ok := lastIO[k]; ok {
+						rBytes += curr.ReadBytes - prev.ReadBytes
+						wBytes += curr.WriteBytes - prev.WriteBytes
+						deltaIOTime := curr.IoTime - prev.IoTime
+						util := float64(deltaIOTime) / (elapsed * 10)
+						if util > 100 {
+							util = 100
+						}
+						if util > maxUtil {
+							maxUtil = util
+						}
+					}
+				}
+				readMBs = float64(rBytes) / elapsed / 1024 / 1024
+				writeMBs = float64(wBytes) / elapsed / 1024 / 1024
+				diskUtil = maxUtil
+			}
+		}
+		lastIO = currentIO
+		lastIOTime = time.Now()
+
+		topCPU, topRAM := getTopProcesses(5)
+
+		newStats := Stats{
+			CPU:        safeFloat(c, 0),
+			RAM:        v.UsedPercent,
+			RAMFreeMB:  v.Available / 1024 / 1024,
+			RAMTotalMB: v.Total / 1024 / 1024,
+			Swap:       sw.UsedPercent,
+			Load1m:     l.Load1,
+			Load5m:     l.Load5,
+			Load15m:    l.Load15,
+			Uptime:     h.Uptime,
+			ReadMBs:    readMBs,
+			WriteMBs:   writeMBs,
+			DiskUtil:   diskUtil,
+			TopCPU:     topCPU,
+			TopRAM:     topRAM,
+		}
+
+		if dSSD != nil {
+			newStats.VolSSD = VolumeStats{Used: dSSD.UsedPercent, Free: dSSD.Free}
+		}
+		if dHDD != nil {
+			newStats.VolHDD = VolumeStats{Used: dHDD.UsedPercent, Free: dHDD.Free}
+		}
+
+		statsMutex.Lock()
+		statsCache = newStats
+		statsReady = true
+		statsMutex.Unlock()
+
+		<-ticker.C
+	}
+}
+
+func getTopProcesses(limit int) (topCPU, topRAM []ProcInfo) {
+	ps, err := process.Processes()
+	if err != nil {
+		return nil, nil
+	}
+
+	var list []ProcInfo
+	for _, p := range ps {
+		name, _ := p.Name()
+		memP, _ := p.MemoryPercent()
+		cpuP, _ := p.CPUPercent()
+		if name != "" && (memP > 0.1 || cpuP > 0.1) {
+			list = append(list, ProcInfo{Name: name, Mem: float64(memP), Cpu: cpuP})
+		}
+	}
+
+	sort.Slice(list, func(i, j int) bool { return list[i].Cpu > list[j].Cpu })
+	if len(list) > limit {
+		topCPU = append([]ProcInfo{}, list[:limit]...)
+	} else {
+		topCPU = append([]ProcInfo{}, list...)
+	}
+
+	sort.Slice(list, func(i, j int) bool { return list[i].Mem > list[j].Mem })
+	if len(list) > limit {
+		topRAM = append([]ProcInfo{}, list[:limit]...)
+	} else {
+		topRAM = append([]ProcInfo{}, list...)
+	}
+
+	return topCPU, topRAM
+}
