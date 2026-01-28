@@ -68,9 +68,15 @@ var translations = map[string]map[string]string{
 		"temp_warning":       "CPU temperature high",
 		"trend_last_hour":    "Last hour",
 		"critical_container": "Critical container down",
+		"report_settings_title":  "📨 *Daily Reports*\n\nSelect automatic report frequency:",
+		"quiet_settings_title":   "🌙 *Quiet Hours*\n\nNo notifications during this period.\n\n",
+		"quiet_currently":        "Currently: %02d:%02d - %02d:%02d\n",
+		"prune_settings_title":   "🧹 *Docker Prune*\n\nAutomatic cleanup of unused images.\n\n",
+		"prune_schedule_title":   "📅 *Prune Schedule*\n\nSelect day:",
 	},
 	"it": {
 		"status_title":       "🖥 *NAS* alle %s\n\n",
+
 		"cpu_fmt":            "🧠 CPU  %s %2.0f%%\n",
 		"ram_fmt":            "💾 RAM  %s %2.0f%%\n",
 		"swap_fmt":           "🔄 Swap %s %2.0f%%\n",
@@ -135,8 +141,14 @@ var translations = map[string]map[string]string{
 		"temp_warning":       "Temperatura CPU alta",
 		"trend_last_hour":    "Ultima ora",
 		"critical_container": "Container critico fermo",
+		"report_settings_title":  "📨 *Report Giornalieri*\n\nSeleziona la frequenza dei report automatici:",
+		"quiet_settings_title":   "🌙 *Ore Silenziose*\n\nDurante questo periodo non riceverai notifiche.\n\n",
+		"quiet_currently":        "Attualmente: %02d:%02d - %02d:%02d\n",
+		"prune_settings_title":   "🧹 *Pulizia Docker*\n\nPulizia automatica delle immagini inutilizzate.\n\n",
+		"prune_schedule_title":   "📅 *Programmazione Pulizia*\n\nSeleziona il giorno:",
 	},
 }
+
 
 // tr returns the translated string for the given key
 func tr(key string) string {

@@ -1,8 +1,8 @@
 ===================================================================
-🤖 COMANDI PER BOTFATHER
+🤖 COMMANDS FOR BOTFATHER
 ===================================================================
-Copia e incolla questi comandi in BotFather quando configuri il bot
-(Menu principale → /mybots → Scegli il bot → Edit Bot → Edit Commands)
+Copy and paste these commands into BotFather when configuring your bot:
+(Main Menu → /mybots → Choose your bot → Edit Bot → Edit Commands)
 
 status - 📊 Quick system overview
 quick - ⚡ Ultra-compact one-liner status
@@ -19,7 +19,6 @@ config - ⚙️ Show current configuration
 sysinfo - 💻 Detailed system information
 speedtest - 🚀 Run internet speed test
 diskpred - 💾 Disk space prediction
-diskinfo - 📀 Detailed disk status
 settings - 🔧 Configure bot settings
 language - 🌍 Change language (EN/IT)
 container - 📦 Manage specific container
