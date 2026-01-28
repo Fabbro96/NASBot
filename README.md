@@ -275,7 +275,34 @@ Each resource can be independently enabled/disabled:
 
 ## 🚀 Installation
 
-### Option A: Quick Start (Binary)
+### 🎯 One-Click Install (Recommended)
+
+The easiest way to deploy NASBot on your NAS:
+
+1. **Copy only 3 files to your NAS:**
+   - `nasbot-arm64` (or `nasbot` binary)
+   - `config.json` (with your Telegram token and user ID)
+   - `install.sh`
+
+2. **Run the installer:**
+   ```bash
+   chmod +x install.sh
+   sudo ./install.sh
+   ```
+
+That's it! The installer automatically:
+- ✅ Sets executable permissions
+- ✅ Configures kernel panic auto-reboot (10 seconds)
+- ✅ Sets up cron watchdog (checks every 5 minutes)
+- ✅ Starts the bot
+- ✅ Shows status and useful commands
+
+### Manual Installation (Alternative)
+
+<details>
+<summary>Click to expand manual steps</summary>
+
+#### Option A: Quick Start (Binary)
 
 1. Download the binary (if available) or compile it:
    ```bash
@@ -290,7 +317,7 @@ Each resource can be independently enabled/disabled:
    ./nasbot
    ```
 
-### Option B: Automatic Service (Autostart)
+#### Option B: Automatic Service (Autostart)
 
 Use the provided script to set up persistence (cron/start script):
 
@@ -301,7 +328,7 @@ chmod +x setup_autostart.sh
 
 This will configure a cron job or startup script to keep the bot running.
 
-### Option C: Kernel Panic Auto-Recovery
+#### Option C: Kernel Panic Auto-Recovery
 
 If you can't physically access your NAS, configure automatic reboot after kernel panic:
 
@@ -310,7 +337,9 @@ sudo chmod +x setup_kernel_panic.sh
 sudo ./setup_kernel_panic.sh
 ```
 
-This configures the kernel to automatically reboot 10 seconds after a panic, so your NAS recovers without manual intervention.
+This configures the kernel to automatically reboot 10 seconds after a panic.
+
+</details>
 
 ---
 
