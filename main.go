@@ -77,9 +77,9 @@ var (
 	diskUsageHistoryMutex sync.Mutex
 
 	// Trend history (last 6 hours, sampled every 5 min = 72 points max)
-	cpuTrend      []TrendPoint
-	ramTrend      []TrendPoint
-	trendMutex    sync.Mutex
+	cpuTrend       []TrendPoint
+	ramTrend       []TrendPoint
+	trendMutex     sync.Mutex
 	maxTrendPoints = 72
 
 	// Docker container cache with TTL
