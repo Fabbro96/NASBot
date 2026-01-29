@@ -241,7 +241,7 @@ Time: %s report`, timeOfDay, lang, context.String(), timeOfDay)
 
 // callGeminiAPI makes a request to the Gemini API
 func callGeminiAPI(prompt string) string {
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=%s", cfg.GeminiAPIKey)
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=%s", cfg.GeminiAPIKey)
 
 	requestBody := map[string]interface{}{
 		"contents": []map[string]interface{}{
