@@ -118,7 +118,10 @@ func generateDailyReport(greeting string, isMorning bool) string {
 	events := filterSignificantEvents(reportEvents)
 	reportEventsMutex.Unlock()
 
-	aiSummary := generateAISummary(s, events, isMorning)
+	aiSummary, aiErr := generateAISummary(s, events, isMorning)
+	if aiErr != nil {
+		log.Printf("[Gemini] AI summary error: %v", aiErr)
+	}
 	if aiSummary != "" {
 		b.WriteString(fmt.Sprintf("🤖 _%s_\n\n", aiSummary))
 	} else {
@@ -185,9 +188,9 @@ func generateDailyReport(greeting string, isMorning bool) string {
 }
 
 // generateAISummary calls Gemini API to generate a brief summary of the NAS status
-func generateAISummary(s Stats, events []ReportEvent, isMorning bool) string {
+func generateAISummary(s Stats, events []ReportEvent, isMorning bool) (string, error) {
 	if cfg.GeminiAPIKey == "" {
-		return ""
+		return "", nil
 	}
 
 	var context strings.Builder
@@ -235,83 +238,11 @@ func generateAISummary(s Stats, events []ReportEvent, isMorning bool) string {
 
 Time: %s report`, timeOfDay, lang, context.String(), timeOfDay)
 
-	summary := callGeminiAPI(prompt)
-	return summary
-}
-
-// callGeminiAPI makes a request to the Gemini API
-func callGeminiAPI(prompt string) string {
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=%s", cfg.GeminiAPIKey)
-
-	requestBody := map[string]interface{}{
-		"contents": []map[string]interface{}{
-			{
-				"parts": []map[string]string{
-					{"text": prompt},
-				},
-			},
-		},
-		"generationConfig": map[string]interface{}{
-			"temperature":     0.7,
-			"maxOutputTokens": 100,
-		},
-	}
-
-	jsonBody, err := json.Marshal(requestBody)
+	summary, err := callGeminiAPIWithError(prompt)
 	if err != nil {
-		log.Printf("[Gemini] Error marshaling request: %v", err)
-		return ""
+		return "", err
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonBody))
-	if err != nil {
-		log.Printf("[Gemini] Error creating request: %v", err)
-		return ""
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		log.Printf("[Gemini] Error calling API: %v", err)
-		return ""
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(resp.Body)
-		log.Printf("[Gemini] API error (status %d): %s", resp.StatusCode, string(body))
-		return ""
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Printf("[Gemini] Error reading response: %v", err)
-		return ""
-	}
-
-	var result struct {
-		Candidates []struct {
-			Content struct {
-				Parts []struct {
-					Text string `json:"text"`
-				} `json:"parts"`
-			} `json:"content"`
-		} `json:"candidates"`
-	}
-
-	if err := json.Unmarshal(body, &result); err != nil {
-		log.Printf("[Gemini] Error parsing response: %v", err)
-		return ""
-	}
-
-	if len(result.Candidates) > 0 && len(result.Candidates[0].Content.Parts) > 0 {
-		return strings.TrimSpace(result.Candidates[0].Content.Parts[0].Text)
-	}
-
-	return ""
+	return summary, nil
 }
 
 // callGeminiAPIWithError makes a request to the Gemini API and returns the error if any
@@ -419,7 +350,7 @@ func getHealthStatus(s Stats) (icon, text string, hasProblems bool) {
 // generateReport for manual requests (/report)
 func generateReport(manual bool) string {
 	if !manual {
-		return generateDailyReport("> *Report NAS*", true)
+		return generateDailyReport("> *NAS Report*", true)
 	}
 
 	statsMutex.RLock()
@@ -432,8 +363,28 @@ func generateReport(manual bool) string {
 	b.WriteString("*Report*\n")
 	b.WriteString(fmt.Sprintf("%s\n\n", now.Format("02/01 15:04")))
 
-	healthIcon, healthText, _ := getHealthStatus(s)
-	b.WriteString(fmt.Sprintf("%s %s\n\n", healthIcon, healthText))
+	reportEventsMutex.Lock()
+	events := make([]ReportEvent, len(reportEvents))
+	copy(events, reportEvents)
+	reportEventsMutex.Unlock()
+	filteredEvents := filterSignificantEvents(events)
+
+	isMorning := now.Hour() < 12
+	aiSummary, aiErr := generateAISummary(s, filteredEvents, isMorning)
+	if aiErr != nil {
+		log.Printf("[Gemini] AI summary error: %v", aiErr)
+	}
+
+	if aiSummary != "" {
+		b.WriteString(fmt.Sprintf("🤖 _%s_\n\n", aiSummary))
+	} else {
+		healthIcon, healthText, _ := getHealthStatus(s)
+		b.WriteString(fmt.Sprintf("%s %s\n\n", healthIcon, healthText))
+	}
+
+	if aiErr != nil {
+		b.WriteString(fmt.Sprintf("⚠️ LLM error: %s\n\n", aiErr))
+	}
 
 	b.WriteString("*Resources*\n")
 	b.WriteString(fmt.Sprintf("CPU %s %.1f%%\n", makeProgressBar(s.CPU), s.CPU))
@@ -460,11 +411,6 @@ func generateReport(manual bool) string {
 	b.WriteString(fmt.Sprintf("\nContainers: %d on · %d off\n", running, stopped))
 
 	b.WriteString(fmt.Sprintf("\n_Up for %s_\n", formatUptime(s.Uptime)))
-
-	reportEventsMutex.Lock()
-	events := make([]ReportEvent, len(reportEvents))
-	copy(events, reportEvents)
-	reportEventsMutex.Unlock()
 
 	if len(events) > 0 {
 		b.WriteString("\n*Events*\n")
