@@ -214,6 +214,7 @@ func getHelpText() string {
 	b.WriteString("*⚙️ Settings & System*\n")
 	b.WriteString("/settings — *configure everything*\n")
 	b.WriteString("/report — full detailed report\n")
+	b.WriteString("/testllm — test Gemini API connection\n")
 	b.WriteString("/ping — check if bot is alive\n")
 	b.WriteString("/config — show current config\n")
 	b.WriteString("/logs — recent system logs\n")
@@ -686,4 +687,25 @@ func getLogSearchText(args string) string {
 	b.WriteString("```")
 
 	return b.String()
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  TEST LLM
+// ═══════════════════════════════════════════════════════════════════
+
+func getTestLLMText() string {
+	if cfg.GeminiAPIKey == "" {
+		return tr("testllm_no_key")
+	}
+
+	// Test with a simple prompt in the current language
+	testPrompt := tr("testllm_prompt")
+
+	response := callGeminiAPI(testPrompt)
+
+	if response == "" {
+		return tr("testllm_error")
+	}
+
+	return fmt.Sprintf(tr("testllm_success"), response)
 }

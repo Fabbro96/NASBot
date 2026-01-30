@@ -65,6 +65,8 @@ func handleCommand(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) {
 		sendLanguageSelection(bot, chatID)
 	case "settings":
 		sendSettingsMenu(bot, chatID)
+	case "testllm":
+		sendMarkdown(bot, chatID, getTestLLMText())
 	case "help":
 		sendMarkdown(bot, chatID, getHelpText())
 	default:
