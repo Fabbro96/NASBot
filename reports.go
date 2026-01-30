@@ -126,7 +126,7 @@ func generateDailyReport(greeting string, isMorning bool) string {
 		b.WriteString(fmt.Sprintf("🤖 _%s_\n\n", aiSummary))
 	} else {
 		healthIcon, healthText, _ := getHealthStatus(s)
-		b.WriteString(fmt.Sprintf("%s %s\n\n", healthIcon, healthText))
+		b.WriteString(fmt.Sprintf("📝 %s %s\n\n", healthIcon, healthText))
 	}
 
 	if len(events) > 0 {
@@ -232,11 +232,24 @@ func generateAISummary(s Stats, events []ReportEvent, isMorning bool) (string, e
 		lang = "Italian"
 	}
 
-	prompt := fmt.Sprintf(`You are a friendly NAS monitoring assistant. Based on the following system status, write a brief (1-2 sentences max) %s summary in %s. Be conversational and helpful. If everything is fine, be positive. If there are issues, mention them briefly. Do not use markdown formatting.
+	prompt := fmt.Sprintf(`You are an intelligent home NAS assistant with a warm, conversational personality. Your job is to give the user a quick, friendly update on their home server.
 
+Current system status:
 %s
 
-Time: %s report`, timeOfDay, lang, context.String(), timeOfDay)
+It's currently %s time. Write a natural, human-like summary (2-3 sentences) in %s that:
+- Greets appropriately for the time of day (good morning/evening, etc.)
+- Highlights the most important information first
+- If everything is healthy, be encouraging and positive
+- If there are concerns (high resource usage, stopped containers, recent warnings), mention them casually but clearly
+- Use a friendly, slightly informal tone like you're chatting with a friend
+- Do NOT use any markdown, emojis, or special formatting
+- Be concise but informative
+
+Example good responses:
+- "Good morning! Everything's running smoothly today. Your NAS has been up for 5 days and all 10 containers are healthy."
+- "Hey, quick heads up: RAM is sitting at 85%% which is a bit high. Might want to check what's eating memory. Otherwise, all good!"
+- "Evening! Just noticed the HDD is getting full at 92%%. The rest looks fine though, CPU and RAM are cruising along nicely."`, context.String(), timeOfDay, lang)
 
 	summary, err := callGeminiAPIWithError(prompt)
 	if err != nil {
@@ -379,7 +392,7 @@ func generateReport(manual bool) string {
 		b.WriteString(fmt.Sprintf("🤖 _%s_\n\n", aiSummary))
 	} else {
 		healthIcon, healthText, _ := getHealthStatus(s)
-		b.WriteString(fmt.Sprintf("%s %s\n\n", healthIcon, healthText))
+		b.WriteString(fmt.Sprintf("📝 %s %s\n\n", healthIcon, healthText))
 	}
 
 	if aiErr != nil {
