@@ -29,13 +29,13 @@ import (
 
 // FSWatchdogConfig holds filesystem watchdog configuration
 type FSWatchdogConfig struct {
-	Enabled            bool    `json:"enabled"`
-	CheckIntervalMins  int     `json:"check_interval_minutes"`  // Light check interval (default: 30)
-	WarningThreshold   float64 `json:"warning_threshold"`       // Alert threshold (default: 85%)
-	CriticalThreshold  float64 `json:"critical_threshold"`      // Deep scan trigger (default: 90%)
-	DeepScanPaths      []string `json:"deep_scan_paths"`        // Paths to scan when critical
-	ExcludePatterns    []string `json:"exclude_patterns"`       // Patterns to exclude from scan
-	TopNFiles          int     `json:"top_n_files"`             // Number of largest files to report
+	Enabled           bool     `json:"enabled"`
+	CheckIntervalMins int      `json:"check_interval_minutes"` // Light check interval (default: 30)
+	WarningThreshold  float64  `json:"warning_threshold"`      // Alert threshold (default: 85%)
+	CriticalThreshold float64  `json:"critical_threshold"`     // Deep scan trigger (default: 90%)
+	DeepScanPaths     []string `json:"deep_scan_paths"`        // Paths to scan when critical
+	ExcludePatterns   []string `json:"exclude_patterns"`       // Patterns to exclude from scan
+	TopNFiles         int      `json:"top_n_files"`            // Number of largest files to report
 }
 
 // DirUsage holds directory usage info (memory-efficient)
@@ -53,12 +53,12 @@ type FileInfo struct {
 
 // FSWatchdog manages filesystem monitoring
 type FSWatchdog struct {
-	config           FSWatchdogConfig
-	lastLightCheck   time.Time
-	lastDeepScan     time.Time
-	lastAlertTime    time.Time
-	isScanning       bool
-	scanMutex        sync.Mutex
+	config         FSWatchdogConfig
+	lastLightCheck time.Time
+	lastDeepScan   time.Time
+	lastAlertTime  time.Time
+	isScanning     bool
+	scanMutex      sync.Mutex
 }
 
 var (
@@ -70,18 +70,31 @@ var (
 func GetFSWatchdog() *FSWatchdog {
 	fsWatchdogOnce.Do(func() {
 		fsWatchdog = &FSWatchdog{
-			config: FSWatchdogConfig{
-				Enabled:           true,
-				CheckIntervalMins: 30,
-				WarningThreshold:  85.0,
-				CriticalThreshold: 90.0,
-				DeepScanPaths:     []string{"/", "/var", "/tmp"},
-				ExcludePatterns:   []string{"/proc", "/sys", "/dev", "/run"},
-				TopNFiles:         10,
-			},
+			config: fsWatchdogConfigFromCfg(),
 		}
 	})
 	return fsWatchdog
+}
+
+func fsWatchdogConfigFromCfg() FSWatchdogConfig {
+	return FSWatchdogConfig{
+		Enabled:           cfg.FSWatchdog.Enabled,
+		CheckIntervalMins: cfg.FSWatchdog.CheckIntervalMins,
+		WarningThreshold:  cfg.FSWatchdog.WarningThreshold,
+		CriticalThreshold: cfg.FSWatchdog.CriticalThreshold,
+		DeepScanPaths:     cfg.FSWatchdog.DeepScanPaths,
+		ExcludePatterns:   cfg.FSWatchdog.ExcludePatterns,
+		TopNFiles:         cfg.FSWatchdog.TopNFiles,
+	}
+}
+
+func updateFSWatchdogConfig() {
+	if fsWatchdog == nil {
+		return
+	}
+	fsWatchdog.scanMutex.Lock()
+	fsWatchdog.config = fsWatchdogConfigFromCfg()
+	fsWatchdog.scanMutex.Unlock()
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -93,7 +106,7 @@ type StatfsResult struct {
 	Path        string
 	TotalBytes  uint64
 	FreeBytes   uint64
-	AvailBytes  uint64  // Available to non-root users
+	AvailBytes  uint64 // Available to non-root users
 	UsedBytes   uint64
 	UsedPercent float64
 	Inodes      uint64
@@ -157,8 +170,8 @@ type DeepScanResult struct {
 	ScanTime     time.Time
 	Duration     time.Duration
 	TotalScanned int64
-	DirUsages    []DirUsage  // Top directories by size
-	LargestFiles []FileInfo  // Top N largest files
+	DirUsages    []DirUsage // Top directories by size
+	LargestFiles []FileInfo // Top N largest files
 	Errors       []string
 }
 
