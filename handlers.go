@@ -67,6 +67,8 @@ func handleCommand(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) {
 		sendSettingsMenu(bot, chatID)
 	case "help":
 		sendMarkdown(bot, chatID, getHelpText())
+	case "testllm":
+		sendMarkdown(bot, chatID, getTestLLMText())
 	default:
 		bot.Send(tgbotapi.NewMessage(chatID, "Hmm, I don't know that one. Try /help"))
 	}
