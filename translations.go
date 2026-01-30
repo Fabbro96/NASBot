@@ -73,6 +73,10 @@ var translations = map[string]map[string]string{
 		"quiet_currently":       "Currently: %02d:%02d - %02d:%02d\n",
 		"prune_settings_title":  "🧹 *Docker Prune*\n\nAutomatic cleanup of unused images.\n\n",
 		"prune_schedule_title":  "📅 *Prune Schedule*\n\nSelect day:",
+		"testllm_no_key":        "❌ *Test LLM*\n\n`gemini_api_key` not configured in config.json",
+		"testllm_error":         "❌ *Test LLM*\n\nAPI call error. Check logs for details.\n\n_Possible causes:_\n- Invalid API key\n- Model unavailable\n- Network issues",
+		"testllm_success":       "✅ *Test LLM*\n\n🤖 Gemini Response:\n_%s_\n\n_API working!_",
+		"testllm_prompt":        "Reply in one short sentence: Hello, am I working correctly?",
 	},
 	"it": {
 		"status_title": "🖥 *NAS* alle %s\n\n",
@@ -146,6 +150,10 @@ var translations = map[string]map[string]string{
 		"quiet_currently":       "Attualmente: %02d:%02d - %02d:%02d\n",
 		"prune_settings_title":  "🧹 *Pulizia Docker*\n\nPulizia automatica delle immagini inutilizzate.\n\n",
 		"prune_schedule_title":  "📅 *Programmazione Pulizia*\n\nSeleziona il giorno:",
+		"testllm_no_key":        "❌ *Test LLM*\n\n`gemini_api_key` non configurata in config.json",
+		"testllm_error":         "❌ *Test LLM*\n\nErrore nella chiamata API. Controlla i log per dettagli.\n\n_Possibili cause:_\n- API key non valida\n- Modello non disponibile\n- Problemi di rete",
+		"testllm_success":       "✅ *Test LLM*\n\n🤖 Risposta Gemini:\n_%s_\n\n_API funzionante!_",
+		"testllm_prompt":        "Rispondi in una sola frase breve: Ciao, funziono correttamente?",
 	},
 }
 
