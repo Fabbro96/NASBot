@@ -698,7 +698,7 @@ func getTestLLMText() string {
 		return tr("testllm_no_key")
 	}
 
-	// Test con un prompt semplice nella lingua corrente
+	// Test with a simple prompt in the current language
 	testPrompt := tr("testllm_prompt")
 
 	response := callGeminiAPI(testPrompt)
