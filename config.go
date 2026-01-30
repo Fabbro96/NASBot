@@ -119,13 +119,13 @@ type Config struct {
 	} `json:"cache"`
 
 	FSWatchdog struct {
-		Enabled            bool     `json:"enabled"`
-		CheckIntervalMins  int      `json:"check_interval_minutes"`
-		WarningThreshold   float64  `json:"warning_threshold"`
-		CriticalThreshold  float64  `json:"critical_threshold"`
-		DeepScanPaths      []string `json:"deep_scan_paths"`
-		ExcludePatterns    []string `json:"exclude_patterns"`
-		TopNFiles          int      `json:"top_n_files"`
+		Enabled           bool     `json:"enabled"`
+		CheckIntervalMins int      `json:"check_interval_minutes"`
+		WarningThreshold  float64  `json:"warning_threshold"`
+		CriticalThreshold float64  `json:"critical_threshold"`
+		DeepScanPaths     []string `json:"deep_scan_paths"`
+		ExcludePatterns   []string `json:"exclude_patterns"`
+		TopNFiles         int      `json:"top_n_files"`
 	} `json:"fs_watchdog"`
 }
 
