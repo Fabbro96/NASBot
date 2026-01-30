@@ -695,16 +695,16 @@ func getLogSearchText(args string) string {
 
 func getTestLLMText() string {
 	if cfg.GeminiAPIKey == "" {
-		return "❌ *Test LLM*\n\n`gemini_api_key` non configurata in config.json"
+		return tr("testllm_no_key")
 	}
 
-	testPrompt := "Rispondi in una sola frase breve: Ciao, funziono correttamente?"
+	testPrompt := tr("testllm_prompt")
 
 	response, err := callGeminiAPIWithError(testPrompt)
 
 	if err != nil {
-		return fmt.Sprintf("❌ *Test LLM*\n\n*Errore:*\n`%s`\n\n_Possibili cause:_\n- API key non valida\n- Modello non disponibile\n- Problemi di rete", err.Error())
+		return fmt.Sprintf(tr("testllm_error_details"), err.Error())
 	}
 
-	return fmt.Sprintf("✅ *Test LLM*\n\n🤖 Risposta Gemini:\n_%s_\n\n_API funzionante!_", response)
+	return fmt.Sprintf(tr("testllm_success"), response)
 }
