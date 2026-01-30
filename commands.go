@@ -217,6 +217,7 @@ func getHelpText() string {
 	b.WriteString("/ping — check if bot is alive\n")
 	b.WriteString("/config — show current config\n")
 	b.WriteString("/logs — recent system logs\n")
+	b.WriteString("/testllm — test Gemini API connection\n")
 	b.WriteString("/reboot · /shutdown — power control\n\n")
 
 	if reportMode > 0 {
@@ -686,4 +687,25 @@ func getLogSearchText(args string) string {
 	b.WriteString("```")
 
 	return b.String()
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  TEST LLM
+// ═══════════════════════════════════════════════════════════════════
+
+func getTestLLMText() string {
+	if cfg.GeminiAPIKey == "" {
+		return "❌ *Test LLM*\n\n`gemini_api_key` non configurata in config.json"
+	}
+	
+	// Test con un prompt semplice
+	testPrompt := "Rispondi in una sola frase breve: Ciao, funziono correttamente?"
+	
+	response := callGeminiAPI(testPrompt)
+	
+	if response == "" {
+		return "❌ *Test LLM*\n\nErrore nella chiamata API. Controlla i log per dettagli.\n\n_Possibili cause:_\n- API key non valida\n- Modello non disponibile\n- Problemi di rete"
+	}
+	
+	return fmt.Sprintf("✅ *Test LLM*\n\n🤖 Risposta Gemini:\n_%s_\n\n_API funzionante!_", response)
 }
