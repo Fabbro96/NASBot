@@ -49,7 +49,7 @@ func getNextReportTime() (time.Time, bool) {
 // getNextReportDescription returns a description of the next scheduled report
 func getNextReportDescription() string {
 	if reportMode == 0 {
-		return "\n📭 _Reports disabled_"
+		return tr("reprt_disabled")
 	}
 
 	now := time.Now().In(location)
@@ -61,14 +61,14 @@ func getNextReportDescription() string {
 			reportEveningHour, reportEveningMinute, 0, 0, location)
 
 		if now.Before(morning) {
-			return fmt.Sprintf("\n📨 _Next report: %02d:%02d_", reportMorningHour, reportMorningMinute)
+			return fmt.Sprintf(tr("report_next"), reportMorningHour, reportMorningMinute)
 		} else if now.Before(evening) {
-			return fmt.Sprintf("\n📨 _Next report: %02d:%02d_", reportEveningHour, reportEveningMinute)
+			return fmt.Sprintf(tr("report_next"), reportEveningHour, reportEveningMinute)
 		}
-		return fmt.Sprintf("\n📨 _Next report: %02d:%02d (tomorrow)_", reportMorningHour, reportMorningMinute)
+		return fmt.Sprintf(tr("report_next_tmr"), reportMorningHour, reportMorningMinute)
 	}
 
-	return fmt.Sprintf("\n📨 _Daily report: %02d:%02d_", reportMorningHour, reportMorningMinute)
+	return fmt.Sprintf(tr("report_daily"), reportMorningHour, reportMorningMinute)
 }
 
 func periodicReport(bot *tgbotapi.BotAPI) {
@@ -108,26 +108,29 @@ func generateDailyReport(greeting string, isMorning bool) string {
 	s := statsCache
 	statsMutex.RUnlock()
 
+	reportEventsMutex.Lock()
+	events := filterSignificantEvents(reportEvents)
+	reportEventsMutex.Unlock()
+
+	// Try to generate AI Report first (preferred)
+	aiReport, aiErr := generateAIReport(s, events, isMorning)
+	if aiErr == nil && aiReport != "" {
+		resetStressCounters()
+		return aiReport
+	}
+	if aiErr != nil {
+		log.Printf("[Gemini] AI report error: %v", aiErr)
+	}
+
+	// Fallback to schematic report
 	var b strings.Builder
 	now := time.Now().In(location)
 
 	b.WriteString(fmt.Sprintf("*%s*\n", greeting))
 	b.WriteString(fmt.Sprintf("_%s_\n\n", now.Format("Mon 02/01")))
 
-	reportEventsMutex.Lock()
-	events := filterSignificantEvents(reportEvents)
-	reportEventsMutex.Unlock()
-
-	aiSummary, aiErr := generateAISummary(s, events, isMorning)
-	if aiErr != nil {
-		log.Printf("[Gemini] AI summary error: %v", aiErr)
-	}
-	if aiSummary != "" {
-		b.WriteString(fmt.Sprintf("🤖 _%s_\n\n", aiSummary))
-	} else {
-		healthIcon, healthText, _ := getHealthStatus(s)
-		b.WriteString(fmt.Sprintf("📝 %s %s\n\n", healthIcon, healthText))
-	}
+	healthIcon, healthText, _ := getHealthStatus(s)
+	b.WriteString(fmt.Sprintf("📝 %s %s\n\n", healthIcon, healthText))
 
 	if len(events) > 0 {
 		b.WriteString(fmt.Sprintf("*%s*\n", tr("report_events")))
@@ -187,8 +190,8 @@ func generateDailyReport(greeting string, isMorning bool) string {
 	return b.String()
 }
 
-// generateAISummary calls Gemini API to generate a brief summary of the NAS status
-func generateAISummary(s Stats, events []ReportEvent, isMorning bool) (string, error) {
+// generateAIReport calls Gemini API to generate a detailed report of the NAS status
+func generateAIReport(s Stats, events []ReportEvent, isMorning bool) (string, error) {
 	if cfg.GeminiAPIKey == "" {
 		return "", nil
 	}
@@ -206,14 +209,19 @@ func generateAISummary(s Stats, events []ReportEvent, isMorning bool) (string, e
 
 	containers := getContainerList()
 	running, stopped := 0, 0
+	stoppedList := []string{}
 	for _, c := range containers {
 		if c.Running {
 			running++
 		} else {
 			stopped++
+			stoppedList = append(stoppedList, c.Name)
 		}
 	}
 	context.WriteString(fmt.Sprintf("- Docker: %d running, %d stopped\n", running, stopped))
+	if len(stoppedList) > 0 {
+		context.WriteString(fmt.Sprintf("- Stopped containers: %s\n", strings.Join(stoppedList, ", ")))
+	}
 
 	if len(events) > 0 {
 		context.WriteString("\nRecent Events:\n")
@@ -232,24 +240,29 @@ func generateAISummary(s Stats, events []ReportEvent, isMorning bool) (string, e
 		lang = "Italian"
 	}
 
-	prompt := fmt.Sprintf(`You are an intelligent home NAS assistant with a warm, conversational personality. Your job is to give the user a quick, friendly update on their home server.
+	prompt := fmt.Sprintf(`You are an intelligent home NAS assistant named "NasBot".
+Your goal is to write a **Daily Report** for the owner.
 
-Current system status:
+**Status Data:**
 %s
 
-It's currently %s time. Write a natural, human-like summary (2-3 sentences) in %s that:
-- Greets appropriately for the time of day (good morning/evening, etc.)
-- Highlights the most important information first
-- If everything is healthy, be encouraging and positive
-- If there are concerns (high resource usage, stopped containers, recent warnings), mention them casually but clearly
-- Use a friendly, slightly informal tone like you're chatting with a friend
-- Do NOT use any markdown, emojis, or special formatting
-- Be concise but informative
+**Time:** %s
 
-Example good responses:
-- "Good morning! Everything's running smoothly today. Your NAS has been up for 5 days and all 10 containers are healthy."
-- "Hey, quick heads up: RAM is sitting at 85%% which is a bit high. Might want to check what's eating memory. Otherwise, all good!"
-- "Evening! Just noticed the HDD is getting full at 92%%. The rest looks fine though, CPU and RAM are cruising along nicely."`, context.String(), timeOfDay, lang)
+**Instructions:**
+1. **Style:** Friendly, discursive/narrative, but concise. Avoid robotic lists.
+2. **Language:** Write in %s.
+3. **Format:** Use Markdown (bold, italics) and Emojis to make it readable and nice.
+4. **Content:**
+   - Start with a context-aware greeting.
+   - **Focus on what happened:** Did containers restart? Is disk getting full? Are there warnings?
+   - If everything is fine, say it cheerfuly but briefly.
+   - If there are issues, explain them clearly.
+   - You can use bullet points for specific important events if listing them helps clarity.
+   - Mention resources (CPU/RAM/Disk) only if they are notable (high usage) or as a quick reassurance ("System resources are stable").
+   - Mention uptime if it's notable (e.g. "Up for 10 days!").
+   - Do NOT output raw JSON or variable names. Write for a human.
+
+**Goal:** The user should read this and immediately know if they need to worry about anything or if the server is purring along happily.`, context.String(), timeOfDay, lang)
 
 	summary, err := callGeminiAPIWithError(prompt)
 	if err != nil {
@@ -272,7 +285,7 @@ func callGeminiAPIWithError(prompt string) (string, error) {
 		},
 		"generationConfig": map[string]interface{}{
 			"temperature":     0.7,
-			"maxOutputTokens": 100,
+			"maxOutputTokens": 1000,
 		},
 	}
 
@@ -370,12 +383,7 @@ func generateReport(manual bool) string {
 	s := statsCache
 	statsMutex.RUnlock()
 
-	var b strings.Builder
 	now := time.Now().In(location)
-
-	b.WriteString("*Report*\n")
-	b.WriteString(fmt.Sprintf("%s\n\n", now.Format("02/01 15:04")))
-
 	reportEventsMutex.Lock()
 	events := make([]ReportEvent, len(reportEvents))
 	copy(events, reportEvents)
@@ -383,17 +391,21 @@ func generateReport(manual bool) string {
 	filteredEvents := filterSignificantEvents(events)
 
 	isMorning := now.Hour() < 12
-	aiSummary, aiErr := generateAISummary(s, filteredEvents, isMorning)
+	aiReport, aiErr := generateAIReport(s, filteredEvents, isMorning)
+	if aiErr == nil && aiReport != "" {
+		return aiReport
+	}
 	if aiErr != nil {
-		log.Printf("[Gemini] AI summary error: %v", aiErr)
+		log.Printf("[Gemini] AI report error: %v", aiErr)
 	}
 
-	if aiSummary != "" {
-		b.WriteString(fmt.Sprintf("🤖 _%s_\n\n", aiSummary))
-	} else {
-		healthIcon, healthText, _ := getHealthStatus(s)
-		b.WriteString(fmt.Sprintf("📝 %s %s\n\n", healthIcon, healthText))
-	}
+	var b strings.Builder
+
+	b.WriteString("*Report*\n")
+	b.WriteString(fmt.Sprintf("%s\n\n", now.Format("02/01 15:04")))
+
+	healthIcon, healthText, _ := getHealthStatus(s)
+	b.WriteString(fmt.Sprintf("📝 %s %s\n\n", healthIcon, healthText))
 
 	if aiErr != nil {
 		b.WriteString(fmt.Sprintf("⚠️ LLM error: %s\n\n", aiErr))

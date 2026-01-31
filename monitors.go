@@ -130,18 +130,20 @@ func checkDockerHealth(bot *tgbotapi.BotAPI) {
 
 		if !cfg.Docker.Watchdog.AutoRestartService {
 			if !isQuietHours() {
-				bot.Send(tgbotapi.NewMessage(AllowedUserID,
-					fmt.Sprintf("⚠️ *Docker Watchdog*\n\nNo containers detected for %d minutes.\n_Auto-restart disabled in config_",
-						cfg.Docker.Watchdog.TimeoutMinutes)))
+				title := tr("wd_title")
+				body := fmt.Sprintf(tr("wd_no_containers"), cfg.Docker.Watchdog.TimeoutMinutes)
+				footer := tr("wd_disabled")
+				bot.Send(tgbotapi.NewMessage(AllowedUserID, title+body+footer))
 			}
 			addReportEvent("warning", "Docker watchdog triggered (restart disabled)")
 			return
 		}
 
 		if !isQuietHours() {
-			bot.Send(tgbotapi.NewMessage(AllowedUserID,
-				fmt.Sprintf("⚠️ *Docker Watchdog*\n\nNo containers detected for %d minutes.\nRestarting Docker service...",
-					cfg.Docker.Watchdog.TimeoutMinutes)))
+			title := tr("wd_title")
+			body := fmt.Sprintf(tr("wd_no_containers"), cfg.Docker.Watchdog.TimeoutMinutes)
+			footer := tr("wd_restarting")
+			bot.Send(tgbotapi.NewMessage(AllowedUserID, title+body+footer))
 		}
 
 		addReportEvent("action", "Docker watchdog restart triggered")
@@ -159,12 +161,12 @@ func checkDockerHealth(bot *tgbotapi.BotAPI) {
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			if !isQuietHours() {
-				bot.Send(tgbotapi.NewMessage(AllowedUserID, fmt.Sprintf("❌ Docker restart error:\n`%v`", err)))
+				bot.Send(tgbotapi.NewMessage(AllowedUserID, fmt.Sprintf(tr("docker_restart_err"), err)))
 			}
 			log.Printf("[!] Docker restart fail: %v\n%s", err, string(out))
 		} else {
 			if !isQuietHours() {
-				bot.Send(tgbotapi.NewMessage(AllowedUserID, "✅ Docker restart command sent."))
+				bot.Send(tgbotapi.NewMessage(AllowedUserID, tr("docker_restart_sent")))
 			}
 		}
 	}
@@ -706,14 +708,11 @@ func checkCriticalContainers(bot *tgbotapi.BotAPI) {
 			}
 
 			if !isQuietHours() {
-				status := "not running"
+				status := tr("status_not_running")
 				if !exists {
-					status = "not found"
+					status = tr("status_not_found")
 				}
-				msg := fmt.Sprintf("🚨 *Critical Container Alert*\n\n"+
-					"Container `%s` is %s!\n\n"+
-					"_This container is marked as critical_",
-					name, status)
+				msg := fmt.Sprintf(tr("crit_cont_alert"), name, status)
 				m := tgbotapi.NewMessage(AllowedUserID, msg)
 				m.ParseMode = "Markdown"
 				bot.Send(m)

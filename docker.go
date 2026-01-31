@@ -62,7 +62,7 @@ func getDockerMenuText() (string, *tgbotapi.InlineKeyboardMarkup) {
 	}
 
 	var b strings.Builder
-	b.WriteString("🐳 *Containers*\n\n")
+	b.WriteString(tr("docker_title"))
 
 	running, stopped := 0, 0
 	for _, c := range containers {
@@ -78,7 +78,7 @@ func getDockerMenuText() (string, *tgbotapi.InlineKeyboardMarkup) {
 		b.WriteString(fmt.Sprintf("%s *%s* — %s\n", icon, c.Name, statusText))
 	}
 
-	b.WriteString(fmt.Sprintf("\n_%d running, %d stopped_", running, stopped))
+	b.WriteString(fmt.Sprintf(tr("docker_running"), running, stopped))
 
 	var rows [][]tgbotapi.InlineKeyboardButton
 	for i := 0; i < len(containers); i += 2 {
@@ -98,8 +98,8 @@ func getDockerMenuText() (string, *tgbotapi.InlineKeyboardMarkup) {
 	}
 
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("🔄 Refresh", "show_docker"),
-		tgbotapi.NewInlineKeyboardButtonData("🏠 Menu", "back_main"),
+		tgbotapi.NewInlineKeyboardButtonData(tr("docker_menu_refresh"), "show_docker"),
+		tgbotapi.NewInlineKeyboardButtonData(tr("docker_menu_home"), "back_main"),
 	))
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(rows...)
@@ -269,7 +269,7 @@ func showContainerActions(bot *tgbotapi.BotAPI, chatID int64, msgID int, contain
 	}
 
 	if container == nil {
-		editMessage(bot, chatID, msgID, "❓ Container not found", nil)
+		editMessage(bot, chatID, msgID, tr("docker_not_found"), nil)
 		return
 	}
 
@@ -282,9 +282,9 @@ func showContainerActions(bot *tgbotapi.BotAPI, chatID int64, msgID int, contain
 	}
 
 	b.WriteString(fmt.Sprintf("%s *%s*\n\n", icon, container.Name))
-	b.WriteString(fmt.Sprintf("Status: %s\n", statusText))
-	b.WriteString(fmt.Sprintf("Image: `%s`\n", truncate(container.Image, 20)))
-	b.WriteString(fmt.Sprintf("ID: `%s`\n", container.ID[:12]))
+	b.WriteString(fmt.Sprintf(tr("docker_status"), statusText))
+	b.WriteString(fmt.Sprintf(tr("docker_image"), truncate(container.Image, 20)))
+	b.WriteString(fmt.Sprintf(tr("docker_id"), container.ID[:12]))
 
 	if container.Running {
 		stats := getContainerStats(containerName)
@@ -372,11 +372,16 @@ func executeContainerAction(bot *tgbotapi.BotAPI, chatID int64, msgID int, conta
 		if errMsg == "" {
 			errMsg = err.Error()
 		}
-		resultText = fmt.Sprintf("❌ Couldn't %s *%s*\n`%s`", action, containerName, errMsg)
+		resultText = fmt.Sprintf(tr("docker_action_err"), action, containerName, errMsg)
 		addReportEvent("warning", fmt.Sprintf("Error %s container %s: %s", action, containerName, errMsg))
 	} else {
-		actionPast := map[string]string{"start": "started ▶️", "stop": "stopped ⏹", "restart": "restarted 🔄", "kill": "killed 💀"}[action]
-		resultText = fmt.Sprintf("✅ *%s* %s", containerName, actionPast)
+		actionPast := map[string]string{
+			"start":   tr("docker_started"),
+			"stop":    tr("docker_stopped"),
+			"restart": tr("docker_restarted"),
+			"kill":    tr("docker_killed"),
+		}[action]
+		resultText = fmt.Sprintf(tr("docker_action_ok"), containerName, actionPast)
 		addReportEvent("info", fmt.Sprintf("Container %s: %s (manual)", containerName, action))
 	}
 
@@ -399,16 +404,16 @@ func showContainerLogs(bot *tgbotapi.BotAPI, chatID int64, msgID int, containerN
 
 	var text string
 	if err != nil {
-		text = fmt.Sprintf("Couldn't read logs: %v", err)
+		text = fmt.Sprintf(tr("docker_logs_err"), err)
 	} else {
 		logs := string(out)
 		if len(logs) > 3500 {
 			logs = logs[len(logs)-3500:]
 		}
 		if logs == "" {
-			logs = "(no logs available)"
+			logs = tr("docker_logs_empty")
 		}
-		text = fmt.Sprintf("*Logs for %s*\n```\n%s\n```", containerName, logs)
+		text = fmt.Sprintf(tr("docker_logs_title")+"```\n%s\n```", containerName, logs)
 	}
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(
