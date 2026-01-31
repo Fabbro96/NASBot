@@ -249,11 +249,12 @@ Your goal is to write a **Daily Report** for the owner.
 **Time:** %s
 
 **Instructions:**
-1. **Style:** Friendly, discursive/narrative, but concise. Avoid robotic lists.
+1. **Style:** Friendly, discursive/narrative, but **CONCISE**. Keep it short to ensure the message is not truncated.
 2. **Language:** Write in %s.
 3. **Format:** Use Markdown (bold, italics) and Emojis to make it readable and nice.
 4. **Content:**
    - Start with a context-aware greeting.
+   - **MANDATORY:** Explicitly state the number of running and stopped containers (e.g. "15 running, 0 stopped").
    - **Focus on what happened:** Did containers restart? Is disk getting full? Are there warnings?
    - If everything is fine, say it cheerfuly but briefly.
    - If there are issues, explain them clearly.
@@ -262,7 +263,7 @@ Your goal is to write a **Daily Report** for the owner.
    - Mention uptime if it's notable (e.g. "Up for 10 days!").
    - Do NOT output raw JSON or variable names. Write for a human.
 
-**Goal:** The user should read this and immediately know if they need to worry about anything or if the server is purring along happily.`, context.String(), timeOfDay, lang)
+**Goal:** The user should read this and immediately know if they need to worry about anything or if the server is purring along happily. Keep it short.`, context.String(), timeOfDay, lang)
 
 	summary, err := callGeminiAPIWithError(prompt)
 	if err != nil {
@@ -285,7 +286,7 @@ func callGeminiAPIWithError(prompt string) (string, error) {
 		},
 		"generationConfig": map[string]interface{}{
 			"temperature":     0.7,
-			"maxOutputTokens": 1000,
+			"maxOutputTokens": 8192,
 		},
 	}
 
