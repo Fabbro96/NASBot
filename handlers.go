@@ -1,13 +1,15 @@
 package main
 
 import (
-	"context"
-	"fmt"
-	"os/exec"
-	"strings"
-	"time"
+"context"
+"encoding/json"
+"fmt"
+"log"
+"os/exec"
+"strings"
+"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 // ═══════════════════════════════════════════════════════════════════
@@ -38,7 +40,33 @@ func handleCommand(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) {
 	case "logsearch":
 		sendMarkdown(bot, chatID, getLogSearchText(args))
 	case "report":
-		report := generateReport(true, nil)
+		modelName := "gemini-3-flash-preview"
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf(tr("generating_report"), modelName))
+		msg.ParseMode = tgbotapi.ModeMarkdown
+		sentMsg, err := bot.Send(msg)
+		if err != nil {
+			log.Printf("Error sending report loading message: %v", err)
+			msg.ParseMode = ""
+			sentMsg, _ = bot.Send(msg)
+		}
+
+		onModelChange := func(newModel string) {
+			if sentMsg.MessageID != 0 {
+				edit := tgbotapi.NewEditMessageText(chatID, sentMsg.MessageID, fmt.Sprintf(tr("generating_report"), newModel))
+				edit.ParseMode = tgbotapi.ModeMarkdown
+				if _, err := bot.Send(edit); err != nil {
+					log.Printf("Error editing loading message: %v", err)
+					edit.ParseMode = ""
+					bot.Send(edit)
+				}
+			}
+		}
+
+		report := generateReport(true, onModelChange)
+
+		if sentMsg.MessageID != 0 {
+			bot.Request(tgbotapi.NewDeleteMessage(chatID, sentMsg.MessageID))
+		}
 		sendMarkdown(bot, chatID, report)
 	case "container":
 		handleContainerCommand(bot, chatID, args)
@@ -48,14 +76,39 @@ func handleCommand(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) {
 		sendMarkdown(bot, chatID, getPingText())
 	case "config":
 		sendMarkdown(bot, chatID, getConfigText())
+	case "configjson":
+		jsonText, err := getConfigJSONSafe()
+		if err != nil {
+			sendMarkdown(bot, chatID, fmt.Sprintf(tr("configset_error"), err))
+			return
+		}
+		sendMarkdown(bot, chatID, fmt.Sprintf("%s\n```json\n%s\n```", tr("configjson_title"), jsonText))
+	case "configset":
+		if strings.TrimSpace(args) == "" {
+			sendMarkdown(bot, chatID, tr("configset_usage"))
+			return
+		}
+		var patch map[string]interface{}
+		if err := json.Unmarshal([]byte(args), &patch); err != nil {
+			sendMarkdown(bot, chatID, fmt.Sprintf(tr("configset_error"), err))
+			return
+		}
+		ignored, err := applyConfigPatch(patch)
+		if err != nil {
+			sendMarkdown(bot, chatID, fmt.Sprintf(tr("configset_error"), err))
+			return
+		}
+		msg := tr("configset_success")
+		if len(ignored) > 0 {
+			msg += fmt.Sprintf("\n"+tr("configset_ignored"), strings.Join(ignored, ", "))
+		}
+		sendMarkdown(bot, chatID, msg)
 	case "sysinfo":
 		sendMarkdown(bot, chatID, getSysInfoText())
 	case "speedtest":
 		handleSpeedtest(bot, chatID)
 	case "diskpred", "prediction":
 		sendMarkdown(bot, chatID, getDiskPredictionText())
-	case "diskinfo", "disk":
-		sendMarkdown(bot, chatID, GetDiskInfoText())
 	case "restartdocker":
 		askDockerRestartConfirmation(bot, chatID)
 	case "reboot":
@@ -68,10 +121,8 @@ func handleCommand(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) {
 		sendSettingsMenu(bot, chatID)
 	case "help":
 		sendMarkdown(bot, chatID, getHelpText())
-	case "testllm":
-		sendMarkdown(bot, chatID, getTestLLMText())
 	default:
-		bot.Send(tgbotapi.NewMessage(chatID, "Hmm, I don't know that one. Try /help"))
+		bot.Send(tgbotapi.NewMessage(chatID, tr("unknown_command")))
 	}
 }
 
@@ -100,14 +151,14 @@ func handleCallback(bot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery) {
 	if data == "settings_change_lang" {
 		msg := tgbotapi.NewEditMessageText(chatID, msgID, tr("lang_select"))
 		kb := tgbotapi.NewInlineKeyboardMarkup(
-			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("🇬🇧 English", "set_lang_en_settings"),
-				tgbotapi.NewInlineKeyboardButtonData("🇮🇹 Italiano", "set_lang_it_settings"),
-			),
-			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData(tr("back"), "back_settings"),
-			),
-		)
+tgbotapi.NewInlineKeyboardRow(
+tgbotapi.NewInlineKeyboardButtonData("🇬🇧 "+tr("lang_name_en"), "set_lang_en_settings"),
+tgbotapi.NewInlineKeyboardButtonData("🇮🇹 "+tr("lang_name_it"), "set_lang_it_settings"),
+),
+tgbotapi.NewInlineKeyboardRow(
+tgbotapi.NewInlineKeyboardButtonData(tr("back"), "back_settings"),
+),
+)
 		msg.ReplyMarkup = &kb
 		bot.Send(msg)
 		return
@@ -207,7 +258,7 @@ func handleCallback(bot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery) {
 		return
 	}
 	if data == "cancel_power" {
-		editMessage(bot, chatID, msgID, "❌ Cancelled", nil)
+		editMessage(bot, chatID, msgID, tr("cancelled"), nil)
 		return
 	}
 	// Power menu pre-confirmation management
@@ -223,7 +274,7 @@ func handleCallback(bot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery) {
 		return
 	}
 	if data == "cancel_restart_docker" {
-		editMessage(bot, chatID, msgID, "❌ Docker restart cancelled", nil)
+		editMessage(bot, chatID, msgID, tr("docker_restart_cancel"), nil)
 		return
 	}
 
@@ -282,11 +333,11 @@ func handleCallback(bot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery) {
 func sendLanguageSelection(bot *tgbotapi.BotAPI, chatID int64) {
 	msg := tgbotapi.NewMessage(chatID, tr("lang_select"))
 	kb := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🇬🇧 English", "set_lang_en"),
-			tgbotapi.NewInlineKeyboardButtonData("🇮🇹 Italiano", "set_lang_it"),
-		),
-	)
+tgbotapi.NewInlineKeyboardRow(
+tgbotapi.NewInlineKeyboardButtonData("🇬🇧 "+tr("lang_name_en"), "set_lang_en"),
+tgbotapi.NewInlineKeyboardButtonData("🇮🇹 "+tr("lang_name_it"), "set_lang_it"),
+),
+)
 	msg.ReplyMarkup = kb
 	bot.Send(msg)
 }
@@ -300,9 +351,9 @@ func sendSettingsMenu(bot *tgbotapi.BotAPI, chatID int64) {
 }
 
 func getSettingsMenuText() (string, tgbotapi.InlineKeyboardMarkup) {
-	langName := "English 🇬🇧"
+	langName := tr("lang_name_en") + " 🇬🇧"
 	if currentLanguage == "it" {
-		langName = "Italiano 🇮🇹"
+		langName = tr("lang_name_it") + " 🇮🇹"
 	}
 
 	reportText := tr("report_disabled")
@@ -329,30 +380,25 @@ func getSettingsMenuText() (string, tgbotapi.InlineKeyboardMarkup) {
 	text += fmt.Sprintf("🧹 %s: %s\n", tr("settings_prune"), pruneText)
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🌐 "+tr("settings_lang"), "settings_change_lang"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📨 "+tr("settings_reports"), "settings_change_reports"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🌙 "+tr("settings_quiet"), "settings_change_quiet"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🧹 "+tr("settings_prune"), "settings_change_prune"),
-		),
-	)
+tgbotapi.NewInlineKeyboardRow(
+tgbotapi.NewInlineKeyboardButtonData("🌐 "+tr("settings_lang"), "settings_change_lang"),
+),
+tgbotapi.NewInlineKeyboardRow(
+tgbotapi.NewInlineKeyboardButtonData("📨 "+tr("settings_reports"), "settings_change_reports"),
+),
+tgbotapi.NewInlineKeyboardRow(
+tgbotapi.NewInlineKeyboardButtonData("🌙 "+tr("settings_quiet"), "settings_change_quiet"),
+),
+tgbotapi.NewInlineKeyboardRow(
+tgbotapi.NewInlineKeyboardButtonData("🧹 "+tr("settings_prune"), "settings_change_prune"),
+),
+)
 
 	return text, kb
 }
 
 func getReportSettingsText() (string, tgbotapi.InlineKeyboardMarkup) {
-	var text string
-	if currentLanguage == "it" {
-		text = "📨 *Report Giornalieri*\n\nSeleziona la frequenza dei report automatici:"
-	} else {
-		text = "📨 *Daily Reports*\n\nSelect automatic report frequency:"
-	}
+	text := tr("report_settings_title")
 
 	checkDisabled := " "
 	checkOnce := " "
@@ -367,33 +413,28 @@ func getReportSettingsText() (string, tgbotapi.InlineKeyboardMarkup) {
 	}
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(checkDisabled+" "+tr("report_disabled"), "set_reports_0"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(checkOnce+" "+tr("report_once"), "set_reports_1"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(checkTwice+" "+tr("report_twice"), "set_reports_2"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(tr("back"), "back_settings"),
-		),
-	)
+tgbotapi.NewInlineKeyboardRow(
+tgbotapi.NewInlineKeyboardButtonData(checkDisabled+" "+tr("report_disabled"), "set_reports_0"),
+),
+tgbotapi.NewInlineKeyboardRow(
+tgbotapi.NewInlineKeyboardButtonData(checkOnce+" "+tr("report_once"), "set_reports_1"),
+),
+tgbotapi.NewInlineKeyboardRow(
+tgbotapi.NewInlineKeyboardButtonData(checkTwice+" "+tr("report_twice"), "set_reports_2"),
+),
+tgbotapi.NewInlineKeyboardRow(
+tgbotapi.NewInlineKeyboardButtonData(tr("back"), "back_settings"),
+),
+)
 
 	return text, kb
 }
 
 func getQuietHoursSettingsText() (string, tgbotapi.InlineKeyboardMarkup) {
-	var text string
-	if currentLanguage == "it" {
-		text = "🌙 *Ore Silenziose*\n\nDurante questo periodo non riceverai notifiche.\n\n"
-	} else {
-		text = "🌙 *Quiet Hours*\n\nNo notifications during this period.\n\n"
-	}
+	text := tr("quiet_settings_title")
 
 	if quietHoursEnabled {
-		text += fmt.Sprintf("Attualmente: %02d:%02d - %02d:%02d\n", quietStartHour, quietStartMinute, quietEndHour, quietEndMinute)
+		text += fmt.Sprintf(tr("quiet_currently"), quietStartHour, quietStartMinute, quietEndHour, quietEndMinute)
 	} else {
 		text += tr("disabled") + "\n"
 	}
@@ -406,24 +447,19 @@ func getQuietHoursSettingsText() (string, tgbotapi.InlineKeyboardMarkup) {
 	}
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(toggleText, toggleData),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(tr("back"), "back_settings"),
-		),
-	)
+tgbotapi.NewInlineKeyboardRow(
+tgbotapi.NewInlineKeyboardButtonData(toggleText, toggleData),
+),
+tgbotapi.NewInlineKeyboardRow(
+tgbotapi.NewInlineKeyboardButtonData(tr("back"), "back_settings"),
+),
+)
 
 	return text, kb
 }
 
 func getDockerPruneSettingsText() (string, tgbotapi.InlineKeyboardMarkup) {
-	var text string
-	if currentLanguage == "it" {
-		text = "🧹 *Pulizia Docker*\n\nPulizia automatica delle immagini inutilizzate.\n\n"
-	} else {
-		text = "🧹 *Docker Prune*\n\nAutomatic cleanup of unused images.\n\n"
-	}
+	text := tr("prune_settings_title")
 
 	if dockerPruneEnabled {
 		dayName := tr(dockerPruneDay)
@@ -445,13 +481,13 @@ func getDockerPruneSettingsText() (string, tgbotapi.InlineKeyboardMarkup) {
 
 	if dockerPruneEnabled {
 		rows = append(rows, []tgbotapi.InlineKeyboardButton{
-			tgbotapi.NewInlineKeyboardButtonData(tr("schedule"), "prune_change_schedule"),
-		})
+tgbotapi.NewInlineKeyboardButtonData(tr("schedule"), "prune_change_schedule"),
+})
 	}
 
 	rows = append(rows, []tgbotapi.InlineKeyboardButton{
-		tgbotapi.NewInlineKeyboardButtonData(tr("back"), "back_settings"),
-	})
+tgbotapi.NewInlineKeyboardButtonData(tr("back"), "back_settings"),
+})
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(rows...)
 
@@ -459,14 +495,10 @@ func getDockerPruneSettingsText() (string, tgbotapi.InlineKeyboardMarkup) {
 }
 
 func getPruneScheduleText() (string, tgbotapi.InlineKeyboardMarkup) {
-	var text string
-	if currentLanguage == "it" {
-		text = "📅 *Programmazione Pulizia*\n\nSeleziona il giorno:"
-	} else {
-		text = "📅 *Prune Schedule*\n\nSelect day:"
-	}
+	text := tr("prune_schedule_title")
 
 	days := []string{"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
+
 	var rows [][]tgbotapi.InlineKeyboardButton
 
 	for _, day := range days {
@@ -475,13 +507,13 @@ func getPruneScheduleText() (string, tgbotapi.InlineKeyboardMarkup) {
 			check = "✓"
 		}
 		rows = append(rows, []tgbotapi.InlineKeyboardButton{
-			tgbotapi.NewInlineKeyboardButtonData(check+" "+tr(day), "prune_day_"+day),
-		})
+tgbotapi.NewInlineKeyboardButtonData(check+" "+tr(day), "prune_day_"+day),
+})
 	}
 
 	rows = append(rows, []tgbotapi.InlineKeyboardButton{
-		tgbotapi.NewInlineKeyboardButtonData(tr("back"), "settings_change_prune"),
-	})
+tgbotapi.NewInlineKeyboardButtonData(tr("back"), "settings_change_prune"),
+})
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(rows...)
 
@@ -528,10 +560,10 @@ func handleSpeedtest(bot *tgbotapi.BotAPI, chatID int64) {
 		}
 
 		resultText = fmt.Sprintf("🚀 *Speed Test Results*\n\n"+
-			"📡 Ping: `%s`\n"+
-			"⬇️ Download: `%s`\n"+
-			"⬆️ Upload: `%s`",
-			ping, download, upload)
+"📡 Ping: `%s`\n"+
+"⬇️ Download: `%s`\n"+
+"⬆️ Upload: `%s`",
+ping, download, upload)
 	}
 
 	edit := tgbotapi.NewEditMessageText(chatID, sent.MessageID, resultText)
@@ -546,14 +578,14 @@ func handleSpeedtest(bot *tgbotapi.BotAPI, chatID int64) {
 func getPowerMenuText() (string, *tgbotapi.InlineKeyboardMarkup) {
 	text := "⚡ *Power Management*\n\nBe careful, these actions affect the physical server."
 	kb := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔄 Reboot NAS", "pre_confirm_reboot"),
-			tgbotapi.NewInlineKeyboardButtonData("🛑 Shutdown NAS", "pre_confirm_shutdown"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("⬅️ Back", "back_main"),
-		),
-	)
+tgbotapi.NewInlineKeyboardRow(
+tgbotapi.NewInlineKeyboardButtonData("🔄 Reboot NAS", "pre_confirm_reboot"),
+tgbotapi.NewInlineKeyboardButtonData("🛑 Shutdown NAS", "pre_confirm_shutdown"),
+),
+tgbotapi.NewInlineKeyboardRow(
+tgbotapi.NewInlineKeyboardButtonData("⬅️ Back", "back_main"),
+),
+)
 	return text, &kb
 }
 
@@ -569,11 +601,11 @@ func askPowerConfirmation(bot *tgbotapi.BotAPI, chatID int64, msgID int, action 
 	question += "\n\n_Are you sure?_"
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("✅ Yes, do it", "confirm_"+action),
-			tgbotapi.NewInlineKeyboardButtonData("❌ Cancel", "cancel_power"),
-		),
-	)
+tgbotapi.NewInlineKeyboardRow(
+tgbotapi.NewInlineKeyboardButtonData("✅ Yes, do it", "confirm_"+action),
+tgbotapi.NewInlineKeyboardButtonData("❌ Cancel", "cancel_power"),
+),
+)
 
 	if msgID > 0 {
 		editMessage(bot, chatID, msgID, question, &kb)
@@ -640,18 +672,18 @@ func editMessage(bot *tgbotapi.BotAPI, chatID int64, msgID int, text string, key
 
 func getMainKeyboard() tgbotapi.InlineKeyboardMarkup {
 	return tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔄 Refresh", "refresh_status"),
-			tgbotapi.NewInlineKeyboardButtonData("🌡 Temp", "show_temp"),
-			tgbotapi.NewInlineKeyboardButtonData("🌐 Net", "show_net"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🐳 Docker", "show_docker"),
-			tgbotapi.NewInlineKeyboardButtonData("📊 D-Stats", "show_dstats"),
-			tgbotapi.NewInlineKeyboardButtonData("🔥 Top Proc", "show_top"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("⚡ Power Actions", "show_power"),
-		),
-	)
+tgbotapi.NewInlineKeyboardRow(
+tgbotapi.NewInlineKeyboardButtonData("🔄 Refresh", "refresh_status"),
+tgbotapi.NewInlineKeyboardButtonData("🌡 Temp", "show_temp"),
+tgbotapi.NewInlineKeyboardButtonData("🌐 Net", "show_net"),
+),
+tgbotapi.NewInlineKeyboardRow(
+tgbotapi.NewInlineKeyboardButtonData("🐳 Docker", "show_docker"),
+tgbotapi.NewInlineKeyboardButtonData("📊 D-Stats", "show_dstats"),
+tgbotapi.NewInlineKeyboardButtonData("🔥 Top Proc", "show_top"),
+),
+tgbotapi.NewInlineKeyboardRow(
+tgbotapi.NewInlineKeyboardButtonData("⚡ Power Actions", "show_power"),
+),
+)
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+    "fmt"
 	"log"
 	"os"
 	"time"
@@ -289,5 +290,154 @@ func applyConfigDefaults() {
 		cfg.FSWatchdog.DeepScanPaths = []string{"/"}
 		cfg.FSWatchdog.ExcludePatterns = []string{"/proc", "/sys", "/dev", "/run", "/snap"}
 		cfg.FSWatchdog.TopNFiles = 10
+	}
+}
+
+// applyConfigRuntime updates derived runtime values from config
+func applyConfigRuntime() {
+	// Paths
+	if cfg.Paths.SSD != "" {
+		PathSSD = cfg.Paths.SSD
+	}
+	if cfg.Paths.HDD != "" {
+		PathHDD = cfg.Paths.HDD
+	}
+
+	// Reports
+	if !cfg.Reports.Enabled || (!cfg.Reports.Morning.Enabled && !cfg.Reports.Evening.Enabled) {
+		reportMode = 0
+	} else if cfg.Reports.Morning.Enabled && cfg.Reports.Evening.Enabled {
+		reportMode = 2
+	} else {
+		reportMode = 1
+	}
+	if cfg.Reports.Morning.Enabled {
+		reportMorningHour = cfg.Reports.Morning.Hour
+		reportMorningMinute = cfg.Reports.Morning.Minute
+	}
+	if cfg.Reports.Evening.Enabled {
+		reportEveningHour = cfg.Reports.Evening.Hour
+		reportEveningMinute = cfg.Reports.Evening.Minute
+		if !cfg.Reports.Morning.Enabled {
+			reportMorningHour = cfg.Reports.Evening.Hour
+			reportMorningMinute = cfg.Reports.Evening.Minute
+		}
+	}
+
+	// Quiet hours
+	quietHoursEnabled = cfg.QuietHours.Enabled
+	quietStartHour = cfg.QuietHours.StartHour
+	quietStartMinute = cfg.QuietHours.StartMinute
+	quietEndHour = cfg.QuietHours.EndHour
+	quietEndMinute = cfg.QuietHours.EndMinute
+
+	// Docker prune schedule
+	dockerPruneEnabled = cfg.Docker.WeeklyPrune.Enabled
+	dockerPruneDay = cfg.Docker.WeeklyPrune.Day
+	dockerPruneHour = cfg.Docker.WeeklyPrune.Hour
+
+	// Intervals
+	if cfg.Intervals.StatsSeconds > 0 {
+		IntervalStats = time.Duration(cfg.Intervals.StatsSeconds) * time.Second
+	}
+	if cfg.Intervals.MonitorSeconds > 0 {
+		IntervalMonitor = time.Duration(cfg.Intervals.MonitorSeconds) * time.Second
+	}
+
+	// Timezone
+	if cfg.Timezone != "" {
+		loc, err := time.LoadLocation(cfg.Timezone)
+		if err != nil {
+			log.Printf("[w] Timezone %s not found, using UTC", cfg.Timezone)
+			location = time.UTC
+		} else {
+			location = loc
+		}
+	}
+
+	// FS watchdog config
+	updateFSWatchdogConfig()
+}
+
+// saveConfig writes the current configuration to config.json
+func saveConfig() error {
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("error serializing config: %w", err)
+	}
+	if err := os.WriteFile("config.json", data, 0644); err != nil {
+		return fmt.Errorf("error writing config.json: %w", err)
+	}
+	return nil
+}
+
+// getConfigJSONSafe returns config JSON with bot credentials redacted
+func getConfigJSONSafe() (string, error) {
+	redacted := cfg
+	redacted.BotToken = ""
+	redacted.AllowedUserID = 0
+	data, err := json.MarshalIndent(redacted, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("error serializing config: %w", err)
+	}
+	return string(data), nil
+}
+
+// applyConfigPatch merges the patch into current config and persists it
+// bot_token and allowed_user_id are ignored for safety
+func applyConfigPatch(patch map[string]interface{}) ([]string, error) {
+	ignored := []string{}
+	if _, ok := patch["bot_token"]; ok {
+		delete(patch, "bot_token")
+		ignored = append(ignored, "bot_token")
+	}
+	if _, ok := patch["allowed_user_id"]; ok {
+		delete(patch, "allowed_user_id")
+		ignored = append(ignored, "allowed_user_id")
+	}
+	if len(patch) == 0 {
+		return ignored, fmt.Errorf("no editable fields found")
+	}
+
+	current := map[string]interface{}{}
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return ignored, fmt.Errorf("error serializing current config: %w", err)
+	}
+	if err := json.Unmarshal(data, &current); err != nil {
+		return ignored, fmt.Errorf("error parsing current config: %w", err)
+	}
+
+	mergeMaps(current, patch)
+
+	updated, err := json.Marshal(current)
+	if err != nil {
+		return ignored, fmt.Errorf("error serializing updated config: %w", err)
+	}
+	if err := json.Unmarshal(updated, &cfg); err != nil {
+		return ignored, fmt.Errorf("error applying updated config: %w", err)
+	}
+
+	applyConfigRuntime()
+	saveState()
+	if err := saveConfig(); err != nil {
+		return ignored, err
+	}
+
+	return ignored, nil
+}
+
+func mergeMaps(dst, src map[string]interface{}) {
+	for key, value := range src {
+		if valueMap, ok := value.(map[string]interface{}); ok {
+			if existing, ok := dst[key].(map[string]interface{}); ok {
+				mergeMaps(existing, valueMap)
+				dst[key] = existing
+			} else {
+				dst[key] = valueMap
+			}
+		} else {
+			dst[key] = value
+		}
 	}
 }

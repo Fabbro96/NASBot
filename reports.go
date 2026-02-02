@@ -109,7 +109,7 @@ func generateDailyReport(greeting string, isMorning bool, onModelChange func(str
 	statsMutex.RUnlock()
 
 	now := time.Now().In(location)
-	
+
 	// Filter events since last report
 	reportEventsMutex.Lock()
 	events := filterEventsSince(reportEvents, lastReportTime)
