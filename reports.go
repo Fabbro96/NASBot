@@ -91,7 +91,7 @@ func periodicReport(bot *tgbotapi.BotAPI) {
 		log.Printf("> Next report: %s", nextReport.Format("02/01 15:04"))
 		time.Sleep(sleepDuration)
 
-		report := generateDailyReport(greeting, isMorning)
+		report := generateDailyReport(greeting, isMorning, nil)
 		msg := tgbotapi.NewMessage(AllowedUserID, report)
 		msg.ParseMode = "Markdown"
 		bot.Send(msg)
@@ -103,17 +103,31 @@ func periodicReport(bot *tgbotapi.BotAPI) {
 	}
 }
 
-func generateDailyReport(greeting string, isMorning bool) string {
+func generateDailyReport(greeting string, isMorning bool, onModelChange func(string)) string {
 	statsMutex.RLock()
 	s := statsCache
 	statsMutex.RUnlock()
 
+	now := time.Now().In(location)
+	
+	// Filter events since last report
 	reportEventsMutex.Lock()
-	events := filterSignificantEvents(reportEvents)
+	events := filterEventsSince(reportEvents, lastReportTime)
 	reportEventsMutex.Unlock()
+	events = filterSignificantEvents(events)
+
+	// Build period description for AI
+	periodDesc := ""
+	if !lastReportTime.IsZero() {
+		periodDesc = fmt.Sprintf("%s → %s", lastReportTime.In(location).Format("15:04"), now.Format("15:04"))
+	} else {
+		// First report of the day - from midnight
+		midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, location)
+		periodDesc = fmt.Sprintf("%s → %s", midnight.Format("15:04"), now.Format("15:04"))
+	}
 
 	// Try to generate AI Report first (preferred)
-	aiReport, aiErr := generateAIReport(s, events, isMorning)
+	aiReport, aiErr := generateAIReportWithPeriod(s, events, isMorning, periodDesc, onModelChange)
 	if aiErr == nil && aiReport != "" {
 		resetStressCounters()
 		return aiReport
@@ -124,7 +138,6 @@ func generateDailyReport(greeting string, isMorning bool) string {
 
 	// Fallback to schematic report
 	var b strings.Builder
-	now := time.Now().In(location)
 
 	b.WriteString(fmt.Sprintf("*%s*\n", greeting))
 	b.WriteString(fmt.Sprintf("_%s_\n\n", now.Format("Mon 02/01")))
@@ -191,7 +204,12 @@ func generateDailyReport(greeting string, isMorning bool) string {
 }
 
 // generateAIReport calls Gemini API to generate a detailed report of the NAS status
-func generateAIReport(s Stats, events []ReportEvent, isMorning bool) (string, error) {
+func generateAIReport(s Stats, events []ReportEvent, isMorning bool, onModelChange func(string)) (string, error) {
+	return generateAIReportWithPeriod(s, events, isMorning, "", onModelChange)
+}
+
+// generateAIReportWithPeriod calls Gemini API with a specific time period description
+func generateAIReportWithPeriod(s Stats, events []ReportEvent, isMorning bool, periodDesc string, onModelChange func(string)) (string, error) {
 	if cfg.GeminiAPIKey == "" {
 		return "", nil
 	}
@@ -223,12 +241,14 @@ func generateAIReport(s Stats, events []ReportEvent, isMorning bool) (string, er
 		context.WriteString(fmt.Sprintf("- Stopped containers: %s\n", strings.Join(stoppedList, ", ")))
 	}
 
+	eventsInfo := "No events recorded in this period."
 	if len(events) > 0 {
-		context.WriteString("\nRecent Events:\n")
+		eventsInfo = fmt.Sprintf("%d events recorded:\n", len(events))
 		for _, e := range events {
-			context.WriteString(fmt.Sprintf("- [%s] %s: %s\n", e.Time.In(location).Format("15:04"), e.Type, e.Message))
+			eventsInfo += fmt.Sprintf("- [%s] %s: %s\n", e.Time.In(location).Format("15:04"), e.Type, e.Message)
 		}
 	}
+	context.WriteString(fmt.Sprintf("\nEvents: %s", eventsInfo))
 
 	timeOfDay := "morning"
 	if !isMorning {
@@ -240,36 +260,43 @@ func generateAIReport(s Stats, events []ReportEvent, isMorning bool) (string, er
 		lang = "Italian"
 	}
 
+	periodInfo := ""
+	if periodDesc != "" {
+		periodInfo = fmt.Sprintf("\n**Report Period:** %s", periodDesc)
+	}
+
 	prompt := fmt.Sprintf(`You are an intelligent home NAS assistant named "NasBot".
 Your goal is to write a **Daily Report** for the owner.
 
 **Status Data:**
-%s
+%s%s
 
 **Time:** %s
 
 **Instructions:**
 1. **Style:** Friendly, discursive/narrative, but **CONCISE**. Keep it short to ensure the message is not truncated.
 2. **Language:** Write in %s.
-3. **Format:** Use Markdown (bold, italics) and Emojis to make it readable and nice.
+3. **Format:** Use Markdown (bold, italics) and Emojis to make it readable and nice. Use visual separators like ─ for sections.
 4. **Content:**
-   - Start with a context-aware greeting.
-   - **MANDATORY:** Explicitly state the number of running and stopped containers (e.g. "15 running, 0 stopped").
+   - Start with a context-aware greeting and current date/time.
+   - **MANDATORY:** Explicitly state the number of running and stopped containers (e.g. "🐳 15 running, 0 stopped").
    - **Focus on what happened:** Did containers restart? Is disk getting full? Are there warnings?
-   - If everything is fine, say it cheerfuly but briefly.
-   - If there are issues, explain them clearly.
-   - You can use bullet points for specific important events if listing them helps clarity.
+   - If no events happened, say "quiet period" or similar.
+   - If everything is fine, say it cheerfully but briefly.
+   - If there are issues, explain them clearly with ⚠️ or 🚨 icons.
+   - Use bullet points for specific important events if listing them helps clarity.
    - Mention resources (CPU/RAM/Disk) only if they are notable (high usage) or as a quick reassurance ("System resources are stable").
    - Mention uptime if it's notable (e.g. "Up for 10 days!").
+   - End with a short footer showing the report period if available.
    - Do NOT output raw JSON or variable names. Write for a human.
 
-**Goal:** The user should read this and immediately know if they need to worry about anything or if the server is purring along happily. Keep it short.`, context.String(), timeOfDay, lang)
+**Goal:** The user should read this and immediately know if they need to worry about anything or if the server is purring along happily. Keep it short.`, context.String(), periodInfo, timeOfDay, lang)
 
-	return callGeminiWithFallback(prompt)
+	return callGeminiWithFallback(prompt, onModelChange)
 }
 
 // callGeminiWithFallback tries multiple models in order
-func callGeminiWithFallback(prompt string) (string, error) {
+func callGeminiWithFallback(prompt string, onModelChange func(string)) (string, error) {
 	models := []string{
 		"gemini-3-flash-preview",
 		"gemini-3-pro-preview",
@@ -282,6 +309,9 @@ func callGeminiWithFallback(prompt string) (string, error) {
 	var err error
 
 	for _, model := range models {
+		if onModelChange != nil {
+			onModelChange(model)
+		}
 		summary, err = callGeminiAPIWithError(prompt, model)
 		if err == nil {
 			return summary, nil
@@ -395,9 +425,9 @@ func getHealthStatus(s Stats) (icon, text string, hasProblems bool) {
 }
 
 // generateReport for manual requests (/report)
-func generateReport(manual bool) string {
+func generateReport(manual bool, onModelChange func(string)) string {
 	if !manual {
-		return generateDailyReport("> *NAS Report*", true)
+		return generateDailyReport("> *NAS Report*", true, onModelChange)
 	}
 
 	statsMutex.RLock()
@@ -405,14 +435,18 @@ func generateReport(manual bool) string {
 	statsMutex.RUnlock()
 
 	now := time.Now().In(location)
+	// Filter events from midnight for manual /report
+	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, location)
 	reportEventsMutex.Lock()
-	events := make([]ReportEvent, len(reportEvents))
-	copy(events, reportEvents)
+	events := filterEventsSince(reportEvents, midnight)
 	reportEventsMutex.Unlock()
 	filteredEvents := filterSignificantEvents(events)
 
+	// Period description for manual report: from midnight to now
+	periodDesc := fmt.Sprintf("00:00 → %s (today)", now.Format("15:04"))
+
 	isMorning := now.Hour() < 12
-	aiReport, aiErr := generateAIReport(s, filteredEvents, isMorning)
+	aiReport, aiErr := generateAIReportWithPeriod(s, filteredEvents, isMorning, periodDesc, onModelChange)
 	if aiErr == nil && aiReport != "" {
 		return aiReport
 	}
@@ -514,6 +548,17 @@ func filterSignificantEvents(events []ReportEvent) []ReportEvent {
 			continue
 		}
 		filtered = append(filtered, e)
+	}
+	return filtered
+}
+
+// filterEventsSince returns only events after the given time
+func filterEventsSince(events []ReportEvent, since time.Time) []ReportEvent {
+	var filtered []ReportEvent
+	for _, e := range events {
+		if e.Time.After(since) {
+			filtered = append(filtered, e)
+		}
 	}
 	return filtered
 }

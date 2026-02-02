@@ -86,6 +86,7 @@ var translations = map[string]map[string]string{
 		"configset_success":     "✅ Config updated and saved",
 		"configset_ignored":     "Ignored locked fields: %s",
 		"configjson_title":      "🧾 *config.json* (bot credentials redacted)",
+		"generating_report":     "⏳ Generating report using *%s*...",
 
 		// New additions
 		"temp_title":        "🌡 *Temperatures*\n\n",
@@ -258,7 +259,7 @@ var translations = map[string]map[string]string{
 		"configset_success":     "✅ Config aggiornata e salvata",
 		"configset_ignored":     "Campi bloccati ignorati: %s",
 		"configjson_title":      "🧾 *config.json* (credenziali bot rimosse)",
-
+		"generating_report":     "⏳ Generazione report con *%s* in corso...",
 		// Nuove aggiunte
 		"temp_title":        "🌡 *Temperature*\n\n",
 		"temp_cpu":          "CPU: %.0f°C — %s\n\n",

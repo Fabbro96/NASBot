@@ -38,7 +38,8 @@ func handleCommand(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) {
 	case "logsearch":
 		sendMarkdown(bot, chatID, getLogSearchText(args))
 	case "report":
-		sendMarkdown(bot, chatID, generateReport(true))
+		report := generateReport(true, nil)
+		sendMarkdown(bot, chatID, report)
 	case "container":
 		handleContainerCommand(bot, chatID, args)
 	case "kill":
@@ -259,7 +260,7 @@ func handleCallback(bot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery) {
 		mainKb := getMainKeyboard()
 		kb = &mainKb
 	case "show_report":
-		text = generateReport(true)
+		text = generateReport(true, nil)
 		mainKb := getMainKeyboard()
 		kb = &mainKb
 	case "show_power":

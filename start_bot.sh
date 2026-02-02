@@ -13,6 +13,13 @@ PID_FILE="$BOT_DIR/nasbot.pid"
 MAX_LOG_SIZE=$((10*1024*1024))  # 10MB
 # ────────────────────────────────────────────────────
 
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
 cd "$BOT_DIR" || exit 1
 
 # Ensure execution permissions for the binary
@@ -119,13 +126,13 @@ watchdog() {
 
 # Detailed status function
 status_bot() {
-    echo "═══════════════════════════════════════"
-    echo "  NASBot Status"
-    echo "═══════════════════════════════════════"
+    echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
+    echo -e "${BLUE}  🤖 NASBot Status${NC}"
+    echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
     
     if is_running; then
         pid=$(get_pid)
-        echo "🟢 Status: ACTIVE"
+        echo -e "${GREEN}🟢 Status: ACTIVE${NC}"
         echo "📋 PID: $pid"
         
         # Process uptime
@@ -146,10 +153,10 @@ status_bot() {
             echo "💾 Memory: $mem"
         fi
     else
-        echo "🔴 Status: INACTIVE"
+        echo -e "${RED}🔴 Status: INACTIVE${NC}"
     fi
     
-    echo "───────────────────────────────────────"
+    echo -e "${BLUE}───────────────────────────────────────${NC}"
     echo "📁 Directory: $BOT_DIR"
     echo "📝 Log: $LOG_FILE"
     
@@ -158,19 +165,19 @@ status_bot() {
         echo "📊 Log size: $log_size"
     fi
     
-    echo "═══════════════════════════════════════"
+    echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
 }
 
 # Show last logs
 show_logs() {
     lines=${1:-50}
     if [ -f "$LOG_FILE" ]; then
-        echo "═══════════════════════════════════════"
-        echo "  Last $lines logs"
-        echo "═══════════════════════════════════════"
+        echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
+        echo -e "${BLUE}  Last $lines logs${NC}"
+        echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
         tail -n "$lines" "$LOG_FILE"
     else
-        echo "❌ Log file not found"
+        echo -e "${RED}❌ Log file not found${NC}"
     fi
 }
 
