@@ -47,6 +47,7 @@ func handleCommand(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) {
 		if err != nil {
 			log.Printf("Error sending report loading message: %v", err)
 			msg.ParseMode = ""
+			msg.Text = strings.ReplaceAll(msg.Text, "*", "")
 			sentMsg, _ = bot.Send(msg)
 		}
 
@@ -57,6 +58,7 @@ func handleCommand(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) {
 				if _, err := bot.Send(edit); err != nil {
 					log.Printf("Error editing loading message: %v", err)
 					edit.ParseMode = ""
+					edit.Text = strings.ReplaceAll(edit.Text, "*", "")
 					bot.Send(edit)
 				}
 			}
@@ -65,9 +67,17 @@ func handleCommand(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) {
 		report := generateReport(true, onModelChange)
 
 		if sentMsg.MessageID != 0 {
-			bot.Request(tgbotapi.NewDeleteMessage(chatID, sentMsg.MessageID))
+			// Try to edit the existing message first to avoid "disappearing" effect
+			edit := tgbotapi.NewEditMessageText(chatID, sentMsg.MessageID, report)
+			edit.ParseMode = tgbotapi.ModeMarkdown
+			if _, err := bot.Send(edit); err != nil {
+				log.Printf("Error editing final report: %v - Falling back to delete and send", err)
+				bot.Request(tgbotapi.NewDeleteMessage(chatID, sentMsg.MessageID))
+				sendMarkdown(bot, chatID, report)
+			}
+		} else {
+			sendMarkdown(bot, chatID, report)
 		}
-		sendMarkdown(bot, chatID, report)
 	case "container":
 		handleContainerCommand(bot, chatID, args)
 	case "kill":
