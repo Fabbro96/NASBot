@@ -700,7 +700,7 @@ func getTestLLMText() string {
 
 	testPrompt := "Rispondi in una sola frase breve: Ciao, funziono correttamente?"
 
-	response, err := callGeminiAPIWithError(testPrompt)
+	response, err := callGeminiWithFallback(testPrompt)
 
 	if err != nil {
 		return fmt.Sprintf("❌ *Test LLM*\n\n*Errore:*\n`%s`\n\n_Possibili cause:_\n- API key non valida\n- Modello non disponibile\n- Problemi di rete", err.Error())

@@ -265,16 +265,36 @@ Your goal is to write a **Daily Report** for the owner.
 
 **Goal:** The user should read this and immediately know if they need to worry about anything or if the server is purring along happily. Keep it short.`, context.String(), timeOfDay, lang)
 
-	summary, err := callGeminiAPIWithError(prompt)
-	if err != nil {
-		return "", err
+	return callGeminiWithFallback(prompt)
+}
+
+// callGeminiWithFallback tries multiple models in order
+func callGeminiWithFallback(prompt string) (string, error) {
+	models := []string{
+		"gemini-3-flash-preview",
+		"gemini-3-pro-preview",
+		"gemini-2.5-flash",
+		"gemini-2.5-flash-lite",
+		"gemini-2.5-pro",
 	}
-	return summary, nil
+
+	var summary string
+	var err error
+
+	for _, model := range models {
+		summary, err = callGeminiAPIWithError(prompt, model)
+		if err == nil {
+			return summary, nil
+		}
+		log.Printf("[Gemini] Model %s failed: %v. Retrying with next model...", model, err)
+	}
+
+	return "", err
 }
 
 // callGeminiAPIWithError makes a request to the Gemini API and returns the error if any
-func callGeminiAPIWithError(prompt string) (string, error) {
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=%s", cfg.GeminiAPIKey)
+func callGeminiAPIWithError(prompt string, model string) (string, error) {
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, cfg.GeminiAPIKey)
 
 	requestBody := map[string]interface{}{
 		"contents": []map[string]interface{}{
@@ -402,17 +422,17 @@ func generateReport(manual bool) string {
 
 	var b strings.Builder
 
-	b.WriteString("*Report*\n")
+	b.WriteString(tr("report_title"))
 	b.WriteString(fmt.Sprintf("%s\n\n", now.Format("02/01 15:04")))
 
 	healthIcon, healthText, _ := getHealthStatus(s)
 	b.WriteString(fmt.Sprintf("📝 %s %s\n\n", healthIcon, healthText))
 
 	if aiErr != nil {
-		b.WriteString(fmt.Sprintf("⚠️ LLM error: %s\n\n", aiErr))
+		b.WriteString(fmt.Sprintf(tr("llm_error"), aiErr))
 	}
 
-	b.WriteString("*Resources*\n")
+	b.WriteString(fmt.Sprintf("*%s*\n", tr("report_resources")))
 	b.WriteString(fmt.Sprintf("CPU %s %.1f%%\n", makeProgressBar(s.CPU), s.CPU))
 	b.WriteString(fmt.Sprintf("RAM %s %.1f%% (%s free)\n", makeProgressBar(s.RAM), s.RAM, formatRAM(s.RAMFreeMB)))
 	if s.DiskUtil > 5 {
