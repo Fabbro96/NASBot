@@ -19,6 +19,7 @@ import (
 // ═══════════════════════════════════════════════════════════════════
 
 // getNextReportTime calculates the next report time based on reportMode
+// Returns (nextTime, isMorning)
 func getNextReportTime() (time.Time, bool) {
 	now := time.Now().In(location)
 
@@ -31,13 +32,46 @@ func getNextReportTime() (time.Time, bool) {
 	eveningReport := time.Date(now.Year(), now.Month(), now.Day(),
 		reportEveningHour, reportEveningMinute, 0, 0, location)
 
+	// Grace period: if we're within 5 minutes after a scheduled report time
+	// and haven't sent that report today, send it now (return time in the past)
+	const gracePeriod = 5 * time.Minute
+
+	// Check if last report was already sent today for a specific slot
+	lastReportToday := lastReportTime.In(location)
+	sameDay := lastReportToday.Year() == now.Year() &&
+		lastReportToday.Month() == now.Month() &&
+		lastReportToday.Day() == now.Day()
+
+	morningDone := sameDay && lastReportToday.Hour() >= reportMorningHour &&
+		(lastReportToday.Hour() > reportMorningHour || lastReportToday.Minute() >= reportMorningMinute)
+	eveningDone := sameDay && lastReportToday.Hour() >= reportEveningHour &&
+		(lastReportToday.Hour() > reportEveningHour || lastReportToday.Minute() >= reportEveningMinute)
+
 	if reportMode == 2 {
+		// Check if we missed the morning report (within grace period)
+		if !morningDone && now.After(morningReport) && now.Before(morningReport.Add(gracePeriod)) {
+			log.Printf("[Report] Missed morning report, triggering now (grace period)")
+			return now, true // Trigger immediately
+		}
+
+		// Check if we missed the evening report (within grace period)
+		if !eveningDone && now.After(eveningReport) && now.Before(eveningReport.Add(gracePeriod)) {
+			log.Printf("[Report] Missed evening report, triggering now (grace period)")
+			return now, false // Trigger immediately
+		}
+
 		if now.Before(morningReport) {
 			return morningReport, true
 		} else if now.Before(eveningReport) {
 			return eveningReport, false
 		}
 		return morningReport.Add(24 * time.Hour), true
+	}
+
+	// Single daily report mode
+	if !morningDone && now.After(morningReport) && now.Before(morningReport.Add(gracePeriod)) {
+		log.Printf("[Report] Missed daily report, triggering now (grace period)")
+		return now, true
 	}
 
 	if now.Before(morningReport) {
