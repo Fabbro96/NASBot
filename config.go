@@ -128,6 +128,13 @@ type Config struct {
 		ExcludePatterns   []string `json:"exclude_patterns"`
 		TopNFiles         int      `json:"top_n_files"`
 	} `json:"fs_watchdog"`
+
+	Healthchecks struct {
+		Enabled       bool   `json:"enabled"`
+		PingURL       string `json:"ping_url"`
+		PeriodSeconds int    `json:"period_seconds"`
+		GraceSeconds  int    `json:"grace_seconds"`
+	} `json:"healthchecks"`
 }
 
 // loadConfig reads configuration from config.json with smart defaults

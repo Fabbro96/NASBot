@@ -99,6 +99,11 @@ var (
 	// Temperature alert tracking
 	lastTempAlert time.Time
 
+	// Healthchecks.io tracking
+	healthchecksState      HealthchecksState
+	healthchecksMutex      sync.Mutex
+	healthchecksInDowntime bool // True if we are tracking a failure period
+
 	// User settings (persistent)
 	currentLanguage = "en"
 	reportMode      = 2 // 0=disabled, 1=once daily, 2=twice daily
@@ -204,6 +209,7 @@ _Type /help to see what I can do_`, nextReportStr, quietInfo)
 	go monitorAlerts(bot)
 	go periodicReport(bot)
 	go autonomousManager(bot)
+	go startHealthchecksPinger(bot)
 	go RunFSWatchdog(bot) // Filesystem watchdog (lazy evaluation)
 
 	// Wait for first stats cycle

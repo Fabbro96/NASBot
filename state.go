@@ -29,6 +29,28 @@ type BotState struct {
 	DockerPruneEnabled bool   `json:"docker_prune_enabled"`
 	DockerPruneDay     string `json:"docker_prune_day"`
 	DockerPruneHour    int    `json:"docker_prune_hour"`
+
+	// Healthchecks.io tracking
+	Healthchecks HealthchecksState `json:"healthchecks"`
+}
+
+// HealthchecksState tracks ping statistics
+type HealthchecksState struct {
+	TotalPings      int           `json:"total_pings"`
+	SuccessfulPings int           `json:"successful_pings"`
+	FailedPings     int           `json:"failed_pings"`
+	LastPingTime    time.Time     `json:"last_ping_time"`
+	LastPingSuccess bool          `json:"last_ping_success"`
+	LastFailure     time.Time     `json:"last_failure"`
+	DowntimeEvents  []DowntimeLog `json:"downtime_events"`
+}
+
+// DowntimeLog tracks individual downtime events
+type DowntimeLog struct {
+	StartTime time.Time `json:"start_time"`
+	EndTime   time.Time `json:"end_time"`
+	Duration  string    `json:"duration"`
+	Reason    string    `json:"reason"`
 }
 
 func loadState() {
@@ -77,11 +99,17 @@ func loadState() {
 		dockerPruneHour = state.DockerPruneHour
 	}
 
+	// Load healthchecks state
+	healthchecksMutex.Lock()
+	healthchecksState = state.Healthchecks
+	healthchecksMutex.Unlock()
+
 	log.Printf("[+] State restored")
 }
 
 func saveState() {
 	autoRestartsMutex.Lock()
+	healthchecksMutex.Lock()
 	state := BotState{
 		LastReportTime:      lastReportTime,
 		AutoRestarts:        autoRestarts,
@@ -99,8 +127,10 @@ func saveState() {
 		DockerPruneEnabled:  dockerPruneEnabled,
 		DockerPruneDay:      dockerPruneDay,
 		DockerPruneHour:     dockerPruneHour,
+		Healthchecks:        healthchecksState,
 	}
 	autoRestartsMutex.Unlock()
+	healthchecksMutex.Unlock()
 
 	data, err := json.Marshal(state)
 	if err != nil {

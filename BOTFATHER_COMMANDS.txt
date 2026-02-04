@@ -15,6 +15,7 @@ logs - 📝 View recent system logs
 logsearch - 🔍 Search container logs
 report - 📋 Generate full system report
 ping - 🏓 Check bot availability
+health - 💓 Healthchecks.io status & stats
 config - ⚙️ Show current configuration
 sysinfo - 💻 Detailed system information
 speedtest - 🚀 Run internet speed test

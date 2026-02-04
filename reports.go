@@ -220,6 +220,18 @@ func generateDailyReport(greeting string, isMorning bool, onModelChange func(str
 	if running == 1 {
 		containerLabel = tr("container_running")
 	}
+
+	// Healthchecks.io
+	healthchecksMutex.Lock()
+	hc := healthchecksState
+	healthchecksMutex.Unlock()
+	if cfg.Healthchecks.Enabled {
+		status := "❌"
+		if hc.LastPingSuccess {
+			status = "✅"
+		}
+		b.WriteString(fmt.Sprintf("\n💓 Healthchecks: %s (%.1f%%)", status, float64(hc.SuccessfulPings)/float64(maxInt(hc.TotalPings, 1))*100))
+	}
 	b.WriteString(fmt.Sprintf("\n🐳 %d %s", running, containerLabel))
 	if stopped > 0 {
 		b.WriteString(fmt.Sprintf(", %d %s", stopped, tr("containers_stopped")))
@@ -268,6 +280,26 @@ func generateAIReportWithPeriod(s Stats, events []ReportEvent, isMorning bool, p
 		} else {
 			stopped++
 			stoppedList = append(stoppedList, c.Name)
+		}
+	}
+	if cfg.Healthchecks.Enabled {
+		healthchecksMutex.Lock()
+		hc := healthchecksState
+		healthchecksMutex.Unlock()
+		
+		status := "Offline"
+		if hc.LastPingSuccess {
+			status = "Online"
+		}
+		context.WriteString(fmt.Sprintf("- Healthchecks.io: %s (%.1f%% success rate)\n", status, float64(hc.SuccessfulPings)/float64(maxInt(hc.TotalPings, 1))*100))
+		
+		if len(hc.DowntimeEvents) > 0 {
+			context.WriteString("  Recent Healthchecks downtimes:\n")
+			for _, e := range hc.DowntimeEvents {
+				if e.StartTime.After(lastReportTime) {
+					context.WriteString(fmt.Sprintf("  - %s: %s (%s)\n", e.StartTime.Format("15:04"), e.Reason, e.Duration))
+				}
+			}
 		}
 	}
 	context.WriteString(fmt.Sprintf("- Docker: %d running, %d stopped\n", running, stopped))

@@ -129,6 +129,8 @@ func handleCommand(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) {
 		sendLanguageSelection(bot, chatID)
 	case "settings":
 		sendSettingsMenu(bot, chatID)
+	case "health", "healthchecks":
+		handleHealthCommand(bot, chatID)
 	case "help":
 		sendMarkdown(bot, chatID, getHelpText())
 	default:
@@ -285,6 +287,12 @@ tgbotapi.NewInlineKeyboardButtonData(tr("back"), "back_settings"),
 	}
 	if data == "cancel_restart_docker" {
 		editMessage(bot, chatID, msgID, tr("docker_restart_cancel"), nil)
+		return
+	}
+
+	// Healthchecks.io callbacks
+	if strings.HasPrefix(data, "health_") {
+		handleHealthCallback(bot, query, data)
 		return
 	}
 

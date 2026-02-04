@@ -215,6 +215,7 @@ func getHelpText() string {
 	b.WriteString("/settings — *configure everything*\n")
 	b.WriteString("/report — full detailed report\n")
 	b.WriteString("/ping — check if bot is alive\n")
+	b.WriteString("/health — healthchecks.io status\n")
 	b.WriteString("/config — show current config\n")
 	b.WriteString("/logs — recent system logs\n")
 	b.WriteString("/testllm — test Gemini API connection\n")

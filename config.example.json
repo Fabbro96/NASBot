@@ -108,6 +108,13 @@
     "docker_ttl_seconds": 10
   },
   
+  "healthchecks": {
+    "enabled": false,
+    "ping_url": "",
+    "period_seconds": 60,
+    "grace_seconds": 60
+  },
+
   "fs_watchdog": {
     "enabled": true,
     "check_interval_minutes": 30,
