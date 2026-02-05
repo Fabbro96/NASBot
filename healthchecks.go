@@ -66,14 +66,14 @@ func pingHealthchecks(bot *tgbotapi.BotAPI) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		recordHealthcheckSuccess()
+		recordHealthcheckSuccess(bot)
 	} else {
 		recordHealthcheckFailure(bot, fmt.Sprintf("HTTP %d", resp.StatusCode))
 	}
 }
 
 // recordHealthcheckSuccess records a successful ping
-func recordHealthcheckSuccess() {
+func recordHealthcheckSuccess(bot *tgbotapi.BotAPI) {
 	healthchecksMutex.Lock()
 	defer healthchecksMutex.Unlock()
 
@@ -82,14 +82,37 @@ func recordHealthcheckSuccess() {
 	healthchecksState.LastPingTime = time.Now()
 	healthchecksState.LastPingSuccess = true
 
-	// If we were in downtime, close the event
+	// If we were in downtime, close the event and notify recovery
 	if healthchecksInDowntime && len(healthchecksState.DowntimeEvents) > 0 {
 		lastIdx := len(healthchecksState.DowntimeEvents) - 1
 		event := &healthchecksState.DowntimeEvents[lastIdx]
 		event.EndTime = time.Now()
-		event.Duration = formatDuration(event.EndTime.Sub(event.StartTime))
+		downtimeDuration := event.EndTime.Sub(event.StartTime)
+		event.Duration = formatDuration(downtimeDuration)
 		healthchecksInDowntime = false
 		log.Printf("[+] Healthchecks: downtime ended, duration: %s", event.Duration)
+
+		// Send recovery notification
+		if bot != nil && !isQuietHours() {
+			period := cfg.Healthchecks.PeriodSeconds
+			if period <= 0 {
+				period = 60
+			}
+			periodStr := formatPeriod(period)
+
+			msg := fmt.Sprintf("🟢 *Healthchecks UP*\n\n"+
+				"_The check is now receiving pings normally._\n\n"+
+				"⏱ Downtime: `%s`\n"+
+				"📊 Total Pings: `%d`\n"+
+				"🔄 Period: `%s`",
+				event.Duration,
+				healthchecksState.TotalPings,
+				periodStr)
+			m := tgbotapi.NewMessage(AllowedUserID, msg)
+			m.ParseMode = "Markdown"
+			bot.Send(m)
+		}
+		addReportEvent("info", fmt.Sprintf("🟢 Healthchecks recovered (down for %s)", event.Duration))
 	}
 
 	// Save state periodically (every 10 pings)
@@ -127,10 +150,33 @@ func recordHealthcheckFailure(bot *tgbotapi.BotAPI, reason string) {
 
 		// Notify user (respecting quiet hours)
 		if bot != nil && !isQuietHours() {
-			msg := tgbotapi.NewMessage(AllowedUserID, fmt.Sprintf("⚠️ *Healthchecks.io*\n\nPing failed: `%s`\n\n_I'll keep trying..._", reason))
-			msg.ParseMode = "Markdown"
-			bot.Send(msg)
+			period := cfg.Healthchecks.PeriodSeconds
+			if period <= 0 {
+				period = 60
+			}
+			periodStr := formatPeriod(period)
+
+			// Calculate last successful ping time
+			lastPingAgo := "N/A"
+			if !healthchecksState.LastPingTime.IsZero() {
+				lastPingAgo = formatDuration(time.Since(healthchecksState.LastPingTime))
+			}
+
+			msg := fmt.Sprintf("🔴 *Healthchecks DOWN*\n\n"+
+				"_Ping failed: `%s`_\n\n"+
+				"🔄 Period: `%s`\n"+
+				"📊 Total Pings: `%d`\n"+
+				"⏱ Last Success: `%s ago`\n\n"+
+				"_Monitoring for recovery..._",
+				reason,
+				periodStr,
+				healthchecksState.TotalPings,
+				lastPingAgo)
+			m := tgbotapi.NewMessage(AllowedUserID, msg)
+			m.ParseMode = "Markdown"
+			bot.Send(m)
 		}
+		addReportEvent("warning", fmt.Sprintf("🔴 Healthchecks down: %s", reason))
 	}
 
 	go saveState()

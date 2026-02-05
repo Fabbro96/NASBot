@@ -56,6 +56,25 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%dh%dm", h, m)
 }
 
+// formatPeriod formats seconds into a human readable period
+func formatPeriod(seconds int) string {
+	if seconds < 60 {
+		return fmt.Sprintf("%d seconds", seconds)
+	}
+	if seconds < 3600 {
+		mins := seconds / 60
+		if mins == 1 {
+			return "1 minute"
+		}
+		return fmt.Sprintf("%d minutes", mins)
+	}
+	hours := seconds / 3600
+	if hours == 1 {
+		return "1 hour"
+	}
+	return fmt.Sprintf("%d hours", hours)
+}
+
 // truncate truncates a string to max length
 func truncate(s string, max int) string {
 	if len(s) <= max {

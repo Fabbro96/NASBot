@@ -70,6 +70,7 @@ var (
 
 	// Container state tracking for unexpected stops
 	lastContainerStates map[string]bool
+	containerDowntimeStart map[string]time.Time // When container went down
 	containerStateMutex sync.Mutex
 
 	// Disk usage history for prediction
@@ -149,6 +150,7 @@ func init() {
 	autoRestarts = make(map[string][]time.Time)
 	resourceStress = make(map[string]*StressTracker)
 	lastContainerStates = make(map[string]bool)
+	containerDowntimeStart = make(map[string]time.Time)
 	diskUsageHistory = make([]DiskUsagePoint, 0, 288)
 	cpuTrend = make([]TrendPoint, 0, maxTrendPoints)
 	ramTrend = make([]TrendPoint, 0, maxTrendPoints)

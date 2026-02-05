@@ -566,7 +566,7 @@ func executeDockerServiceRestart(bot *tgbotapi.BotAPI, chatID int64, msgID int) 
 	editMessage(bot, chatID, msgID, resultText, &kb)
 }
 
-// checkContainerStates monitors for unexpected container stops
+// checkContainerStates monitors for container state changes (down/up)
 func checkContainerStates(bot *tgbotapi.BotAPI) {
 	containers := getContainerList()
 	if containers == nil {
@@ -581,16 +581,50 @@ func checkContainerStates(bot *tgbotapi.BotAPI) {
 		currentStates[c.Name] = c.Running
 	}
 
+	// Check for containers that stopped (went DOWN)
 	for name, wasRunning := range lastContainerStates {
 		isRunning, exists := currentStates[name]
 		if exists && wasRunning && !isRunning {
+			// Container just went DOWN - record the time
+			containerDowntimeStart[name] = time.Now()
+
 			if !isQuietHours() {
-				msg := fmt.Sprintf("⚠️ *Container Stopped*\n\n`%s` has stopped unexpectedly.", name)
+				msg := fmt.Sprintf("🔴 *Container DOWN*\n\n"+
+					"📦 `%s`\n\n"+
+					"_The container has stopped unexpectedly._", name)
 				m := tgbotapi.NewMessage(AllowedUserID, msg)
 				m.ParseMode = "Markdown"
 				bot.Send(m)
 			}
-			addReportEvent("warning", fmt.Sprintf("Container stopped: %s", name))
+			addReportEvent("warning", fmt.Sprintf("🔴 Container stopped: %s", name))
+		}
+	}
+
+	// Check for containers that started (came back UP)
+	for name, isRunning := range currentStates {
+		wasRunning, wasTracked := lastContainerStates[name]
+
+		// Container came back UP (was tracked and was down, now running)
+		if wasTracked && !wasRunning && isRunning {
+			var downtimeMsg string
+			if downStart, hasDowntime := containerDowntimeStart[name]; hasDowntime {
+				duration := time.Since(downStart)
+				downtimeMsg = fmt.Sprintf("\n⏱ Downtime: `%s`", formatDuration(duration))
+				delete(containerDowntimeStart, name)
+				addReportEvent("info", fmt.Sprintf("🟢 Container recovered: %s (down for %s)", name, formatDuration(duration)))
+			} else {
+				addReportEvent("info", fmt.Sprintf("🟢 Container started: %s", name))
+			}
+
+			if !isQuietHours() {
+				msg := fmt.Sprintf("🟢 *Container UP*\n\n"+
+					"📦 `%s`\n\n"+
+					"_The container is now running._"+
+					"%s", name, downtimeMsg)
+				m := tgbotapi.NewMessage(AllowedUserID, msg)
+				m.ParseMode = "Markdown"
+				bot.Send(m)
+			}
 		}
 	}
 
