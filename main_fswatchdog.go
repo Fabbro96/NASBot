@@ -4,61 +4,30 @@
 package main
 
 import (
-	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
-	"runtime/debug"
 	"syscall"
-
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-// Standalone entrypoint for the filesystem watchdog.
-// Build with: go build -tags fswatchdog -o nasbot-fswatchdog
+// Global variables are in config.go
+
 func main() {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("[!] PANIC: %v\n%s", r, debug.Stack())
-			saveState()
-		}
-	}()
+	setupLogger()
+	slog.Info("Starting FS Watchdog Service...")
 
-	bot, err := tgbotapi.NewBotAPI(BotToken)
-	if err != nil {
-		log.Fatalf("[!] Start bot: %v", err)
-	}
-	log.Printf("[+] NASBot FS Watchdog @%s", bot.Self.UserName)
+	loadConfig()
 
-	w := GetFSWatchdog()
-	if !w.config.Enabled {
-		log.Println("[FSWatchdog] Disabled in config; exiting")
-		return
-	}
+	// Start the watchdog loop in a goroutine (it blocks)
+	// Pass nil for bot since this is the standalone binary
+	go RunFSWatchdog(nil)
 
-	startup := fmt.Sprintf(`*NASBot FS Watchdog is online* 👀
+	slog.Info("FS Watchdog started successfully")
 
-Monitoring filesystem usage only.
-Check interval: %d min
-Warning: %.0f%% · Critical: %.0f%%`,
-		w.config.CheckIntervalMins,
-		w.config.WarningThreshold,
-		w.config.CriticalThreshold)
-
-	msg := tgbotapi.NewMessage(AllowedUserID, startup)
-	msg.ParseMode = "Markdown"
-	bot.Send(msg)
-
+	// Wait for termination signal
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigChan
-		log.Println("[-] Shutdown")
-		saveState()
-		os.Exit(0)
-	}()
+	<-sigChan
 
-	go RunFSWatchdog(bot)
-
-	select {}
+	slog.Info("Shutting down FS Watchdog...")
 }

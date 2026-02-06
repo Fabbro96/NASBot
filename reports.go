@@ -1,3 +1,6 @@
+//go:build !fswatchdog
+// +build !fswatchdog
+
 package main
 
 import (
@@ -260,16 +263,16 @@ func generateAIReportWithPeriod(s Stats, events []ReportEvent, isMorning bool, p
 		return "", nil
 	}
 
-	var context strings.Builder
-	context.WriteString("NAS System Status:\n")
-	context.WriteString(fmt.Sprintf("- CPU: %.1f%%\n", s.CPU))
-	context.WriteString(fmt.Sprintf("- RAM: %.1f%%\n", s.RAM))
+	var sysContext strings.Builder
+	sysContext.WriteString("NAS System Status:\n")
+	sysContext.WriteString(fmt.Sprintf("- CPU: %.1f%%\n", s.CPU))
+	sysContext.WriteString(fmt.Sprintf("- RAM: %.1f%%\n", s.RAM))
 	if s.Swap > 5 {
-		context.WriteString(fmt.Sprintf("- Swap: %.1f%%\n", s.Swap))
+		sysContext.WriteString(fmt.Sprintf("- Swap: %.1f%%\n", s.Swap))
 	}
-	context.WriteString(fmt.Sprintf("- SSD: %.1f%% used, %s free\n", s.VolSSD.Used, formatBytes(s.VolSSD.Free)))
-	context.WriteString(fmt.Sprintf("- HDD: %.1f%% used, %s free\n", s.VolHDD.Used, formatBytes(s.VolHDD.Free)))
-	context.WriteString(fmt.Sprintf("- Uptime: %s\n", formatUptime(s.Uptime)))
+	sysContext.WriteString(fmt.Sprintf("- SSD: %.1f%% used, %s free\n", s.VolSSD.Used, formatBytes(s.VolSSD.Free)))
+	sysContext.WriteString(fmt.Sprintf("- HDD: %.1f%% used, %s free\n", s.VolHDD.Used, formatBytes(s.VolHDD.Free)))
+	sysContext.WriteString(fmt.Sprintf("- Uptime: %s\n", formatUptime(s.Uptime)))
 
 	containers := getContainerList()
 	running, stopped := 0, 0
@@ -291,20 +294,20 @@ func generateAIReportWithPeriod(s Stats, events []ReportEvent, isMorning bool, p
 		if hc.LastPingSuccess {
 			status = "Online"
 		}
-		context.WriteString(fmt.Sprintf("- Healthchecks.io: %s (%.1f%% success rate)\n", status, float64(hc.SuccessfulPings)/float64(maxInt(hc.TotalPings, 1))*100))
+		sysContext.WriteString(fmt.Sprintf("- Healthchecks.io: %s (%.1f%% success rate)\n", status, float64(hc.SuccessfulPings)/float64(maxInt(hc.TotalPings, 1))*100))
 
 		if len(hc.DowntimeEvents) > 0 {
-			context.WriteString("  Recent Healthchecks downtimes:\n")
+			sysContext.WriteString("  Recent Healthchecks downtimes:\n")
 			for _, e := range hc.DowntimeEvents {
 				if e.StartTime.After(lastReportTime) {
-					context.WriteString(fmt.Sprintf("  - %s: %s (%s)\n", e.StartTime.Format("15:04"), e.Reason, e.Duration))
+					sysContext.WriteString(fmt.Sprintf("  - %s: %s (%s)\n", e.StartTime.Format("15:04"), e.Reason, e.Duration))
 				}
 			}
 		}
 	}
-	context.WriteString(fmt.Sprintf("- Docker: %d running, %d stopped\n", running, stopped))
+	sysContext.WriteString(fmt.Sprintf("- Docker: %d running, %d stopped\n", running, stopped))
 	if len(stoppedList) > 0 {
-		context.WriteString(fmt.Sprintf("- Stopped containers: %s\n", strings.Join(stoppedList, ", ")))
+		sysContext.WriteString(fmt.Sprintf("- Stopped containers: %s\n", strings.Join(stoppedList, ", ")))
 	}
 
 	eventsInfo := "No events recorded in this period."
@@ -314,7 +317,7 @@ func generateAIReportWithPeriod(s Stats, events []ReportEvent, isMorning bool, p
 			eventsInfo += fmt.Sprintf("- [%s] %s: %s\n", e.Time.In(location).Format("15:04"), e.Type, e.Message)
 		}
 	}
-	context.WriteString(fmt.Sprintf("\nEvents: %s", eventsInfo))
+	sysContext.WriteString(fmt.Sprintf("\nEvents: %s", eventsInfo))
 
 	timeOfDay := "morning"
 	if !isMorning {
@@ -356,7 +359,7 @@ Your goal is to write a **Daily Report** for the owner.
    - End with a short footer showing the report period if available.
    - Do NOT output raw JSON or variable names. Write for a human.
 
-**Goal:** The user should read this and immediately know if they need to worry about anything or if the server is purring along happily. Keep it short.`, context.String(), periodInfo, timeOfDay, lang)
+**Goal:** The user should read this and immediately know if they need to worry about anything or if the server is purring along happily. Keep it short.`, sysContext.String(), periodInfo, timeOfDay, lang)
 
 	return callGeminiWithFallback(prompt, onModelChange)
 }

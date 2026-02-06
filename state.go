@@ -1,3 +1,6 @@
+//go:build !fswatchdog
+// +build !fswatchdog
+
 package main
 
 import (
@@ -129,8 +132,8 @@ func saveState() {
 		DockerPruneHour:     dockerPruneHour,
 		Healthchecks:        healthchecksState,
 	}
-	autoRestartsMutex.Unlock()
 	healthchecksMutex.Unlock()
+	autoRestartsMutex.Unlock()
 
 	data, err := json.Marshal(state)
 	if err != nil {

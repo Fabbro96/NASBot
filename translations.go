@@ -1,3 +1,6 @@
+//go:build !fswatchdog
+// +build !fswatchdog
+
 package main
 
 // Translations contains all translatable strings
@@ -90,7 +93,7 @@ var translations = map[string]map[string]string{
 
 		// New additions
 		"temp_title":        "🌡 *Temperatures*\n\n",
-		"temp_cpu":          "CPU: %.0f°C — %s\n\n",
+		"temp_cpu":          "%s CPU: %.0f°C — %s\n\n",
 		"temp_status_good":  "looking good",
 		"temp_status_warm":  "a bit warm",
 		"temp_status_hot":   "running hot!",
@@ -313,7 +316,7 @@ var translations = map[string]map[string]string{
 		"generating_report":     "⏳ Generazione report con *%s* in corso...",
 		// Nuove aggiunte
 		"temp_title":        "🌡 *Temperature*\n\n",
-		"temp_cpu":          "CPU: %.0f°C — %s\n\n",
+		"temp_cpu":          "%s CPU: %.0f°C — %s\n\n",
 		"temp_status_good":  "tutto ok",
 		"temp_status_warm":  "un po' alta",
 		"temp_status_hot":   "bollente!",

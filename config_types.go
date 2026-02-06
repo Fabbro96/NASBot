@@ -76,7 +76,8 @@ type DiskIOConfig struct {
 }
 
 type SmartConfig struct {
-	Enabled bool `json:"enabled"`
+	Enabled bool     `json:"enabled"`
+	Devices []string `json:"devices"`
 }
 
 type StressTrackingConfig struct {

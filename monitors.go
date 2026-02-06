@@ -1,3 +1,6 @@
+//go:build !fswatchdog
+// +build !fswatchdog
+
 package main
 
 import (
@@ -659,12 +662,19 @@ func checkWeeklyPrune(bot *tgbotapi.BotAPI) {
 			pruneDoneToday = true
 
 			go func() {
-				cmd := exec.Command("docker", "system", "prune", "-a", "-f")
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+				defer cancel()
+
+				cmd := exec.CommandContext(ctx, "docker", "system", "prune", "-a", "-f")
 				out, err := cmd.CombinedOutput()
 
 				var msg string
 				if err != nil {
-					msg = fmt.Sprintf("🧹 *Weekly Prune Error*\n\n`%v`", err)
+					if ctx.Err() == context.DeadlineExceeded {
+						msg = "🧹 *Weekly Prune Error*\n\n`timeout after 5m`"
+					} else {
+						msg = fmt.Sprintf("🧹 *Weekly Prune Error*\n\n`%v`", err)
+					}
 				} else {
 					output := string(out)
 					lines := strings.Split(output, "\n")
@@ -845,7 +855,7 @@ func monitorAlerts(bot *tgbotapi.BotAPI) {
 
 		// Check SMART
 		if cfg.Notifications.SMART.Enabled {
-			for _, dev := range []string{"sda", "sdb"} {
+			for _, dev := range getSmartDevices() {
 				_, health := readDiskSMART(dev)
 				if strings.Contains(strings.ToUpper(health), "FAIL") {
 					criticalAlerts = append(criticalAlerts, fmt.Sprintf("🚨 Disk %s FAILING — backup now!", dev))

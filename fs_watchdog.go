@@ -368,10 +368,20 @@ func RunFSWatchdog(bot *tgbotapi.BotAPI) {
 
 	// Initial check after 1 minute
 	time.Sleep(1 * time.Minute)
-	w.checkAndAlert(bot, "/")
+	w.checkAllPaths(bot)
 
 	for range ticker.C {
-		w.checkAndAlert(bot, "/")
+		w.checkAllPaths(bot)
+	}
+}
+
+func (w *FSWatchdog) checkAllPaths(bot *tgbotapi.BotAPI) {
+	w.checkAndAlert(bot, "/")
+	if PathSSD != "" {
+		w.checkAndAlert(bot, PathSSD)
+	}
+	if PathHDD != "" {
+		w.checkAndAlert(bot, PathHDD)
 	}
 }
 
@@ -408,7 +418,11 @@ func (w *FSWatchdog) checkAndAlert(bot *tgbotapi.BotAPI, path string) {
 
 			m := tgbotapi.NewMessage(AllowedUserID, msg)
 			m.ParseMode = "Markdown"
-			bot.Send(m)
+			if bot != nil {
+				bot.Send(m)
+			} else {
+				slog.Info("Watchdog Alert (No Bot)", "msg", msg)
+			}
 		}
 
 		w.lastAlertTime = time.Now()
@@ -430,7 +444,11 @@ func (w *FSWatchdog) checkAndAlert(bot *tgbotapi.BotAPI, path string) {
 
 			m := tgbotapi.NewMessage(AllowedUserID, msg)
 			m.ParseMode = "Markdown"
-			bot.Send(m)
+			if bot != nil {
+				bot.Send(m)
+			} else {
+				slog.Info("Watchdog Critical Alert (No Bot)", "msg", msg)
+			}
 		}
 
 		// Run deep scan in background to not block
@@ -492,7 +510,11 @@ func (w *FSWatchdog) sendDeepScanReport(bot *tgbotapi.BotAPI, result *DeepScanRe
 	if !isQuietHours() {
 		m := tgbotapi.NewMessage(AllowedUserID, b.String())
 		m.ParseMode = "Markdown"
-		bot.Send(m)
+		if bot != nil {
+			bot.Send(m)
+		} else {
+			slog.Info("Deep Scan Report (No Bot)", "report", b.String())
+		}
 	}
 }
 

@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // formatUptime formats uptime in a readable format
@@ -118,7 +120,7 @@ func makeProgressBar(percent float64) string {
 
 // readCPUTemp reads CPU temperature from thermal zone
 func readCPUTemp() float64 {
-	raw, err := exec.Command("cat", "/sys/class/thermal/thermal_zone0/temp").Output()
+	raw, err := os.ReadFile("/sys/class/thermal/thermal_zone0/temp")
 	if err != nil {
 		return 0
 	}
@@ -170,4 +172,24 @@ func parseUptime(status string) string {
 		return result
 	}
 	return "running"
+}
+
+// getSmartDevices returns configured devices or defaults to sda/sdb
+func getSmartDevices() []string {
+	if len(cfg.Notifications.SMART.Devices) > 0 {
+		return cfg.Notifications.SMART.Devices
+	}
+	return []string{"sda", "sdb"}
+}
+
+// titleCaseWord capitalizes the first letter of a word (ASCII-safe, rune-aware).
+func titleCaseWord(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return s
+	}
+	lower := strings.ToLower(s)
+	r := []rune(lower)
+	r[0] = unicode.ToUpper(r[0])
+	return string(r)
 }
