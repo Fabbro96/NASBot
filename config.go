@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-    "fmt"
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -140,6 +140,24 @@ type Config struct {
 		Enabled           bool `json:"enabled"`
 		CheckIntervalSecs int  `json:"check_interval_seconds"`
 	} `json:"kernel_watchdog"`
+
+	NetworkWatchdog struct {
+		Enabled           bool     `json:"enabled"`
+		CheckIntervalSecs int      `json:"check_interval_seconds"`
+		Targets           []string `json:"targets"`
+		DNSHost           string   `json:"dns_host"`
+		Gateway           string   `json:"gateway"`
+		FailureThreshold  int      `json:"failure_threshold"`
+		CooldownMins      int      `json:"cooldown_minutes"`
+		RecoveryNotify    bool     `json:"recovery_notify"`
+	} `json:"network_watchdog"`
+
+	RaidWatchdog struct {
+		Enabled           bool `json:"enabled"`
+		CheckIntervalSecs int  `json:"check_interval_seconds"`
+		CooldownMins      int  `json:"cooldown_minutes"`
+		RecoveryNotify    bool `json:"recovery_notify"`
+	} `json:"raid_watchdog"`
 }
 
 // loadConfig reads configuration from config.json with smart defaults
@@ -304,10 +322,61 @@ func applyConfigDefaults() {
 		cfg.FSWatchdog.TopNFiles = 10
 	}
 
-	// Kernel watchdog defaults (always on by default)
-	if cfg.KernelWatchdog.CheckIntervalSecs == 0 {
+	// Kernel watchdog defaults (default on, allow explicit disable)
+	kernelEmpty := cfg.KernelWatchdog.CheckIntervalSecs == 0 && !cfg.KernelWatchdog.Enabled
+	if kernelEmpty {
 		cfg.KernelWatchdog.Enabled = true
 		cfg.KernelWatchdog.CheckIntervalSecs = 60
+	} else if cfg.KernelWatchdog.CheckIntervalSecs == 0 {
+		cfg.KernelWatchdog.CheckIntervalSecs = 60
+	}
+
+	// Network watchdog defaults (default on, allow explicit disable)
+	networkEmpty := cfg.NetworkWatchdog.CheckIntervalSecs == 0 && len(cfg.NetworkWatchdog.Targets) == 0 &&
+		cfg.NetworkWatchdog.DNSHost == "" && cfg.NetworkWatchdog.Gateway == "" &&
+		cfg.NetworkWatchdog.FailureThreshold == 0 && cfg.NetworkWatchdog.CooldownMins == 0 &&
+		!cfg.NetworkWatchdog.Enabled && !cfg.NetworkWatchdog.RecoveryNotify
+	if networkEmpty {
+		cfg.NetworkWatchdog.Enabled = true
+		cfg.NetworkWatchdog.CheckIntervalSecs = 60
+		cfg.NetworkWatchdog.Targets = []string{"1.1.1.1", "8.8.8.8"}
+		cfg.NetworkWatchdog.DNSHost = "google.com"
+		cfg.NetworkWatchdog.FailureThreshold = 3
+		cfg.NetworkWatchdog.CooldownMins = 10
+		cfg.NetworkWatchdog.RecoveryNotify = true
+	} else {
+		if cfg.NetworkWatchdog.CheckIntervalSecs == 0 {
+			cfg.NetworkWatchdog.CheckIntervalSecs = 60
+		}
+		if len(cfg.NetworkWatchdog.Targets) == 0 {
+			cfg.NetworkWatchdog.Targets = []string{"1.1.1.1", "8.8.8.8"}
+		}
+		if cfg.NetworkWatchdog.DNSHost == "" {
+			cfg.NetworkWatchdog.DNSHost = "google.com"
+		}
+		if cfg.NetworkWatchdog.FailureThreshold == 0 {
+			cfg.NetworkWatchdog.FailureThreshold = 3
+		}
+		if cfg.NetworkWatchdog.CooldownMins == 0 {
+			cfg.NetworkWatchdog.CooldownMins = 10
+		}
+	}
+
+	// RAID watchdog defaults (default on, allow explicit disable)
+	raidEmpty := cfg.RaidWatchdog.CheckIntervalSecs == 0 && cfg.RaidWatchdog.CooldownMins == 0 &&
+		!cfg.RaidWatchdog.Enabled && !cfg.RaidWatchdog.RecoveryNotify
+	if raidEmpty {
+		cfg.RaidWatchdog.Enabled = true
+		cfg.RaidWatchdog.CheckIntervalSecs = 300
+		cfg.RaidWatchdog.CooldownMins = 30
+		cfg.RaidWatchdog.RecoveryNotify = true
+	} else {
+		if cfg.RaidWatchdog.CheckIntervalSecs == 0 {
+			cfg.RaidWatchdog.CheckIntervalSecs = 300
+		}
+		if cfg.RaidWatchdog.CooldownMins == 0 {
+			cfg.RaidWatchdog.CooldownMins = 30
+		}
 	}
 }
 

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
+	"os"
 	"os/exec"
 	"sort"
 	"strings"
@@ -21,16 +23,29 @@ import (
 
 var (
 	// Kernel watchdog state: track last seen signature per event type
-	kwLastSignatures       map[string]string
-	kwInitialized          bool
-	kwMutex                sync.Mutex
+	kwLastSignatures map[string]string
+	kwInitialized    bool
+	kwMutex          sync.Mutex
+
+	// Network watchdog state
+	netFailCount     int
+	netDownSince     time.Time
+	netDownAlertTime time.Time
+	netDNSAlertTime  time.Time
+	netMutex         sync.Mutex
+
+	// RAID watchdog state
+	raidLastSignature string
+	raidDownSince     time.Time
+	raidAlertTime     time.Time
+	raidMutex         sync.Mutex
 )
 
 // kernelEventType defines a class of critical kernel events
 type kernelEventType struct {
-	Name        string
-	TrKey       string
-	Keywords    []string
+	Name     string
+	TrKey    string
+	Keywords []string
 }
 
 var kernelEventTypes = []kernelEventType{
@@ -100,6 +115,18 @@ func autonomousManager(bot *tgbotapi.BotAPI) {
 	diskTicker := time.NewTicker(5 * time.Minute)
 	trendTicker := time.NewTicker(5 * time.Minute) // Sample trends every 5 min
 
+	netInterval := time.Duration(cfg.NetworkWatchdog.CheckIntervalSecs) * time.Second
+	if netInterval < 10*time.Second {
+		netInterval = 60 * time.Second
+	}
+	netTicker := time.NewTicker(netInterval)
+
+	raidInterval := time.Duration(cfg.RaidWatchdog.CheckIntervalSecs) * time.Second
+	if raidInterval < 30*time.Second {
+		raidInterval = 5 * time.Minute
+	}
+	raidTicker := time.NewTicker(raidInterval)
+
 	kwInterval := time.Duration(cfg.KernelWatchdog.CheckIntervalSecs) * time.Second
 	if kwInterval < 10*time.Second {
 		kwInterval = 60 * time.Second
@@ -110,9 +137,17 @@ func autonomousManager(bot *tgbotapi.BotAPI) {
 	defer diskTicker.Stop()
 	defer trendTicker.Stop()
 	defer kwTicker.Stop()
+	defer netTicker.Stop()
+	defer raidTicker.Stop()
 
 	if cfg.KernelWatchdog.Enabled {
 		log.Printf(tr("kw_started"), cfg.KernelWatchdog.CheckIntervalSecs)
+	}
+	if cfg.NetworkWatchdog.Enabled {
+		log.Printf(tr("netwd_started"), cfg.NetworkWatchdog.CheckIntervalSecs)
+	}
+	if cfg.RaidWatchdog.Enabled {
+		log.Printf(tr("raidwd_started"), cfg.RaidWatchdog.CheckIntervalSecs)
 	}
 
 	for {
@@ -186,6 +221,16 @@ func autonomousManager(bot *tgbotapi.BotAPI) {
 		case <-kwTicker.C:
 			if cfg.KernelWatchdog.Enabled {
 				checkKernelEvents(bot)
+			}
+
+		case <-netTicker.C:
+			if cfg.NetworkWatchdog.Enabled {
+				checkNetworkHealth(bot)
+			}
+
+		case <-raidTicker.C:
+			if cfg.RaidWatchdog.Enabled {
+				checkRaidHealth(bot)
 			}
 		}
 	}
@@ -301,6 +346,214 @@ func getKernelLogLines() []string {
 	}
 
 	return strings.Split(text, "\n")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  NETWORK WATCHDOG — gateway, internet reachability, DNS
+// ═══════════════════════════════════════════════════════════════════
+
+func checkNetworkHealth(bot *tgbotapi.BotAPI) {
+	netMutex.Lock()
+	defer netMutex.Unlock()
+
+	// Defaults if config is missing
+	targets := cfg.NetworkWatchdog.Targets
+	if len(targets) == 0 {
+		targets = []string{"1.1.1.1", "8.8.8.8"}
+	}
+	dnsHost := cfg.NetworkWatchdog.DNSHost
+	if dnsHost == "" {
+		dnsHost = "google.com"
+	}
+	threshold := cfg.NetworkWatchdog.FailureThreshold
+	if threshold <= 0 {
+		threshold = 3
+	}
+	cooldown := time.Duration(cfg.NetworkWatchdog.CooldownMins) * time.Minute
+	if cooldown <= 0 {
+		cooldown = 10 * time.Minute
+	}
+
+	pingOk := false
+	var reasons []string
+
+	if cfg.NetworkWatchdog.Gateway != "" {
+		if pingHost(cfg.NetworkWatchdog.Gateway) {
+			pingOk = true
+		} else {
+			reasons = append(reasons, fmt.Sprintf("Gateway %s unreachable", cfg.NetworkWatchdog.Gateway))
+		}
+	}
+
+	for _, target := range targets {
+		if pingHost(target) {
+			pingOk = true
+			break
+		}
+	}
+	if !pingOk {
+		reasons = append(reasons, "No ping targets reachable")
+	}
+
+	dnsOk := checkDNS(dnsHost)
+	if !dnsOk {
+		reasons = append(reasons, fmt.Sprintf("DNS lookup failed: %s", dnsHost))
+	}
+
+	// Healthy network
+	if pingOk && dnsOk {
+		netFailCount = 0
+		if !netDownSince.IsZero() {
+			if cfg.NetworkWatchdog.RecoveryNotify {
+				msg := fmt.Sprintf(tr("net_recovered"), formatDuration(time.Since(netDownSince)))
+				m := tgbotapi.NewMessage(AllowedUserID, msg)
+				m.ParseMode = "Markdown"
+				if !isQuietHours() {
+					bot.Send(m)
+				}
+			}
+			netDownSince = time.Time{}
+		}
+		return
+	}
+
+	// DNS-only issue (ICMP ok but DNS fails)
+	if pingOk && !dnsOk {
+		if time.Since(netDNSAlertTime) >= cooldown {
+			msg := fmt.Sprintf(tr("net_dns_fail"), dnsHost)
+			m := tgbotapi.NewMessage(AllowedUserID, msg)
+			m.ParseMode = "Markdown"
+			bot.Send(m)
+			netDNSAlertTime = time.Now()
+			addReportEvent("warning", fmt.Sprintf("DNS lookup failed: %s", dnsHost))
+		}
+		return
+	}
+
+	// Potential network down
+	if !pingOk && !dnsOk {
+		netFailCount++
+		if netFailCount < threshold {
+			return
+		}
+
+		if netDownSince.IsZero() {
+			netDownSince = time.Now()
+		}
+
+		if netDownAlertTime.IsZero() || time.Since(netDownAlertTime) >= cooldown {
+			reasonText := strings.Join(reasons, " · ")
+			msg := fmt.Sprintf(tr("net_down"), reasonText)
+			m := tgbotapi.NewMessage(AllowedUserID, msg)
+			m.ParseMode = "Markdown"
+			bot.Send(m)
+			netDownAlertTime = time.Now()
+			addReportEvent("critical", "Network down")
+		}
+	}
+}
+
+func pingHost(host string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "ping", "-c", "1", "-W", "2", host)
+	if err := cmd.Run(); err != nil {
+		return false
+	}
+	return true
+}
+
+func checkDNS(host string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	_, err := net.DefaultResolver.LookupHost(ctx, host)
+	return err == nil
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  RAID WATCHDOG — mdadm (/proc/mdstat) + ZFS (zpool status)
+// ═══════════════════════════════════════════════════════════════════
+
+func checkRaidHealth(bot *tgbotapi.BotAPI) {
+	raidMutex.Lock()
+	defer raidMutex.Unlock()
+
+	issues := getRaidIssues()
+	if len(issues) == 0 {
+		if !raidDownSince.IsZero() {
+			if cfg.RaidWatchdog.RecoveryNotify {
+				msg := fmt.Sprintf(tr("raid_recovered"), formatDuration(time.Since(raidDownSince)))
+				m := tgbotapi.NewMessage(AllowedUserID, msg)
+				m.ParseMode = "Markdown"
+				if !isQuietHours() {
+					bot.Send(m)
+				}
+			}
+			raidDownSince = time.Time{}
+			raidLastSignature = ""
+		}
+		return
+	}
+
+	signature := strings.Join(issues, " | ")
+	cooldown := time.Duration(cfg.RaidWatchdog.CooldownMins) * time.Minute
+	if cooldown <= 0 {
+		cooldown = 30 * time.Minute
+	}
+
+	if raidDownSince.IsZero() {
+		raidDownSince = time.Now()
+	}
+
+	if signature != raidLastSignature || time.Since(raidAlertTime) >= cooldown {
+		msg := fmt.Sprintf(tr("raid_alert"), strings.Join(issues, "\n"))
+		m := tgbotapi.NewMessage(AllowedUserID, msg)
+		m.ParseMode = "Markdown"
+		bot.Send(m)
+		raidLastSignature = signature
+		raidAlertTime = time.Now()
+		addReportEvent("critical", "RAID issue detected")
+	}
+}
+
+func getRaidIssues() []string {
+	var issues []string
+
+	// mdadm /proc/mdstat
+	if data, err := os.ReadFile("/proc/mdstat"); err == nil {
+		text := string(data)
+		if strings.Contains(text, "md") {
+			lines := strings.Split(text, "\n")
+			for _, line := range lines {
+				if strings.Contains(line, "md") && strings.Contains(line, "[") && strings.Contains(line, "]") {
+					if strings.Contains(line, "_") {
+						issues = append(issues, fmt.Sprintf("mdadm degraded: %s", strings.TrimSpace(line)))
+					}
+					if strings.Contains(line, "recovery") || strings.Contains(line, "resync") || strings.Contains(line, "reshape") {
+						issues = append(issues, fmt.Sprintf("mdadm sync: %s", strings.TrimSpace(line)))
+					}
+				}
+			}
+		}
+	}
+
+	// ZFS: zpool status -x
+	if _, err := exec.LookPath("zpool"); err == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "zpool", "status", "-x")
+		out, err := cmd.Output()
+		if err == nil {
+			output := strings.TrimSpace(string(out))
+			if output != "" && !strings.Contains(strings.ToLower(output), "all pools are healthy") {
+				issues = append(issues, fmt.Sprintf("zpool: %s", output))
+			}
+		}
+	}
+
+	return issues
 }
 
 func checkDockerHealth(bot *tgbotapi.BotAPI) {
