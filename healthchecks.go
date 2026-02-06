@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -21,7 +21,7 @@ const MaxDowntimeEvents = 50
 // startHealthchecksPinger starts the background goroutine that pings healthchecks.io
 func startHealthchecksPinger(bot *tgbotapi.BotAPI) {
 	if !cfg.Healthchecks.Enabled || cfg.Healthchecks.PingURL == "" {
-		log.Println("[i] Healthchecks.io disabled or no URL configured")
+		slog.Info("Healthchecks.io disabled or no URL configured")
 		return
 	}
 
@@ -30,7 +30,7 @@ func startHealthchecksPinger(bot *tgbotapi.BotAPI) {
 		period = 60 // default 1 minute
 	}
 
-	log.Printf("[+] Healthchecks.io pinger started (every %ds)", period)
+	slog.Info("Healthchecks.io pinger started", "period_sec", period)
 
 	ticker := time.NewTicker(time.Duration(period) * time.Second)
 	defer ticker.Stop()
@@ -90,7 +90,7 @@ func recordHealthcheckSuccess(bot *tgbotapi.BotAPI) {
 		downtimeDuration := event.EndTime.Sub(event.StartTime)
 		event.Duration = formatDuration(downtimeDuration)
 		healthchecksInDowntime = false
-		log.Printf("[+] Healthchecks: downtime ended, duration: %s", event.Duration)
+		slog.Info("Healthchecks: downtime ended", "duration", event.Duration)
 
 		// Send recovery notification
 		if bot != nil && !isQuietHours() {
@@ -132,7 +132,7 @@ func recordHealthcheckFailure(bot *tgbotapi.BotAPI, reason string) {
 	healthchecksState.LastPingSuccess = false
 	healthchecksState.LastFailure = time.Now()
 
-	log.Printf("[!] Healthchecks ping failed: %s", reason)
+	slog.Error("Healthchecks ping failed", "reason", reason)
 
 	// Start a new downtime event if we weren't already in one
 	if !healthchecksInDowntime {
@@ -376,7 +376,7 @@ func handleHealthCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery
 			bot.Send(edit)
 		})
 		if err != nil {
-			log.Printf("[!] Healthchecks AI error: %v", err)
+			slog.Error("Healthchecks AI error", "err", err)
 			errText := fmt.Sprintf("❌ %s\n\n_Error: %v_", tr("health_ai_error"), err)
 			edit := tgbotapi.NewEditMessageText(chatID, msgID, errText)
 			edit.ParseMode = "Markdown"
@@ -405,7 +405,7 @@ func handleHealthCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery
 		)
 		edit.ReplyMarkup = &keyboard
 		if _, sendErr := bot.Send(edit); sendErr != nil {
-			log.Printf("[!] Error sending AI analysis (Markdown): %v", sendErr)
+			slog.Error("Error sending AI analysis (Markdown)", "err", sendErr)
 			edit.ParseMode = ""
 			bot.Send(edit)
 		}
@@ -455,7 +455,7 @@ func pingHealthchecksStart() {
 		return
 	}
 	resp.Body.Close()
-	log.Println("[+] Healthchecks.io /start signal sent")
+	slog.Info("Healthchecks.io /start signal sent")
 }
 
 // maxInt returns the larger of two integers

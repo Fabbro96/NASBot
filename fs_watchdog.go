@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -28,15 +28,7 @@ import (
 // ═══════════════════════════════════════════════════════════════════
 
 // FSWatchdogConfig holds filesystem watchdog configuration
-type FSWatchdogConfig struct {
-	Enabled           bool     `json:"enabled"`
-	CheckIntervalMins int      `json:"check_interval_minutes"` // Light check interval (default: 30)
-	WarningThreshold  float64  `json:"warning_threshold"`      // Alert threshold (default: 85%)
-	CriticalThreshold float64  `json:"critical_threshold"`     // Deep scan trigger (default: 90%)
-	DeepScanPaths     []string `json:"deep_scan_paths"`        // Paths to scan when critical
-	ExcludePatterns   []string `json:"exclude_patterns"`       // Patterns to exclude from scan
-	TopNFiles         int      `json:"top_n_files"`            // Number of largest files to report
-}
+// Defined in config_types.go
 
 // DirUsage holds directory usage info (memory-efficient)
 type DirUsage struct {
@@ -284,7 +276,7 @@ func (w *FSWatchdog) DeepScan(paths []string) *DeepScanResult {
 		Errors:       make([]string, 0),
 	}
 
-	log.Println("[FSWatchdog] Starting deep scan...")
+	slog.Info("[FSWatchdog] Starting deep scan...")
 
 	for _, basePath := range paths {
 		if w.shouldExclude(basePath) {
@@ -345,9 +337,9 @@ func (w *FSWatchdog) DeepScan(paths []string) *DeepScanResult {
 	result.Duration = time.Since(startTime)
 	w.lastDeepScan = time.Now()
 
-	log.Printf("[FSWatchdog] Deep scan complete in %v, scanned %s",
-		result.Duration.Round(time.Millisecond),
-		formatBytes(uint64(result.TotalScanned)))
+	slog.Info("[FSWatchdog] Deep scan complete",
+		"duration", result.Duration.Round(time.Millisecond).String(),
+		"scanned", formatBytes(uint64(result.TotalScanned)))
 
 	return result
 }
@@ -361,7 +353,7 @@ func RunFSWatchdog(bot *tgbotapi.BotAPI) {
 	w := GetFSWatchdog()
 
 	if !w.config.Enabled {
-		log.Println("[FSWatchdog] Disabled in config")
+		slog.Info("[FSWatchdog] Disabled in config")
 		return
 	}
 
@@ -369,10 +361,10 @@ func RunFSWatchdog(bot *tgbotapi.BotAPI) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	log.Printf("[FSWatchdog] Started (check every %d min, warning: %.0f%%, critical: %.0f%%)",
-		w.config.CheckIntervalMins,
-		w.config.WarningThreshold,
-		w.config.CriticalThreshold)
+	slog.Info("[FSWatchdog] Started",
+		"check_every", w.config.CheckIntervalMins,
+		"warning_pct", w.config.WarningThreshold,
+		"critical_pct", w.config.CriticalThreshold)
 
 	// Initial check after 1 minute
 	time.Sleep(1 * time.Minute)
@@ -388,11 +380,11 @@ func (w *FSWatchdog) checkAndAlert(bot *tgbotapi.BotAPI, path string) {
 	// Step 1: Light check (instant, no I/O)
 	usedPercent, freeGB, err := w.LightCheck(path)
 	if err != nil {
-		log.Printf("[FSWatchdog] Light check failed: %v", err)
+		slog.Error("[FSWatchdog] Light check failed", "err", err)
 		return
 	}
 
-	log.Printf("[FSWatchdog] Light check: %.1f%% used, %.1fGB free", usedPercent, freeGB)
+	slog.Info(fmt.Sprintf("[FSWatchdog] Light check: %.1f%% used, %.1fGB free", usedPercent, freeGB))
 
 	// Step 2: Evaluate threshold
 	if usedPercent < w.config.WarningThreshold {
@@ -426,7 +418,7 @@ func (w *FSWatchdog) checkAndAlert(bot *tgbotapi.BotAPI, path string) {
 
 	// Step 4: CRITICAL - Trigger deep scan
 	if usedPercent >= w.config.CriticalThreshold {
-		log.Printf("[FSWatchdog] CRITICAL: %.1f%% - triggering deep scan", usedPercent)
+		slog.Warn(fmt.Sprintf("[FSWatchdog] CRITICAL: %.1f%% - triggering deep scan", usedPercent))
 
 		// Notify user
 		if !isQuietHours() {

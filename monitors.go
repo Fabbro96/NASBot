@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"os"
 	"os/exec"
@@ -141,13 +141,13 @@ func autonomousManager(bot *tgbotapi.BotAPI) {
 	defer raidTicker.Stop()
 
 	if cfg.KernelWatchdog.Enabled {
-		log.Printf(tr("kw_started"), cfg.KernelWatchdog.CheckIntervalSecs)
+		slog.Info(fmt.Sprintf(tr("kw_started"), cfg.KernelWatchdog.CheckIntervalSecs))
 	}
 	if cfg.NetworkWatchdog.Enabled {
-		log.Printf(tr("netwd_started"), cfg.NetworkWatchdog.CheckIntervalSecs)
+		slog.Info(fmt.Sprintf(tr("netwd_started"), cfg.NetworkWatchdog.CheckIntervalSecs))
 	}
 	if cfg.RaidWatchdog.Enabled {
-		log.Printf(tr("raidwd_started"), cfg.RaidWatchdog.CheckIntervalSecs)
+		slog.Info(fmt.Sprintf(tr("raidwd_started"), cfg.RaidWatchdog.CheckIntervalSecs))
 	}
 
 	for {
@@ -304,7 +304,7 @@ func checkKernelEvents(bot *tgbotapi.BotAPI) {
 		}
 
 		addReportEvent("critical", fmt.Sprintf("%s detected", evt.Name))
-		log.Printf("[KernelWatchdog] %s detected: %s", evt.Name, lastLine)
+		slog.Warn("KernelWatchdog event detected", "event", evt.Name, "line", lastLine)
 
 		// ALWAYS send — critical events ignore quiet hours
 		msg := fmt.Sprintf(tr(evt.TrKey), ctxText)
@@ -564,21 +564,21 @@ func checkDockerHealth(bot *tgbotapi.BotAPI) {
 	if isHealthy {
 		if !dockerFailureStart.IsZero() {
 			dockerFailureStart = time.Time{}
-			log.Println("[Docker] Recovered/populated.")
+			slog.Info("Docker recovered/populated.")
 		}
 		return
 	}
 
 	if dockerFailureStart.IsZero() {
 		dockerFailureStart = time.Now()
-		log.Printf("[Docker] Warning: 0 containers or service down. Timer started (%dm).", cfg.Docker.Watchdog.TimeoutMinutes)
+		slog.Warn("Docker: 0 containers or service down. Timer started.", "timeout_mins", cfg.Docker.Watchdog.TimeoutMinutes)
 		return
 	}
 
 	timeout := time.Duration(cfg.Docker.Watchdog.TimeoutMinutes) * time.Minute
 
 	if time.Since(dockerFailureStart) > timeout {
-		log.Printf("[Docker] ⚠️ Down > %dm.", cfg.Docker.Watchdog.TimeoutMinutes)
+		slog.Error("Docker down longer than timeout", "timeout_mins", cfg.Docker.Watchdog.TimeoutMinutes)
 
 		dockerFailureStart = time.Now()
 
@@ -617,7 +617,7 @@ func checkDockerHealth(bot *tgbotapi.BotAPI) {
 			if !isQuietHours() {
 				bot.Send(tgbotapi.NewMessage(AllowedUserID, fmt.Sprintf(tr("docker_restart_err"), err)))
 			}
-			log.Printf("[!] Docker restart fail: %v\n%s", err, string(out))
+			slog.Error("Docker restart fail", "err", err, "output", string(out))
 		} else {
 			if !isQuietHours() {
 				bot.Send(tgbotapi.NewMessage(AllowedUserID, tr("docker_restart_sent")))
@@ -655,7 +655,7 @@ func checkWeeklyPrune(bot *tgbotapi.BotAPI) {
 
 	if isTime {
 		if !pruneDoneToday {
-			log.Println("[Docker] Running Weekly Prune...")
+			slog.Info("Docker: Running Weekly Prune...")
 			pruneDoneToday = true
 
 			go func() {

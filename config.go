@@ -3,172 +3,25 @@ package main
 import (
 "encoding/json"
 "fmt"
-"log"
+"log/slog"
 "os"
 "time"
 )
 
 // Config holds all configuration from config.json
-type Config struct {
-	BotToken      string `json:"bot_token"`
-	AllowedUserID int64  `json:"allowed_user_id"`
-	GeminiAPIKey  string `json:"gemini_api_key"`
-
-	Paths struct {
-		SSD string `json:"ssd"`
-		HDD string `json:"hdd"`
-	} `json:"paths"`
-
-	Timezone string `json:"timezone"`
-
-	Reports struct {
-		Enabled bool `json:"enabled"`
-		Morning struct {
-			Enabled bool `json:"enabled"`
-			Hour    int  `json:"hour"`
-			Minute  int  `json:"minute"`
-		} `json:"morning"`
-		Evening struct {
-			Enabled bool `json:"enabled"`
-			Hour    int  `json:"hour"`
-			Minute  int  `json:"minute"`
-		} `json:"evening"`
-	} `json:"reports"`
-
-	QuietHours struct {
-		Enabled     bool `json:"enabled"`
-		StartHour   int  `json:"start_hour"`
-		StartMinute int  `json:"start_minute"`
-		EndHour     int  `json:"end_hour"`
-		EndMinute   int  `json:"end_minute"`
-	} `json:"quiet_hours"`
-
-	Notifications struct {
-		CPU struct {
-			Enabled           bool    `json:"enabled"`
-			WarningThreshold  float64 `json:"warning_threshold"`
-			CriticalThreshold float64 `json:"critical_threshold"`
-		} `json:"cpu"`
-		RAM struct {
-			Enabled           bool    `json:"enabled"`
-			WarningThreshold  float64 `json:"warning_threshold"`
-			CriticalThreshold float64 `json:"critical_threshold"`
-		} `json:"ram"`
-		Swap struct {
-			Enabled           bool    `json:"enabled"`
-			WarningThreshold  float64 `json:"warning_threshold"`
-			CriticalThreshold float64 `json:"critical_threshold"`
-		} `json:"swap"`
-		DiskSSD struct {
-			Enabled           bool    `json:"enabled"`
-			WarningThreshold  float64 `json:"warning_threshold"`
-			CriticalThreshold float64 `json:"critical_threshold"`
-		} `json:"disk_ssd"`
-		DiskHDD struct {
-			Enabled           bool    `json:"enabled"`
-			WarningThreshold  float64 `json:"warning_threshold"`
-			CriticalThreshold float64 `json:"critical_threshold"`
-		} `json:"disk_hdd"`
-		DiskIO struct {
-			Enabled          bool    `json:"enabled"`
-			WarningThreshold float64 `json:"warning_threshold"`
-		} `json:"disk_io"`
-		SMART struct {
-			Enabled bool `json:"enabled"`
-		} `json:"smart"`
-	} `json:"notifications"`
-
-	Temperature struct {
-		Enabled           bool    `json:"enabled"`
-		WarningThreshold  float64 `json:"warning_threshold"`
-		CriticalThreshold float64 `json:"critical_threshold"`
-	} `json:"temperature"`
-
-	CriticalContainers []string `json:"critical_containers"`
-
-	StressTracking struct {
-		Enabled                  bool `json:"enabled"`
-		DurationThresholdMinutes int  `json:"duration_threshold_minutes"`
-	} `json:"stress_tracking"`
-
-	Docker struct {
-		Watchdog struct {
-			Enabled            bool `json:"enabled"`
-			TimeoutMinutes     int  `json:"timeout_minutes"`
-			AutoRestartService bool `json:"auto_restart_service"`
-		} `json:"watchdog"`
-		WeeklyPrune struct {
-			Enabled bool   `json:"enabled"`
-			Day     string `json:"day"`
-			Hour    int    `json:"hour"`
-		} `json:"weekly_prune"`
-		AutoRestartOnRAMCritical struct {
-			Enabled            bool    `json:"enabled"`
-			MaxRestartsPerHour int     `json:"max_restarts_per_hour"`
-			RAMThreshold       float64 `json:"ram_threshold"`
-		} `json:"auto_restart_on_ram_critical"`
-	} `json:"docker"`
-
-	Intervals struct {
-		StatsSeconds              int `json:"stats_seconds"`
-		MonitorSeconds            int `json:"monitor_seconds"`
-		CriticalAlertCooldownMins int `json:"critical_alert_cooldown_minutes"`
-	} `json:"intervals"`
-
-	Cache struct {
-		DockerTTLSeconds int `json:"docker_ttl_seconds"`
-	} `json:"cache"`
-
-	FSWatchdog struct {
-		Enabled           bool     `json:"enabled"`
-		CheckIntervalMins int      `json:"check_interval_minutes"`
-		WarningThreshold  float64  `json:"warning_threshold"`
-		CriticalThreshold float64  `json:"critical_threshold"`
-		DeepScanPaths     []string `json:"deep_scan_paths"`
-		ExcludePatterns   []string `json:"exclude_patterns"`
-		TopNFiles         int      `json:"top_n_files"`
-	} `json:"fs_watchdog"`
-
-	Healthchecks struct {
-		Enabled       bool   `json:"enabled"`
-		PingURL       string `json:"ping_url"`
-		PeriodSeconds int    `json:"period_seconds"`
-		GraceSeconds  int    `json:"grace_seconds"`
-	} `json:"healthchecks"`
-
-	KernelWatchdog struct {
-		Enabled           bool `json:"enabled"`
-		CheckIntervalSecs int  `json:"check_interval_seconds"`
-	} `json:"kernel_watchdog"`
-
-	NetworkWatchdog struct {
-		Enabled           bool     `json:"enabled"`
-		CheckIntervalSecs int      `json:"check_interval_seconds"`
-		Targets           []string `json:"targets"`
-		DNSHost           string   `json:"dns_host"`
-		Gateway           string   `json:"gateway"`
-		FailureThreshold  int      `json:"failure_threshold"`
-		CooldownMins      int      `json:"cooldown_minutes"`
-		RecoveryNotify    bool     `json:"recovery_notify"`
-	} `json:"network_watchdog"`
-
-	RaidWatchdog struct {
-		Enabled           bool `json:"enabled"`
-		CheckIntervalSecs int  `json:"check_interval_seconds"`
-		CooldownMins      int  `json:"cooldown_minutes"`
-		RecoveryNotify    bool `json:"recovery_notify"`
-	} `json:"raid_watchdog"`
-}
+// See config_types.go for struct definitions
 
 // loadConfig reads configuration from config.json with smart defaults
 func loadConfig() {
 	data, err := os.ReadFile("config.json")
 	if err != nil {
-		log.Fatalf("❌ Error reading config.json: %v\nCreate the file by copying config.example.json", err)
+		slog.Error("Error reading config.json", "err", err, "help", "Create the file by copying config.example.json")
+		os.Exit(1)
 	}
 
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		log.Fatalf("❌ Error parsing config.json: %v", err)
+		slog.Error("Error parsing config.json", "err", err)
+		os.Exit(1)
 	}
 
 	// Required fields
@@ -176,17 +29,19 @@ func loadConfig() {
 	AllowedUserID = cfg.AllowedUserID
 
 	if BotToken == "" {
-		log.Fatal("❌ bot_token empty in config.json")
+		slog.Error("bot_token empty in config.json")
+		os.Exit(1)
 	}
 	if AllowedUserID == 0 {
-		log.Fatal("❌ allowed_user_id empty or invalid in config.json")
+		slog.Error("allowed_user_id empty or invalid in config.json")
+		os.Exit(1)
 	}
 
 	// Apply sensible defaults for missing config values
 	applyConfigDefaults()
 	applyConfigRuntime()
 
-	log.Println("[✓] Config loaded from config.json")
+	slog.Info("Config loaded from config.json")
 }
 
 // applyConfigDefaults sets sensible defaults for missing configuration
@@ -420,7 +275,7 @@ func applyConfigRuntime() {
 	if cfg.Timezone != "" {
 		loc, err := time.LoadLocation(cfg.Timezone)
 		if err != nil {
-			log.Printf("[w] Timezone %s not found, using UTC", cfg.Timezone)
+			slog.Warn("Timezone not found, using UTC", "tz", cfg.Timezone)
 			location = time.UTC
 		} else {
 			location = loc

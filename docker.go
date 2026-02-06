@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os/exec"
 	"sort"
 	"strconv"
@@ -21,7 +21,7 @@ func getContainerList() []ContainerInfo {
 	cmd := exec.CommandContext(ctx, "docker", "ps", "-a", "--format", "{{.Names}}|{{.Status}}|{{.Image}}|{{.ID}}")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("x Docker error: %v - Output: %s", err, string(out))
+		slog.Error("Docker error", "err", err, "output", string(out))
 		return nil
 	}
 
@@ -498,7 +498,7 @@ func showContainerAIAnalysis(bot *tgbotapi.BotAPI, chatID int64, msgID int, cont
 	})
 
 	if err != nil {
-		log.Printf("[!] Docker AI log analysis error for %s: %v", containerName, err)
+		slog.Error("Docker AI log analysis error", "container", containerName, "err", err)
 		errText := fmt.Sprintf("❌ %s\n\n_Error: %v_", tr("docker_ai_error"), err)
 		kb := tgbotapi.NewInlineKeyboardMarkup(
 			tgbotapi.NewInlineKeyboardRow(
@@ -527,7 +527,7 @@ func showContainerAIAnalysis(bot *tgbotapi.BotAPI, chatID int64, msgID int, cont
 	finalEdit.ParseMode = "Markdown"
 	finalEdit.ReplyMarkup = &kb
 	if _, sendErr := bot.Send(finalEdit); sendErr != nil {
-		log.Printf("[!] Error sending Docker AI analysis (Markdown): %v", sendErr)
+		slog.Error("Error sending Docker AI analysis (Markdown)", "err", sendErr)
 		finalEdit.ParseMode = ""
 		bot.Send(finalEdit)
 	}
@@ -700,7 +700,7 @@ func executeRestartAllContainers(bot *tgbotapi.BotAPI, chatID int64, msgID int) 
 		cancel()
 
 		if err != nil {
-			log.Printf("[!] Failed to restart container %s: %v", name, err)
+			slog.Error("Failed to restart container", "container", name, "err", err)
 			failed = append(failed, name)
 		} else {
 			succeeded = append(succeeded, name)
@@ -869,7 +869,7 @@ func handleCriticalRAM(bot *tgbotapi.BotAPI, s Stats) {
 
 		target := heavyContainers[0]
 		if canAutoRestart(target.name) {
-			log.Printf("> RAM critical (%.1f%%), auto-restart: %s (%.1f%%)", s.RAM, target.name, target.memPct)
+			slog.Warn("RAM critical, auto-restart", "ram", s.RAM, "container", target.name, "mem_pct", target.memPct)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			cmd := exec.CommandContext(ctx, "docker", "restart", target.name)

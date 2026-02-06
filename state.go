@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"os"
 	"time"
 )
@@ -56,12 +56,12 @@ type DowntimeLog struct {
 func loadState() {
 	data, err := os.ReadFile(DefaultStateFile)
 	if err != nil {
-		log.Printf("[i] First run - no state")
+		slog.Info("First run - no state found")
 		return
 	}
 	var state BotState
 	if err := json.Unmarshal(data, &state); err != nil {
-		log.Printf("[w] State error: %v", err)
+		slog.Warn("State load error", "err", err)
 		return
 	}
 	lastReportTime = state.LastReportTime
@@ -104,7 +104,7 @@ func loadState() {
 	healthchecksState = state.Healthchecks
 	healthchecksMutex.Unlock()
 
-	log.Printf("[+] State restored")
+	slog.Info("State restored")
 }
 
 func saveState() {
@@ -134,11 +134,11 @@ func saveState() {
 
 	data, err := json.Marshal(state)
 	if err != nil {
-		log.Printf("[w] Serialize: %v", err)
+		slog.Warn("State serialize error", "err", err)
 		return
 	}
 	if err := os.WriteFile(DefaultStateFile, data, 0644); err != nil {
-		log.Printf("[w] Save: %v", err)
+		slog.Warn("State save error", "err", err)
 	}
 }
 

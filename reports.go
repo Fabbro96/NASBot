@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -50,13 +50,13 @@ func getNextReportTime() (time.Time, bool) {
 	if reportMode == 2 {
 		// Check if we missed the morning report (within grace period)
 		if !morningDone && now.After(morningReport) && now.Before(morningReport.Add(gracePeriod)) {
-			log.Printf("[Report] Missed morning report, triggering now (grace period)")
+			slog.Info("Report: Missed morning report, triggering now (grace period)")
 			return now, true // Trigger immediately
 		}
 
 		// Check if we missed the evening report (within grace period)
 		if !eveningDone && now.After(eveningReport) && now.Before(eveningReport.Add(gracePeriod)) {
-			log.Printf("[Report] Missed evening report, triggering now (grace period)")
+			slog.Info("Report: Missed evening report, triggering now (grace period)")
 			return now, false // Trigger immediately
 		}
 
@@ -70,7 +70,7 @@ func getNextReportTime() (time.Time, bool) {
 
 	// Single daily report mode
 	if !morningDone && now.After(morningReport) && now.Before(morningReport.Add(gracePeriod)) {
-		log.Printf("[Report] Missed daily report, triggering now (grace period)")
+		slog.Info("Report: Missed daily report, triggering now (grace period)")
 		return now, true
 	}
 
@@ -122,7 +122,7 @@ func periodicReport(bot *tgbotapi.BotAPI) {
 			greeting = tr("good_evening")
 		}
 
-		log.Printf("> Next report: %s", nextReport.Format("02/01 15:04"))
+		slog.Info("Next report scheduled", "time", nextReport.Format("02/01 15:04"))
 		time.Sleep(sleepDuration)
 
 		report := generateDailyReport(greeting, isMorning, nil)
@@ -167,7 +167,7 @@ func generateDailyReport(greeting string, isMorning bool, onModelChange func(str
 		return aiReport
 	}
 	if aiErr != nil {
-		log.Printf("[Gemini] AI report error: %v", aiErr)
+		slog.Error("Gemini AI report error", "err", aiErr)
 	}
 
 	// Fallback to schematic report
@@ -380,7 +380,7 @@ func callGeminiWithFallback(prompt string, onModelChange func(string)) (string, 
 		// Check overall timeout before trying next model
 		select {
 		case <-ctx.Done():
-			log.Printf("[Gemini] Overall timeout exceeded after trying models")
+			slog.Error("Gemini: Overall timeout exceeded after trying models")
 			if err != nil {
 				return "", fmt.Errorf("timeout — last error: %v", err)
 			}
@@ -391,13 +391,13 @@ func callGeminiWithFallback(prompt string, onModelChange func(string)) (string, 
 		if onModelChange != nil {
 			onModelChange(model)
 		}
-		log.Printf("[Gemini] Trying model %s...", model)
+		slog.Info("Gemini: Trying model...", "model", model)
 		summary, err = callGeminiAPIWithError(prompt, model)
 		if err == nil {
-			log.Printf("[Gemini] Model %s succeeded", model)
+			slog.Info("Gemini: Model succeeded", "model", model)
 			return summary, nil
 		}
-		log.Printf("[Gemini] Model %s failed: %v", model, err)
+		slog.Error("Gemini: Model failed", "model", model, "err", err)
 	}
 
 	return "", err
@@ -532,7 +532,7 @@ func generateReport(manual bool, onModelChange func(string)) string {
 		return aiReport
 	}
 	if aiErr != nil {
-		log.Printf("[Gemini] AI report error: %v", aiErr)
+		slog.Error("Gemini AI report error", "err", aiErr)
 	}
 
 	var b strings.Builder
