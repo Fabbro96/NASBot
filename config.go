@@ -135,6 +135,11 @@ type Config struct {
 		PeriodSeconds int    `json:"period_seconds"`
 		GraceSeconds  int    `json:"grace_seconds"`
 	} `json:"healthchecks"`
+
+	KernelWatchdog struct {
+		Enabled           bool `json:"enabled"`
+		CheckIntervalSecs int  `json:"check_interval_seconds"`
+	} `json:"kernel_watchdog"`
 }
 
 // loadConfig reads configuration from config.json with smart defaults
@@ -297,6 +302,12 @@ func applyConfigDefaults() {
 		cfg.FSWatchdog.DeepScanPaths = []string{"/"}
 		cfg.FSWatchdog.ExcludePatterns = []string{"/proc", "/sys", "/dev", "/run", "/snap"}
 		cfg.FSWatchdog.TopNFiles = 10
+	}
+
+	// Kernel watchdog defaults (always on by default)
+	if cfg.KernelWatchdog.CheckIntervalSecs == 0 {
+		cfg.KernelWatchdog.Enabled = true
+		cfg.KernelWatchdog.CheckIntervalSecs = 60
 	}
 }
 

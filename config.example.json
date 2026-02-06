@@ -2,14 +2,11 @@
   "bot_token": "YOUR_BOT_TOKEN_HERE",
   "allowed_user_id": 12345678,
   "gemini_api_key": "",
-  
   "paths": {
     "ssd": "/Volume1",
     "hdd": "/Volume2"
   },
-  
   "timezone": "Europe/Rome",
-  
   "reports": {
     "enabled": true,
     "morning": {
@@ -23,7 +20,6 @@
       "minute": 30
     }
   },
-  
   "quiet_hours": {
     "enabled": true,
     "start_hour": 23,
@@ -31,7 +27,6 @@
     "end_hour": 7,
     "end_minute": 0
   },
-  
   "notifications": {
     "cpu": {
       "enabled": true,
@@ -66,20 +61,16 @@
       "enabled": true
     }
   },
-  
   "temperature": {
     "enabled": true,
     "warning_threshold": 70.0,
     "critical_threshold": 85.0
   },
-  
   "critical_containers": [],
-  
   "stress_tracking": {
     "enabled": true,
     "duration_threshold_minutes": 2
   },
-  
   "docker": {
     "watchdog": {
       "enabled": true,
@@ -97,31 +88,39 @@
       "ram_threshold": 98.0
     }
   },
-  
   "intervals": {
     "stats_seconds": 5,
     "monitor_seconds": 30,
     "critical_alert_cooldown_minutes": 30
   },
-  
   "cache": {
     "docker_ttl_seconds": 10
   },
-  
   "healthchecks": {
     "enabled": false,
     "ping_url": "",
     "period_seconds": 60,
     "grace_seconds": 60
   },
-
   "fs_watchdog": {
     "enabled": true,
     "check_interval_minutes": 30,
     "warning_threshold": 85.0,
     "critical_threshold": 90.0,
-    "deep_scan_paths": ["/"],
-    "exclude_patterns": ["/proc", "/sys", "/dev", "/run", "/snap"],
+    "deep_scan_paths": [
+      "/"
+    ],
+    "exclude_patterns": [
+      "/proc",
+      "/sys",
+      "/dev",
+      "/run",
+      "/snap"
+    ],
     "top_n_files": 10
+  },
+  "kernel_watchdog": {
+    "enabled": true,
+    "check_interval_seconds": 60
   }
 }

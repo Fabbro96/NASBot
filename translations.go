@@ -105,6 +105,12 @@ var translations = map[string]map[string]string{
 		"net_checking": "checking...",
 
 		"logs_title": "*Recent system logs*\n",
+		"oom_alert":       "🚨 *OOM Kill Detected!*\n\nThe kernel killed a process due to memory pressure.\n\n```\n%s\n```\n\n_⚠️ System may be unstable. Check RAM usage._",
+		"kernel_panic":    "💀 *Kernel Panic / Oops Detected!*\n\nA critical kernel error occurred.\n\n```\n%s\n```\n\n_⚠️ System reboot may be imminent._",
+		"fs_readonly":     "🔴 *Filesystem Remounted Read-Only!*\n\nA disk was remounted read-only due to errors.\n\n```\n%s\n```\n\n_⚠️ Check disk health immediately!_",
+		"io_error":        "💽 *Disk I/O Errors Detected!*\n\nThe kernel reported I/O errors on a disk device.\n\n```\n%s\n```\n\n_⚠️ Disk may be failing. Check SMART data._",
+		"hung_task":       "⏳ *Hung Task Detected!*\n\nA process has been blocked for too long.\n\n```\n%s\n```\n\n_⚠️ System may be unresponsive._",
+		"kw_started":      "[KernelWatchdog] Started (check every %ds)",
 
 		"top_title":  "🔥 *Top Processes (by CPU)*\n\n",
 		"top_header": "`PID   CPU%  MEM%  COMMAND`\n",
@@ -297,6 +303,13 @@ var translations = map[string]map[string]string{
 		"net_checking": "verifico...",
 
 		"logs_title": "*Log di sistema recenti*\n",
+
+		"oom_alert":       "🚨 *OOM Kill Rilevato!*\n\nIl kernel ha terminato un processo per mancanza di memoria.\n\n```\n%s\n```\n\n_⚠️ Il sistema potrebbe essere instabile. Controlla la RAM._",
+		"kernel_panic":    "💀 *Kernel Panic / Oops Rilevato!*\n\nSi è verificato un errore critico del kernel.\n\n```\n%s\n```\n\n_⚠️ Il sistema potrebbe riavviarsi._",
+		"fs_readonly":     "🔴 *Filesystem in Sola Lettura!*\n\nUn disco è stato rimontato in sola lettura a causa di errori.\n\n```\n%s\n```\n\n_⚠️ Controlla subito lo stato dei dischi!_",
+		"io_error":        "💽 *Errori I/O Disco Rilevati!*\n\nIl kernel ha segnalato errori I/O su un disco.\n\n```\n%s\n```\n\n_⚠️ Il disco potrebbe essere guasto. Controlla SMART._",
+		"hung_task":       "⏳ *Task Bloccato Rilevato!*\n\nUn processo è bloccato da troppo tempo.\n\n```\n%s\n```\n\n_⚠️ Il sistema potrebbe non rispondere._",
+		"kw_started":      "[KernelWatchdog] Avviato (check ogni %ds)",
 
 		"top_title":  "🔥 *Processi Top (cpu)*\n\n",
 		"top_header": "`PID   CPU%  MEM%  COMANDO`\n",
