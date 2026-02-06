@@ -362,7 +362,7 @@ func handleHealthCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery
 		context := getHealthchecksAISummary()
 		prompt := fmt.Sprintf(tr("health_ai_prompt"), context)
 
-		analysis, err := callGeminiAPIWithError(prompt, "gemini-1.5-flash")
+		analysis, err := callGeminiWithFallback(prompt, nil)
 		if err != nil {
 			log.Printf("[!] Healthchecks AI error: %v", err)
 			edit := tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, "❌ "+tr("health_ai_error"))

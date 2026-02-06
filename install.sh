@@ -73,6 +73,7 @@ chmod +x "$BOT_DIR/start_bot.sh" 2>/dev/null || true
 chmod +x "$BOT_DIR/setup_autostart.sh" 2>/dev/null || true
 chmod +x "$BOT_DIR/setup_kernel_panic.sh" 2>/dev/null || true
 
+ 
 # Create symlink if needed (nasbot-arm64 -> nasbot)
 if [ "$BINARY_NAME" = "nasbot-arm64" ] && [ ! -f "$BOT_DIR/nasbot" ]; then
     ln -sf "$BOT_DIR/nasbot-arm64" "$BOT_DIR/nasbot"
