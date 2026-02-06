@@ -206,7 +206,7 @@ var translations = map[string]map[string]string{
 		"health_ai_error":        "AI analysis failed",
 		"health_ai_title":        "Downtime Analysis",
 		"health_ai_no_data":      "_No downtime data to analyze_",
-		"health_ai_prompt":       "Analyze this bot monitoring data and provide insights. Look for patterns in downtimes (time of day, day of week, common reasons). Be concise and helpful. Data:\n\n%s\n\nProvide:\n1. Summary of reliability\n2. Any patterns found\n3. Recommendations if applicable"},
+		"health_ai_prompt":       "Analyze this monitoring data. Be EXTREMELY concise. Max 10-15 lines. No fluff. Data:\n\n%s\n\nProvide:\n1. 1-sentence reliability summary\n2. Key patterns (bullet points)\n3. Quick recommendations"},
 	"it": {
 		"status_title": "🖥 *NAS* alle %s\n\n",
 
@@ -415,7 +415,7 @@ var translations = map[string]map[string]string{
 		"health_ai_error":        "Analisi AI fallita",
 		"health_ai_title":        "Analisi Downtime",
 		"health_ai_no_data":      "_Nessun dato di downtime da analizzare_",
-		"health_ai_prompt":       "Analizza questi dati di monitoraggio bot e fornisci insight. Cerca pattern nei downtime (ora del giorno, giorno della settimana, motivi comuni). Sii conciso e utile. Rispondi in italiano. Dati:\n\n%s\n\nFornisci:\n1. Riepilogo affidabilità\n2. Pattern trovati\n3. Raccomandazioni se applicabile",
+		"health_ai_prompt":       "Analizza questi dati. Sii ESTREMAMENTE conciso. Massimo 10-15 righe. Niente giri di parole. Rispondi in italiano. Dati:\n\n%s\n\nFornisci:\n1. Riepilogo affidabilità (1 frase)\n2. Pattern principali (punti elenco)\n3. Raccomandazioni rapide",
 	},
 }
 
