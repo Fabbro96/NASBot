@@ -8,6 +8,7 @@
 # Detect the directory where the script is located
 BOT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 BOT_NAME="nasbot"
+UPDATE_FILE="nasbot-arm64"
 LOG_FILE="$BOT_DIR/nasbot.log"
 PID_FILE="$BOT_DIR/nasbot.pid"
 MAX_LOG_SIZE=$((10*1024*1024))  # 10MB
@@ -21,6 +22,77 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 cd "$BOT_DIR" || exit 1
+
+# ═══════════════════════════════════════════════════════════════════
+#  SELF-UPDATE & SETUP
+# ═══════════════════════════════════════════════════════════════════
+
+check_updates() {
+    if [ -f "$UPDATE_FILE" ]; then
+        echo -e "${YELLOW}🔄 Update detected: $UPDATE_FILE${NC}"
+        
+        # Stop if running
+        if is_running; then
+            echo "   Stopping running instance for update..."
+            stop_bot
+        fi
+
+        # Backup existing
+        if [ -f "$BOT_NAME" ]; then
+            mv "$BOT_NAME" "${BOT_NAME}.bak"
+        fi
+
+        # Apply update
+        mv "$UPDATE_FILE" "$BOT_NAME"
+        chmod +x "$BOT_NAME"
+        echo -e "${GREEN}✅ Binary updated and executable set.${NC}"
+        
+        # Verify
+        if [ ! -x "$BOT_NAME" ]; then
+             echo -e "${RED}❌ Error: $BOT_NAME is not executable. restoring backup...${NC}"
+             mv "${BOT_NAME}.bak" "$BOT_NAME"
+             return 1
+        fi
+        
+        # Cleanup
+        rm -f "${BOT_NAME}.bak"
+    fi
+}
+
+apply_system_tweaks() {
+    # Kernel Panic Auto-Reboot (requires root)
+    if [ "$EUID" -eq 0 ]; then
+        # Check current settings
+        panic=$(cat /proc/sys/kernel/panic 2>/dev/null)
+        panic_oops=$(cat /proc/sys/kernel/panic_on_oops 2>/dev/null)
+        
+        if [ "$panic" != "10" ] || [ "$panic_oops" != "1" ]; then
+             echo -e "${YELLOW}⚙️  Applying Kernel Panic auto-reboot settings...${NC}"
+             sysctl -w kernel.panic=10 >/dev/null
+             sysctl -w kernel.panic_on_oops=1 >/dev/null
+             
+             # Persist
+             if [ -d "/etc/sysctl.d" ]; then
+                 echo "kernel.panic = 10" > /etc/sysctl.d/99-nasbot-panic.conf
+                 echo "kernel.panic_on_oops = 1" >> /etc/sysctl.d/99-nasbot-panic.conf
+             fi
+        fi
+    fi
+}
+
+install_persistence() {
+    SCRIPT_PATH="$BOT_DIR/start_bot.sh"
+    CRON_JOB="*/5 * * * * $SCRIPT_PATH watchdog"
+    
+    # Check if cron is already set
+    if crontab -l 2>/dev/null | grep -q "$SCRIPT_PATH watchdog"; then
+        echo -e "${GREEN}✅ Autostart (Cron) already configured.${NC}"
+    else
+        echo -e "${YELLOW}⚙️  Configuring Autostart (Cron)...${NC}"
+        (crontab -l 2>/dev/null; echo "$CRON_JOB") | crontab -
+        echo -e "${GREEN}✅ Autostart enabled (runs every 5 mins).${NC}"
+    fi
+}
 
 # Ensure execution permissions for the binary
 chmod +x "$BOT_DIR/$BOT_NAME" 2>/dev/null
@@ -182,6 +254,13 @@ show_logs() {
 }
 
 # ─── MAIN ───────────────────────────────────────────
+
+# Always check for updates first
+check_updates
+
+# Try to apply system tweaks (silent fail if not root)
+apply_system_tweaks
+
 case "${1:-}" in
     start)
         start_bot
@@ -201,10 +280,15 @@ case "${1:-}" in
     logs)
         show_logs "${2:-50}"
         ;;
+    install)
+        install_persistence
+        apply_system_tweaks
+        start_bot
+        ;;
     *)
         echo "NASBot Manager"
         echo ""
-        echo "Usage: $0 {start|stop|restart|status|watchdog|logs [n]}"
+        echo "Usage: $0 {start|stop|restart|status|watchdog|logs [n]|install}"
         echo ""
         echo "  start     - Start the bot"
         echo "  stop      - Stop the bot"
@@ -212,5 +296,6 @@ case "${1:-}" in
         echo "  status    - Show detailed status"
         echo "  watchdog  - Restart if inactive (for cron)"
         echo "  logs [n]  - Show last n logs (default: 50)"
+        echo "  install   - Setup persistence and kernel tweaks"
         ;;
 esac
