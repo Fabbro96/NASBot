@@ -1,11 +1,11 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
-	"log"
-	"os"
-	"time"
+"encoding/json"
+"fmt"
+"log"
+"os"
+"time"
 )
 
 // Config holds all configuration from config.json
@@ -78,6 +78,14 @@ type Config struct {
 		} `json:"smart"`
 	} `json:"notifications"`
 
+	Temperature struct {
+		Enabled           bool    `json:"enabled"`
+		WarningThreshold  float64 `json:"warning_threshold"`
+		CriticalThreshold float64 `json:"critical_threshold"`
+	} `json:"temperature"`
+
+	CriticalContainers []string `json:"critical_containers"`
+
 	StressTracking struct {
 		Enabled                  bool `json:"enabled"`
 		DurationThresholdMinutes int  `json:"duration_threshold_minutes"`
@@ -106,14 +114,6 @@ type Config struct {
 		MonitorSeconds            int `json:"monitor_seconds"`
 		CriticalAlertCooldownMins int `json:"critical_alert_cooldown_minutes"`
 	} `json:"intervals"`
-
-	Temperature struct {
-		Enabled           bool    `json:"enabled"`
-		WarningThreshold  float64 `json:"warning_threshold"`
-		CriticalThreshold float64 `json:"critical_threshold"`
-	} `json:"temperature"`
-
-	CriticalContainers []string `json:"critical_containers"`
 
 	Cache struct {
 		DockerTTLSeconds int `json:"docker_ttl_seconds"`
@@ -182,24 +182,9 @@ func loadConfig() {
 		log.Fatal("❌ allowed_user_id empty or invalid in config.json")
 	}
 
-	// Paths with defaults
-	if cfg.Paths.SSD != "" {
-		PathSSD = cfg.Paths.SSD
-	}
-	if cfg.Paths.HDD != "" {
-		PathHDD = cfg.Paths.HDD
-	}
-
 	// Apply sensible defaults for missing config values
 	applyConfigDefaults()
-
-	// Update intervals from config
-	if cfg.Intervals.StatsSeconds > 0 {
-		IntervalStats = time.Duration(cfg.Intervals.StatsSeconds) * time.Second
-	}
-	if cfg.Intervals.MonitorSeconds > 0 {
-		IntervalMonitor = time.Duration(cfg.Intervals.MonitorSeconds) * time.Second
-	}
+	applyConfigRuntime()
 
 	log.Println("[✓] Config loaded from config.json")
 }
@@ -311,18 +296,18 @@ func applyConfigDefaults() {
 		cfg.Cache.DockerTTLSeconds = 10
 	}
 
-	// FSWatchdog defaults
-	if cfg.FSWatchdog.CheckIntervalMins == 0 {
+	// FS watchdog defaults
+	if cfg.FSWatchdog.CheckIntervalMins == 0 && cfg.FSWatchdog.WarningThreshold == 0 && cfg.FSWatchdog.CriticalThreshold == 0 && len(cfg.FSWatchdog.DeepScanPaths) == 0 && len(cfg.FSWatchdog.ExcludePatterns) == 0 && cfg.FSWatchdog.TopNFiles == 0 {
 		cfg.FSWatchdog.Enabled = true
 		cfg.FSWatchdog.CheckIntervalMins = 30
 		cfg.FSWatchdog.WarningThreshold = 85.0
 		cfg.FSWatchdog.CriticalThreshold = 90.0
-		cfg.FSWatchdog.DeepScanPaths = []string{"/"}
-		cfg.FSWatchdog.ExcludePatterns = []string{"/proc", "/sys", "/dev", "/run", "/snap"}
+		cfg.FSWatchdog.DeepScanPaths = []string{"/", "/var", "/tmp"}
+		cfg.FSWatchdog.ExcludePatterns = []string{"/proc", "/sys", "/dev", "/run"}
 		cfg.FSWatchdog.TopNFiles = 10
 	}
 
-	// Kernel watchdog defaults (default on, allow explicit disable)
+	// Kernel watchdog defaults
 	kernelEmpty := cfg.KernelWatchdog.CheckIntervalSecs == 0 && !cfg.KernelWatchdog.Enabled
 	if kernelEmpty {
 		cfg.KernelWatchdog.Enabled = true
@@ -331,7 +316,7 @@ func applyConfigDefaults() {
 		cfg.KernelWatchdog.CheckIntervalSecs = 60
 	}
 
-	// Network watchdog defaults (default on, allow explicit disable)
+	// Network watchdog defaults
 	networkEmpty := cfg.NetworkWatchdog.CheckIntervalSecs == 0 && len(cfg.NetworkWatchdog.Targets) == 0 &&
 		cfg.NetworkWatchdog.DNSHost == "" && cfg.NetworkWatchdog.Gateway == "" &&
 		cfg.NetworkWatchdog.FailureThreshold == 0 && cfg.NetworkWatchdog.CooldownMins == 0 &&
@@ -362,7 +347,7 @@ func applyConfigDefaults() {
 		}
 	}
 
-	// RAID watchdog defaults (default on, allow explicit disable)
+	// RAID watchdog defaults
 	raidEmpty := cfg.RaidWatchdog.CheckIntervalSecs == 0 && cfg.RaidWatchdog.CooldownMins == 0 &&
 		!cfg.RaidWatchdog.Enabled && !cfg.RaidWatchdog.RecoveryNotify
 	if raidEmpty {
