@@ -349,36 +349,54 @@ func handleHealthCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery
 
 	case "health_ai":
 		if cfg.GeminiAPIKey == "" {
-			callback := tgbotapi.NewCallback(callback.ID, tr("health_no_gemini"))
-			bot.Send(callback)
+			cb := tgbotapi.NewCallback(callback.ID, tr("health_no_gemini"))
+			bot.Send(cb)
 			return
 		}
 
+		chatID := callback.Message.Chat.ID
+		msgID := callback.Message.MessageID
+
 		// Show loading
-		loadingMsg := tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, "⏳ "+tr("health_analyzing"))
+		modelName := "gemini-2.5-flash"
+		loadingText := fmt.Sprintf("⏳ %s\n_(%s)_", tr("health_analyzing"), modelName)
+		loadingMsg := tgbotapi.NewEditMessageText(chatID, msgID, loadingText)
+		loadingMsg.ParseMode = "Markdown"
 		bot.Send(loadingMsg)
 
 		// Get AI analysis
-		context := getHealthchecksAISummary()
-		prompt := fmt.Sprintf(tr("health_ai_prompt"), context)
+		aiContext := getHealthchecksAISummary()
+		prompt := fmt.Sprintf(tr("health_ai_prompt"), aiContext)
 
 		analysis, err := callGeminiWithFallback(prompt, func(model string) {
 			// Update the loading message with the current model
 			newText := fmt.Sprintf("⏳ %s\n_(%s)_", tr("health_analyzing"), model)
-			edit := tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, newText)
+			edit := tgbotapi.NewEditMessageText(chatID, msgID, newText)
 			edit.ParseMode = "Markdown"
 			bot.Send(edit)
 		})
 		if err != nil {
 			log.Printf("[!] Healthchecks AI error: %v", err)
-			edit := tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, "❌ "+tr("health_ai_error"))
-			bot.Send(edit)
+			errText := fmt.Sprintf("❌ %s\n\n_Error: %v_", tr("health_ai_error"), err)
+			edit := tgbotapi.NewEditMessageText(chatID, msgID, errText)
+			edit.ParseMode = "Markdown"
+			keyboard := tgbotapi.NewInlineKeyboardMarkup(
+				tgbotapi.NewInlineKeyboardRow(
+					tgbotapi.NewInlineKeyboardButtonData("🔄 "+tr("health_ai_analyze"), "health_ai"),
+					tgbotapi.NewInlineKeyboardButtonData("⬅️ "+tr("back"), "health_refresh"),
+				),
+			)
+			edit.ReplyMarkup = &keyboard
+			if _, sendErr := bot.Send(edit); sendErr != nil {
+				edit.ParseMode = ""
+				bot.Send(edit)
+			}
 			return
 		}
 
 		// Show analysis
 		result := fmt.Sprintf("🤖 *%s*\n\n%s", tr("health_ai_title"), analysis)
-		edit := tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, result)
+		edit := tgbotapi.NewEditMessageText(chatID, msgID, result)
 		edit.ParseMode = "Markdown"
 		keyboard := tgbotapi.NewInlineKeyboardMarkup(
 			tgbotapi.NewInlineKeyboardRow(
@@ -386,7 +404,11 @@ func handleHealthCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery
 			),
 		)
 		edit.ReplyMarkup = &keyboard
-		bot.Send(edit)
+		if _, sendErr := bot.Send(edit); sendErr != nil {
+			log.Printf("[!] Error sending AI analysis (Markdown): %v", sendErr)
+			edit.ParseMode = ""
+			bot.Send(edit)
+		}
 
 	case "health_clear":
 		healthchecksMutex.Lock()

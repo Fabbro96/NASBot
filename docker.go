@@ -98,6 +98,10 @@ func getDockerMenuText() (string, *tgbotapi.InlineKeyboardMarkup) {
 	}
 
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("🔄 "+tr("docker_menu_restart_all"), "docker_restart_all"),
+		tgbotapi.NewInlineKeyboardButtonData("🐳 "+tr("docker_menu_restart_service"), "docker_restart_service"),
+	))
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 		tgbotapi.NewInlineKeyboardButtonData(tr("docker_menu_refresh"), "show_docker"),
 		tgbotapi.NewInlineKeyboardButtonData(tr("docker_menu_home"), "back_main"),
 	))
@@ -236,13 +240,15 @@ func handleContainerCallback(bot *tgbotapi.BotAPI, chatID int64, msgID int, data
 	action := parts[1]
 
 	switch action {
-	case "select", "start", "stop", "restart", "logs", "kill", "cancel":
+	case "select", "start", "stop", "restart", "logs", "kill", "cancel", "ailog":
 		containerName := strings.Join(parts[2:], "_")
 		switch action {
 		case "select":
 			showContainerActions(bot, chatID, msgID, containerName)
 		case "start", "stop", "restart", "logs", "kill":
 			confirmContainerAction(bot, chatID, msgID, containerName, action)
+		case "ailog":
+			showContainerAIAnalysis(bot, chatID, msgID, containerName)
 		case "cancel":
 			text, kb := getDockerMenuText()
 			editMessage(bot, chatID, msgID, text, kb)
@@ -416,13 +422,115 @@ func showContainerLogs(bot *tgbotapi.BotAPI, chatID int64, msgID int, containerN
 		text = fmt.Sprintf(tr("docker_logs_title")+"```\n%s\n```", containerName, logs)
 	}
 
-	kb := tgbotapi.NewInlineKeyboardMarkup(
+	rows := [][]tgbotapi.InlineKeyboardButton{
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🔄 Refresh", "container_logs_"+containerName),
 			tgbotapi.NewInlineKeyboardButtonData("⬅️ Back", "container_select_"+containerName),
 		),
-	)
+	}
+	// Add AI analysis button if Gemini is configured
+	if cfg.GeminiAPIKey != "" {
+		rows = append([][]tgbotapi.InlineKeyboardButton{
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("🤖 "+tr("docker_ai_analyze"), "container_ailog_"+containerName),
+			),
+		}, rows...)
+	}
+
+	kb := tgbotapi.NewInlineKeyboardMarkup(rows...)
 	editMessage(bot, chatID, msgID, text, &kb)
+}
+
+// showContainerAIAnalysis sends container logs to Gemini for AI analysis
+func showContainerAIAnalysis(bot *tgbotapi.BotAPI, chatID int64, msgID int, containerName string) {
+	if cfg.GeminiAPIKey == "" {
+		editMessage(bot, chatID, msgID, "❌ "+tr("health_no_gemini"), nil)
+		return
+	}
+
+	// Show loading
+	modelName := "gemini-2.5-flash"
+	loadingText := fmt.Sprintf("⏳ %s\n_(%s)_", tr("docker_ai_analyzing"), modelName)
+	edit := tgbotapi.NewEditMessageText(chatID, msgID, loadingText)
+	edit.ParseMode = "Markdown"
+	bot.Send(edit)
+
+	// Get container logs (last 100 lines for more context)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "docker", "logs", "--tail", "100", containerName)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		errText := fmt.Sprintf("❌ %s: %v", tr("docker_logs_err_short"), err)
+		kb := tgbotapi.NewInlineKeyboardMarkup(
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("⬅️ "+tr("back"), "container_logs_"+containerName),
+			),
+		)
+		editMessage(bot, chatID, msgID, errText, &kb)
+		return
+	}
+
+	logs := string(out)
+	if strings.TrimSpace(logs) == "" {
+		kb := tgbotapi.NewInlineKeyboardMarkup(
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("⬅️ "+tr("back"), "container_logs_"+containerName),
+			),
+		)
+		editMessage(bot, chatID, msgID, "📭 "+tr("docker_logs_empty"), &kb)
+		return
+	}
+
+	// Truncate logs if too long for prompt
+	if len(logs) > 6000 {
+		logs = logs[len(logs)-6000:]
+	}
+
+	prompt := fmt.Sprintf(tr("docker_ai_prompt"), containerName, logs)
+
+	analysis, err := callGeminiWithFallback(prompt, func(model string) {
+		newText := fmt.Sprintf("⏳ %s\n_(%s)_", tr("docker_ai_analyzing"), model)
+		edit := tgbotapi.NewEditMessageText(chatID, msgID, newText)
+		edit.ParseMode = "Markdown"
+		bot.Send(edit)
+	})
+
+	if err != nil {
+		log.Printf("[!] Docker AI log analysis error for %s: %v", containerName, err)
+		errText := fmt.Sprintf("❌ %s\n\n_Error: %v_", tr("docker_ai_error"), err)
+		kb := tgbotapi.NewInlineKeyboardMarkup(
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("🔄 "+tr("docker_ai_analyze"), "container_ailog_"+containerName),
+				tgbotapi.NewInlineKeyboardButtonData("⬅️ "+tr("back"), "container_logs_"+containerName),
+			),
+		)
+		edit := tgbotapi.NewEditMessageText(chatID, msgID, errText)
+		edit.ParseMode = "Markdown"
+		edit.ReplyMarkup = &kb
+		if _, sendErr := bot.Send(edit); sendErr != nil {
+			edit.ParseMode = ""
+			bot.Send(edit)
+		}
+		return
+	}
+
+	result := fmt.Sprintf("🤖 *%s — %s*\n\n%s", tr("docker_ai_title"), containerName, analysis)
+	kb := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("📜 "+tr("logs"), "container_logs_"+containerName),
+			tgbotapi.NewInlineKeyboardButtonData("⬅️ "+tr("back"), "container_select_"+containerName),
+		),
+	)
+	finalEdit := tgbotapi.NewEditMessageText(chatID, msgID, result)
+	finalEdit.ParseMode = "Markdown"
+	finalEdit.ReplyMarkup = &kb
+	if _, sendErr := bot.Send(finalEdit); sendErr != nil {
+		log.Printf("[!] Error sending Docker AI analysis (Markdown): %v", sendErr)
+		finalEdit.ParseMode = ""
+		bot.Send(finalEdit)
+	}
 }
 
 // getContainerInfoText gets container info text
@@ -512,14 +620,14 @@ func handleKillCommand(bot *tgbotapi.BotAPI, chatID int64, args string) {
 	}
 }
 
-// askDockerRestartConfirmation asks for confirmation to restart Docker
+// askDockerRestartConfirmation asks for confirmation to restart Docker (new message)
 func askDockerRestartConfirmation(bot *tgbotapi.BotAPI, chatID int64) {
-	text := "🐳 *Restart Docker Service?*\n\n⚠️ This will restart the Docker daemon.\nAll containers will be temporarily stopped."
+	text := fmt.Sprintf("🐳 *%s*\n\n⚠️ %s", tr("docker_restart_service_title"), tr("docker_restart_service_warn"))
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("✅ Yes, restart", "confirm_restart_docker"),
-			tgbotapi.NewInlineKeyboardButtonData("❌ Cancel", "cancel_restart_docker"),
+			tgbotapi.NewInlineKeyboardButtonData("✅ "+tr("yes"), "confirm_restart_docker"),
+			tgbotapi.NewInlineKeyboardButtonData("❌ "+tr("no"), "cancel_restart_docker"),
 		),
 	)
 
@@ -527,6 +635,103 @@ func askDockerRestartConfirmation(bot *tgbotapi.BotAPI, chatID int64) {
 	msg.ParseMode = "Markdown"
 	msg.ReplyMarkup = kb
 	bot.Send(msg)
+}
+
+// askDockerRestartConfirmationEdit asks for confirmation to restart Docker (edit existing message)
+func askDockerRestartConfirmationEdit(bot *tgbotapi.BotAPI, chatID int64, msgID int) {
+	text := fmt.Sprintf("🐳 *%s*\n\n⚠️ %s", tr("docker_restart_service_title"), tr("docker_restart_service_warn"))
+
+	kb := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("✅ "+tr("yes"), "confirm_restart_docker"),
+			tgbotapi.NewInlineKeyboardButtonData("❌ "+tr("no"), "cancel_restart_docker"),
+		),
+	)
+	editMessage(bot, chatID, msgID, text, &kb)
+}
+
+// askRestartAllContainersConfirmation asks for confirmation to restart all containers
+func askRestartAllContainersConfirmation(bot *tgbotapi.BotAPI, chatID int64, msgID int) {
+	containers := getContainerList()
+	running := 0
+	for _, c := range containers {
+		if c.Running {
+			running++
+		}
+	}
+
+	text := fmt.Sprintf("🔄 *%s*\n\n⚠️ %s\n\n📦 %s: *%d*",
+		tr("docker_restart_all_title"),
+		tr("docker_restart_all_warn"),
+		tr("docker_restart_all_count"),
+		running)
+
+	kb := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("✅ "+tr("yes"), "confirm_restart_all"),
+			tgbotapi.NewInlineKeyboardButtonData("❌ "+tr("no"), "cancel_restart_all"),
+		),
+	)
+	editMessage(bot, chatID, msgID, text, &kb)
+}
+
+// executeRestartAllContainers restarts all running containers
+func executeRestartAllContainers(bot *tgbotapi.BotAPI, chatID int64, msgID int) {
+	containers := getContainerList()
+	var running []string
+	for _, c := range containers {
+		if c.Running {
+			running = append(running, c.Name)
+		}
+	}
+
+	if len(running) == 0 {
+		editMessage(bot, chatID, msgID, "📭 "+tr("docker_restart_all_none"), nil)
+		return
+	}
+
+	editMessage(bot, chatID, msgID, fmt.Sprintf("🔄 %s (%d)...", tr("docker_restart_all_running"), len(running)), nil)
+
+	var succeeded, failed []string
+	for _, name := range running {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		cmd := exec.CommandContext(ctx, "docker", "restart", name)
+		err := cmd.Run()
+		cancel()
+
+		if err != nil {
+			log.Printf("[!] Failed to restart container %s: %v", name, err)
+			failed = append(failed, name)
+		} else {
+			succeeded = append(succeeded, name)
+		}
+	}
+
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("🔄 *%s*\n\n", tr("docker_restart_all_result")))
+
+	if len(succeeded) > 0 {
+		b.WriteString(fmt.Sprintf("✅ %s: *%d*\n", tr("docker_restart_all_ok"), len(succeeded)))
+		for _, name := range succeeded {
+			b.WriteString(fmt.Sprintf("  • `%s`\n", name))
+		}
+	}
+	if len(failed) > 0 {
+		b.WriteString(fmt.Sprintf("\n❌ %s: *%d*\n", tr("docker_restart_all_fail"), len(failed)))
+		for _, name := range failed {
+			b.WriteString(fmt.Sprintf("  • `%s`\n", name))
+		}
+	}
+
+	addReportEvent("action", fmt.Sprintf("Restart all containers: %d ok, %d failed", len(succeeded), len(failed)))
+
+	kb := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🐳 Containers", "show_docker"),
+			tgbotapi.NewInlineKeyboardButtonData("🏠 Home", "back_main"),
+		),
+	)
+	editMessage(bot, chatID, msgID, b.String(), &kb)
 }
 
 // executeDockerServiceRestart restarts the Docker service

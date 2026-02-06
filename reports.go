@@ -286,13 +286,13 @@ func generateAIReportWithPeriod(s Stats, events []ReportEvent, isMorning bool, p
 		healthchecksMutex.Lock()
 		hc := healthchecksState
 		healthchecksMutex.Unlock()
-		
+
 		status := "Offline"
 		if hc.LastPingSuccess {
 			status = "Online"
 		}
 		context.WriteString(fmt.Sprintf("- Healthchecks.io: %s (%.1f%% success rate)\n", status, float64(hc.SuccessfulPings)/float64(maxInt(hc.TotalPings, 1))*100))
-		
+
 		if len(hc.DowntimeEvents) > 0 {
 			context.WriteString("  Recent Healthchecks downtimes:\n")
 			for _, e := range hc.DowntimeEvents {
@@ -361,28 +361,43 @@ Your goal is to write a **Daily Report** for the owner.
 	return callGeminiWithFallback(prompt, onModelChange)
 }
 
-// callGeminiWithFallback tries multiple models in order
+// callGeminiWithFallback tries multiple models in order with an overall timeout
 func callGeminiWithFallback(prompt string, onModelChange func(string)) (string, error) {
 	models := []string{
-		"gemini-3-flash-preview",
-		"gemini-3-pro-preview",
 		"gemini-2.5-flash",
-		"gemini-2.5-flash-lite",
 		"gemini-2.5-pro",
+		"gemini-2.0-flash",
 	}
+
+	// Overall timeout for the entire fallback chain
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
 
 	var summary string
 	var err error
 
 	for _, model := range models {
+		// Check overall timeout before trying next model
+		select {
+		case <-ctx.Done():
+			log.Printf("[Gemini] Overall timeout exceeded after trying models")
+			if err != nil {
+				return "", fmt.Errorf("timeout — last error: %v", err)
+			}
+			return "", fmt.Errorf("overall timeout exceeded")
+		default:
+		}
+
 		if onModelChange != nil {
 			onModelChange(model)
 		}
+		log.Printf("[Gemini] Trying model %s...", model)
 		summary, err = callGeminiAPIWithError(prompt, model)
 		if err == nil {
+			log.Printf("[Gemini] Model %s succeeded", model)
 			return summary, nil
 		}
-		log.Printf("[Gemini] Model %s failed: %v. Retrying with next model...", model, err)
+		log.Printf("[Gemini] Model %s failed: %v", model, err)
 	}
 
 	return "", err
@@ -411,7 +426,7 @@ func callGeminiAPIWithError(prompt string, model string) (string, error) {
 		return "", fmt.Errorf("error marshaling request: %v", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonBody))

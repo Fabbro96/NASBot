@@ -117,10 +117,10 @@ func TestCallGeminiWithFallback_RetriesUntilSuccess(t *testing.T) {
 			model = strings.TrimPrefix(path[idx+len("/models/"):], "")
 			model = strings.TrimSuffix(model, ":generateContent")
 		}
-		if model == "gemini-3-flash-preview" || model == "gemini-3-pro-preview" {
+		if model == "gemini-2.5-flash" || model == "gemini-2.5-pro" {
 			return errorResponse(500, "fail"), nil
 		}
-		if model == "gemini-2.5-flash" {
+		if model == "gemini-2.0-flash" {
 			return okGeminiResponse("fallback-ok"), nil
 		}
 		return errorResponse(500, "fail"), nil
@@ -136,7 +136,7 @@ func TestCallGeminiWithFallback_RetriesUntilSuccess(t *testing.T) {
 	if len(modelsSeen) < 3 {
 		t.Fatalf("expected at least 3 model attempts, got %d", len(modelsSeen))
 	}
-	if modelsSeen[0] != "gemini-3-flash-preview" || modelsSeen[1] != "gemini-3-pro-preview" || modelsSeen[2] != "gemini-2.5-flash" {
+	if modelsSeen[0] != "gemini-2.5-flash" || modelsSeen[1] != "gemini-2.5-pro" || modelsSeen[2] != "gemini-2.0-flash" {
 		t.Fatalf("unexpected model order: %v", modelsSeen)
 	}
 }
