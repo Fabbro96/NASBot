@@ -257,7 +257,7 @@ func handleCallback(bot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery) {
     editMessage(bot, chatID, msgID, text, kb)
 }
 
-func sendLanguageSelection(ctx *AppContext, bot *tgbotapi.BotAPI, chatID int64) {
+func sendLanguageSelection(ctx *AppContext, bot BotAPI, chatID int64) {
     msg := tgbotapi.NewMessage(chatID, ctx.Tr("lang_select"))
     kb := tgbotapi.NewInlineKeyboardMarkup(
         tgbotapi.NewInlineKeyboardRow(
@@ -266,15 +266,15 @@ func sendLanguageSelection(ctx *AppContext, bot *tgbotapi.BotAPI, chatID int64) 
         ),
     )
     msg.ReplyMarkup = kb
-    bot.Send(msg)
+    safeSend(bot, msg)
 }
 
-func sendSettingsMenu(ctx *AppContext, bot *tgbotapi.BotAPI, chatID int64) {
+func sendSettingsMenu(ctx *AppContext, bot BotAPI, chatID int64) {
     text, kb := getSettingsMenuText(ctx)
     msg := tgbotapi.NewMessage(chatID, text)
     msg.ParseMode = "Markdown"
     msg.ReplyMarkup = kb
-    bot.Send(msg)
+    safeSend(bot, msg)
 }
 
 func getSettingsMenuText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
