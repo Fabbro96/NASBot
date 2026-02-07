@@ -11,7 +11,7 @@ A self-hosted bot that gives you a **live dashboard** of your system (CPU, RAM, 
 
 - **📊 Live Stats**: CPU, RAM, Swap, Disk (SSD/HDD), Net, Temperatures.
 - **🐳 Docker Manager**: Start, stop, restart, and kill containers via buttons.
-- **🤖 AI Reports**: Daily summaries powered by **Gemini 3.0** (optional).
+- **🤖 AI Reports**: Daily summaries powered by **Gemini 2.5 Flash** (optional).
 - **🌍 Bilingual**: Full support for **English** 🇬🇧 and **Italian** 🇮🇹.
 - **🔔 Smart Alerts**: Notify on high usage, stopped containers, or critical errors.
 - **🛡️ Watchdogs**: Auto-restart Docker or containers if they crash or freeze.
@@ -88,3 +88,12 @@ See `config.example.json` for the full schema.
 
 ## 🛡️ Security
 This bot executes commands like `docker` and `reboot`. Ensure `allowed_user_id` is correct. The bot ignores all other users.
+
+`config.json` is ignored by git on purpose. Keep API keys and tokens there locally, and rotate them if they ever leak.
+
+## 🧪 Testing
+Run all tests:
+
+```bash
+go test ./...
+```

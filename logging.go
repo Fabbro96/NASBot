@@ -12,6 +12,6 @@ func setupLogger() {
 		// AddSource: true, // Uncomment to see file/line numbers in logs (optional)
 	}
 	handler := slog.NewTextHandler(os.Stdout, opts)
-	logger := slog.New(handler)
+	logger := slog.New(handler).With("app", "nasbot")
 	slog.SetDefault(logger)
 }

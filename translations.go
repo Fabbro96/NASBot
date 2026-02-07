@@ -1,6 +1,3 @@
-//go:build !fswatchdog
-// +build !fswatchdog
-
 package main
 
 // Translations contains all translatable strings
@@ -457,6 +454,8 @@ var translations = map[string]map[string]string{
 		"health_ai_prompt":       "Analizza questi dati. Sii ESTREMAMENTE conciso. Massimo 10-15 righe. Niente giri di parole. Rispondi in italiano. Dati:\n\n%s\n\nFornisci:\n1. Riepilogo affidabilità (1 frase)\n2. Pattern principali (punti elenco)\n3. Raccomandazioni rapide",
 	},
 }
+
+var currentLanguage = "en"
 
 // tr returns the translated string for the given key
 func tr(key string) string {

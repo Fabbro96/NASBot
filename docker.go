@@ -1,71 +1,102 @@
-//go:build !fswatchdog
-// +build !fswatchdog
-
 package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
-	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"nasbot/internal/format"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+// dockerContainerRaw maps the raw JSON output from docker CLI
+type dockerContainerRaw struct {
+	Names  string `json:"Names"`
+	Status string `json:"Status"`
+	State  string `json:"State"` // running, exited, etc.
+	Image  string `json:"Image"`
+	ID     string `json:"ID"`
+}
+
 // getContainerList gets list of all Docker containers
 func getContainerList() []ContainerInfo {
+	list, _ := getContainerListWithError()
+	return list
+}
+
+// getContainerListWithError gets list of all Docker containers and returns error
+// Uses JSON formatting for robust parsing
+func getContainerListWithError() ([]ContainerInfo, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "docker", "ps", "-a", "--format", "{{.Names}}|{{.Status}}|{{.Image}}|{{.ID}}")
-	out, err := cmd.CombinedOutput()
+	// Use --format json for clear object parsing.
+	// We use {{json .}} to get a JSON object per line.
+	out, err := runCommandOutput(ctx, "docker", "ps", "-a", "--format", "{{json .}}")
 	if err != nil {
 		slog.Error("Docker error", "err", err, "output", string(out))
-		return nil
+		return nil, err
 	}
 
+	return parseDockerJSON(string(out))
+}
+
+// parseDockerJSON parses the raw output from docker ps --format "{{json .}}"
+// Extracted for testability
+func parseDockerJSON(output string) ([]ContainerInfo, error) {
 	var containers []ContainerInfo
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+
 	for _, line := range lines {
-		parts := strings.Split(line, "|")
-		if len(parts) >= 4 {
-			containers = append(containers, ContainerInfo{
-				Name:    parts[0],
-				Status:  parts[1],
-				Image:   parts[2],
-				ID:      parts[3],
-				Running: strings.Contains(parts[1], "Up"),
-			})
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
 		}
+
+		var raw dockerContainerRaw
+		if err := json.Unmarshal([]byte(line), &raw); err != nil {
+			slog.Warn("Failed to unmarshal docker line", "line", line, "err", err)
+			continue
+		}
+
+		containers = append(containers, ContainerInfo{
+			Name:    raw.Names,
+			Status:  raw.Status,
+			Image:   raw.Image,
+			ID:      raw.ID,
+			Running: strings.ToLower(raw.State) == "running",
+		})
 	}
-	return containers
+	return containers, nil
 }
 
 // sendDockerMenu sends the Docker container menu
-func sendDockerMenu(bot *tgbotapi.BotAPI, chatID int64) {
-	text, kb := getDockerMenuText()
+func sendDockerMenu(ctx *AppContext, bot BotAPI, chatID int64) {
+	text, kb := getDockerMenuText(ctx)
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ParseMode = "Markdown"
 	if kb != nil {
 		msg.ReplyMarkup = kb
 	}
-	bot.Send(msg)
+	safeSend(bot, msg)
 }
 
 // getDockerMenuText generates the Docker menu text and keyboard
-func getDockerMenuText() (string, *tgbotapi.InlineKeyboardMarkup) {
+func getDockerMenuText(ctx *AppContext) (string, *tgbotapi.InlineKeyboardMarkup) {
 	containers := getContainerList()
 	if len(containers) == 0 {
-		mainKb := getMainKeyboard()
+		mainKb := getMainKeyboard(ctx)
 		return "_No containers found. Is Docker running?_", &mainKb
 	}
 
 	var b strings.Builder
-	b.WriteString(tr("docker_title"))
+	b.WriteString(ctx.Tr("docker_title"))
 
 	running, stopped := 0, 0
 	for _, c := range containers {
@@ -81,7 +112,7 @@ func getDockerMenuText() (string, *tgbotapi.InlineKeyboardMarkup) {
 		b.WriteString(fmt.Sprintf("%s *%s* — %s\n", icon, c.Name, statusText))
 	}
 
-	b.WriteString(fmt.Sprintf(tr("docker_running"), running, stopped))
+	b.WriteString(fmt.Sprintf(ctx.Tr("docker_running"), running, stopped))
 
 	var rows [][]tgbotapi.InlineKeyboardButton
 	for i := 0; i < len(containers); i += 2 {
@@ -101,80 +132,26 @@ func getDockerMenuText() (string, *tgbotapi.InlineKeyboardMarkup) {
 	}
 
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("🔄 "+tr("docker_menu_restart_all"), "docker_restart_all"),
-		tgbotapi.NewInlineKeyboardButtonData("🐳 "+tr("docker_menu_restart_service"), "docker_restart_service"),
+		tgbotapi.NewInlineKeyboardButtonData("🔄 "+ctx.Tr("docker_menu_restart_all"), "docker_restart_all"),
+		tgbotapi.NewInlineKeyboardButtonData("🐳 "+ctx.Tr("docker_menu_restart_service"), "docker_restart_service"),
 	))
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData(tr("docker_menu_refresh"), "show_docker"),
-		tgbotapi.NewInlineKeyboardButtonData(tr("docker_menu_home"), "back_main"),
+		tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("docker_menu_refresh"), "show_docker"),
+		tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("docker_menu_home"), "back_main"),
 	))
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(rows...)
 	return b.String(), &kb
 }
 
-// getDockerText returns Docker containers text
-func getDockerText() string {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "docker", "ps", "-a", "--format", "{{.Names}}|{{.Status}}|{{.Image}}")
-	out, err := cmd.Output()
-	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			return "*timeout*"
-		}
-		return "*docker n/a*"
-	}
-
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	if len(lines) == 0 || (len(lines) == 1 && lines[0] == "") {
-		return "_No containers found_"
-	}
-
-	var b strings.Builder
-	b.WriteString("*Container*\n────────────────────\n")
-
-	running, stopped := 0, 0
-	for _, line := range lines {
-		parts := strings.Split(line, "|")
-		if len(parts) < 2 {
-			continue
-		}
-		name := truncate(parts[0], 14)
-		status := parts[1]
-
-		icon := "-"
-		statusShort := "off"
-		if strings.Contains(status, "Up") {
-			icon = "+"
-			statusParts := strings.Fields(status)
-			if len(statusParts) >= 2 {
-				statusShort = statusParts[1]
-				if len(statusParts) >= 3 && len(statusParts[2]) > 0 {
-					statusShort += string(statusParts[2][0])
-				}
-			}
-			running++
-		} else {
-			stopped++
-		}
-		b.WriteString(fmt.Sprintf("\n%s %-14s %s", icon, name, statusShort))
-	}
-
-	b.WriteString(fmt.Sprintf("\n\nContainers: %d running · %d stopped", running, stopped))
-	return b.String()
-}
-
 // getDockerStatsText returns container resource usage stats
-func getDockerStatsText() string {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+func getDockerStatsText(ctx *AppContext) string {
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "docker", "stats", "--no-stream", "--format", "{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}")
-	out, err := cmd.Output()
+	out, err := runCommandStdout(timeoutCtx, "docker", "stats", "--no-stream", "--format", "{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}")
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		if timeoutCtx.Err() == context.DeadlineExceeded {
 			return "*timeout*"
 		}
 		return "*stats n/a*"
@@ -215,8 +192,7 @@ func getContainerStats(containerName string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "docker", "stats", "--no-stream", "--format", "{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.NetIO}}", containerName)
-	out, err := cmd.Output()
+	out, err := runCommandStdout(ctx, "docker", "stats", "--no-stream", "--format", "{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}|{{.NetIO}}", containerName)
 	if err != nil {
 		return ""
 	}
@@ -234,7 +210,7 @@ func getContainerStats(containerName string) string {
 }
 
 // handleContainerCallback handles container-related callbacks
-func handleContainerCallback(bot *tgbotapi.BotAPI, chatID int64, msgID int, data string) {
+func handleContainerCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int, data string) {
 	parts := strings.Split(data, "_")
 	if len(parts) < 3 {
 		return
@@ -247,13 +223,13 @@ func handleContainerCallback(bot *tgbotapi.BotAPI, chatID int64, msgID int, data
 		containerName := strings.Join(parts[2:], "_")
 		switch action {
 		case "select":
-			showContainerActions(bot, chatID, msgID, containerName)
+			showContainerActions(ctx, bot, chatID, msgID, containerName)
 		case "start", "stop", "restart", "logs", "kill":
-			confirmContainerAction(bot, chatID, msgID, containerName, action)
+			confirmContainerAction(ctx, bot, chatID, msgID, containerName, action)
 		case "ailog":
-			showContainerAIAnalysis(bot, chatID, msgID, containerName)
+			showContainerAIAnalysis(ctx, bot, chatID, msgID, containerName)
 		case "cancel":
-			text, kb := getDockerMenuText()
+			text, kb := getDockerMenuText(ctx)
 			editMessage(bot, chatID, msgID, text, kb)
 		}
 	case "confirm":
@@ -262,12 +238,12 @@ func handleContainerCallback(bot *tgbotapi.BotAPI, chatID int64, msgID int, data
 		}
 		containerAction := parts[len(parts)-1]
 		containerName := strings.Join(parts[2:len(parts)-1], "_")
-		executeContainerAction(bot, chatID, msgID, containerName, containerAction)
+		executeContainerAction(ctx, bot, chatID, msgID, containerName, containerAction)
 	}
 }
 
 // showContainerActions shows actions for a specific container
-func showContainerActions(bot *tgbotapi.BotAPI, chatID int64, msgID int, containerName string) {
+func showContainerActions(ctx *AppContext, bot BotAPI, chatID int64, msgID int, containerName string) {
 	containers := getContainerList()
 	var container *ContainerInfo
 	for _, c := range containers {
@@ -278,7 +254,7 @@ func showContainerActions(bot *tgbotapi.BotAPI, chatID int64, msgID int, contain
 	}
 
 	if container == nil {
-		editMessage(bot, chatID, msgID, tr("docker_not_found"), nil)
+		editMessage(bot, chatID, msgID, ctx.Tr("docker_not_found"), nil)
 		return
 	}
 
@@ -291,9 +267,9 @@ func showContainerActions(bot *tgbotapi.BotAPI, chatID int64, msgID int, contain
 	}
 
 	b.WriteString(fmt.Sprintf("%s *%s*\n\n", icon, container.Name))
-	b.WriteString(fmt.Sprintf(tr("docker_status"), statusText))
-	b.WriteString(fmt.Sprintf(tr("docker_image"), truncate(container.Image, 20)))
-	b.WriteString(fmt.Sprintf(tr("docker_id"), container.ID[:12]))
+	b.WriteString(fmt.Sprintf(ctx.Tr("docker_status"), statusText))
+	b.WriteString(fmt.Sprintf(ctx.Tr("docker_image"), truncate(container.Image, 20)))
+	b.WriteString(fmt.Sprintf(ctx.Tr("docker_id"), container.ID[:12]))
 
 	if container.Running {
 		stats := getContainerStats(containerName)
@@ -305,20 +281,20 @@ func showContainerActions(bot *tgbotapi.BotAPI, chatID int64, msgID int, contain
 	var rows [][]tgbotapi.InlineKeyboardButton
 	if container.Running {
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(tr("stop"), "container_stop_"+containerName),
-			tgbotapi.NewInlineKeyboardButtonData(tr("restart"), "container_restart_"+containerName),
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("stop"), "container_stop_"+containerName),
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("restart"), "container_restart_"+containerName),
 		))
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(tr("kill"), "container_kill_"+containerName),
-			tgbotapi.NewInlineKeyboardButtonData(tr("logs"), "container_logs_"+containerName),
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("kill"), "container_kill_"+containerName),
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("logs"), "container_logs_"+containerName),
 		))
 	} else {
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(tr("start"), "container_start_"+containerName),
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("start"), "container_start_"+containerName),
 		))
 	}
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData(tr("back"), "show_docker"),
+		tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("back"), "show_docker"),
 	))
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(rows...)
@@ -326,72 +302,71 @@ func showContainerActions(bot *tgbotapi.BotAPI, chatID int64, msgID int, contain
 }
 
 // confirmContainerAction asks for confirmation before container action
-func confirmContainerAction(bot *tgbotapi.BotAPI, chatID int64, msgID int, containerName, action string) {
+func confirmContainerAction(ctx *AppContext, bot BotAPI, chatID int64, msgID int, containerName, action string) {
 	if action == "logs" {
-		showContainerLogs(bot, chatID, msgID, containerName)
+		showContainerLogs(ctx, bot, chatID, msgID, containerName)
 		return
 	}
 
 	actionText := map[string]string{
-		"start":   tr("start"),
-		"stop":    tr("stop"),
-		"restart": tr("restart"),
-		"kill":    tr("kill"),
+		"start":   ctx.Tr("start"),
+		"stop":    ctx.Tr("stop"),
+		"restart": ctx.Tr("restart"),
+		"kill":    ctx.Tr("kill"),
 	}[action]
 
-	text := fmt.Sprintf(tr("confirm_action"), actionText, containerName)
+	text := fmt.Sprintf(ctx.Tr("confirm_action"), actionText, containerName)
 	if action == "kill" {
-		text += tr("kill_warn")
+		text += ctx.Tr("kill_warn")
 	}
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(tr("yes"), fmt.Sprintf("container_confirm_%s_%s", containerName, action)),
-			tgbotapi.NewInlineKeyboardButtonData(tr("no"), "container_cancel_"+containerName),
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("yes"), fmt.Sprintf("container_confirm_%s_%s", containerName, action)),
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("no"), "container_cancel_"+containerName),
 		),
 	)
 	editMessage(bot, chatID, msgID, text, &kb)
 }
 
 // executeContainerAction executes a container action
-func executeContainerAction(bot *tgbotapi.BotAPI, chatID int64, msgID int, containerName, action string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+func executeContainerAction(ctx *AppContext, bot BotAPI, chatID int64, msgID int, containerName, action string) {
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	editMessage(bot, chatID, msgID, fmt.Sprintf("... `%s` %s", containerName, action), nil)
 
-	var cmd *exec.Cmd
+	var output []byte
+	var err error
 	switch action {
 	case "start":
-		cmd = exec.CommandContext(ctx, "docker", "start", containerName)
+		output, err = runCommandOutput(timeoutCtx, "docker", "start", containerName)
 	case "stop":
-		cmd = exec.CommandContext(ctx, "docker", "stop", containerName)
+		output, err = runCommandOutput(timeoutCtx, "docker", "stop", containerName)
 	case "restart":
-		cmd = exec.CommandContext(ctx, "docker", "restart", containerName)
+		output, err = runCommandOutput(timeoutCtx, "docker", "restart", containerName)
 	case "kill":
-		cmd = exec.CommandContext(ctx, "docker", "kill", containerName)
+		output, err = runCommandOutput(timeoutCtx, "docker", "kill", containerName)
 	default:
 		return
 	}
-
-	output, err := cmd.CombinedOutput()
 	var resultText string
 	if err != nil {
 		errMsg := strings.TrimSpace(string(output))
 		if errMsg == "" {
 			errMsg = err.Error()
 		}
-		resultText = fmt.Sprintf(tr("docker_action_err"), action, containerName, errMsg)
-		addReportEvent("warning", fmt.Sprintf("Error %s container %s: %s", action, containerName, errMsg))
+		resultText = fmt.Sprintf(ctx.Tr("docker_action_err"), action, containerName, errMsg)
+		ctx.State.AddReportEvent("warning", fmt.Sprintf("Error %s container %s: %s", action, containerName, errMsg))
 	} else {
 		actionPast := map[string]string{
-			"start":   tr("docker_started"),
-			"stop":    tr("docker_stopped"),
-			"restart": tr("docker_restarted"),
-			"kill":    tr("docker_killed"),
+			"start":   ctx.Tr("docker_started"),
+			"stop":    ctx.Tr("docker_stopped"),
+			"restart": ctx.Tr("docker_restarted"),
+			"kill":    ctx.Tr("docker_killed"),
 		}[action]
-		resultText = fmt.Sprintf(tr("docker_action_ok"), containerName, actionPast)
-		addReportEvent("info", fmt.Sprintf("Container %s: %s (manual)", containerName, action))
+		resultText = fmt.Sprintf(ctx.Tr("docker_action_ok"), containerName, actionPast)
+		ctx.State.AddReportEvent("info", fmt.Sprintf("Container %s: %s (manual)", containerName, action))
 	}
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(
@@ -404,25 +379,24 @@ func executeContainerAction(bot *tgbotapi.BotAPI, chatID int64, msgID int, conta
 }
 
 // showContainerLogs shows container logs
-func showContainerLogs(bot *tgbotapi.BotAPI, chatID int64, msgID int, containerName string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+func showContainerLogs(ctx *AppContext, bot BotAPI, chatID int64, msgID int, containerName string) {
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "docker", "logs", "--tail", "30", containerName)
-	out, err := cmd.CombinedOutput()
+	out, err := runCommandOutput(timeoutCtx, "docker", "logs", "--tail", "30", containerName)
 
 	var text string
 	if err != nil {
-		text = fmt.Sprintf(tr("docker_logs_err"), err)
+		text = fmt.Sprintf(ctx.Tr("docker_logs_err"), err)
 	} else {
 		logs := string(out)
 		if len(logs) > 3500 {
 			logs = logs[len(logs)-3500:]
 		}
 		if logs == "" {
-			logs = tr("docker_logs_empty")
+			logs = ctx.Tr("docker_logs_empty")
 		}
-		text = fmt.Sprintf(tr("docker_logs_title")+"```\n%s\n```", containerName, logs)
+		text = fmt.Sprintf(ctx.Tr("docker_logs_title")+"```\n%s\n```", containerName, logs)
 	}
 
 	rows := [][]tgbotapi.InlineKeyboardButton{
@@ -432,10 +406,10 @@ func showContainerLogs(bot *tgbotapi.BotAPI, chatID int64, msgID int, containerN
 		),
 	}
 	// Add AI analysis button if Gemini is configured
-	if cfg.GeminiAPIKey != "" {
+	if ctx.Config.GeminiAPIKey != "" {
 		rows = append([][]tgbotapi.InlineKeyboardButton{
 			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("🤖 "+tr("docker_ai_analyze"), "container_ailog_"+containerName),
+				tgbotapi.NewInlineKeyboardButtonData("🤖 "+ctx.Tr("docker_ai_analyze"), "container_ailog_"+containerName),
 			),
 		}, rows...)
 	}
@@ -445,30 +419,29 @@ func showContainerLogs(bot *tgbotapi.BotAPI, chatID int64, msgID int, containerN
 }
 
 // showContainerAIAnalysis sends container logs to Gemini for AI analysis
-func showContainerAIAnalysis(bot *tgbotapi.BotAPI, chatID int64, msgID int, containerName string) {
-	if cfg.GeminiAPIKey == "" {
-		editMessage(bot, chatID, msgID, "❌ "+tr("health_no_gemini"), nil)
+func showContainerAIAnalysis(ctx *AppContext, bot BotAPI, chatID int64, msgID int, containerName string) {
+	if ctx.Config.GeminiAPIKey == "" {
+		editMessage(bot, chatID, msgID, "❌ "+ctx.Tr("health_no_gemini"), nil)
 		return
 	}
 
 	// Show loading
 	modelName := "gemini-2.5-flash"
-	loadingText := fmt.Sprintf("⏳ %s\n_(%s)_", tr("docker_ai_analyzing"), modelName)
+	loadingText := fmt.Sprintf("⏳ %s\n_(%s)_", ctx.Tr("docker_ai_analyzing"), modelName)
 	edit := tgbotapi.NewEditMessageText(chatID, msgID, loadingText)
 	edit.ParseMode = "Markdown"
-	bot.Send(edit)
+	safeSend(bot, edit)
 
 	// Get container logs (last 100 lines for more context)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "docker", "logs", "--tail", "100", containerName)
-	out, err := cmd.CombinedOutput()
+	out, err := runCommandOutput(timeoutCtx, "docker", "logs", "--tail", "100", containerName)
 	if err != nil {
-		errText := fmt.Sprintf("❌ %s: %v", tr("docker_logs_err_short"), err)
+		errText := fmt.Sprintf("❌ %s: %v", ctx.Tr("docker_logs_err_short"), err)
 		kb := tgbotapi.NewInlineKeyboardMarkup(
 			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("⬅️ "+tr("back"), "container_logs_"+containerName),
+				tgbotapi.NewInlineKeyboardButtonData("⬅️ "+ctx.Tr("back"), "container_logs_"+containerName),
 			),
 		)
 		editMessage(bot, chatID, msgID, errText, &kb)
@@ -479,10 +452,10 @@ func showContainerAIAnalysis(bot *tgbotapi.BotAPI, chatID int64, msgID int, cont
 	if strings.TrimSpace(logs) == "" {
 		kb := tgbotapi.NewInlineKeyboardMarkup(
 			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("⬅️ "+tr("back"), "container_logs_"+containerName),
+				tgbotapi.NewInlineKeyboardButtonData("⬅️ "+ctx.Tr("back"), "container_logs_"+containerName),
 			),
 		)
-		editMessage(bot, chatID, msgID, "📭 "+tr("docker_logs_empty"), &kb)
+		editMessage(bot, chatID, msgID, "📭 "+ctx.Tr("docker_logs_empty"), &kb)
 		return
 	}
 
@@ -491,22 +464,22 @@ func showContainerAIAnalysis(bot *tgbotapi.BotAPI, chatID int64, msgID int, cont
 		logs = logs[len(logs)-6000:]
 	}
 
-	prompt := fmt.Sprintf(tr("docker_ai_prompt"), containerName, logs)
+	prompt := fmt.Sprintf(ctx.Tr("docker_ai_prompt"), containerName, logs)
 
-	analysis, err := callGeminiWithFallback(prompt, func(model string) {
-		newText := fmt.Sprintf("⏳ %s\n_(%s)_", tr("docker_ai_analyzing"), model)
+	analysis, err := callGeminiWithFallback(ctx, prompt, func(model string) {
+		newText := fmt.Sprintf("⏳ %s\n_(%s)_", ctx.Tr("docker_ai_analyzing"), model)
 		edit := tgbotapi.NewEditMessageText(chatID, msgID, newText)
 		edit.ParseMode = "Markdown"
-		bot.Send(edit)
+		safeSend(bot, edit)
 	})
 
 	if err != nil {
 		slog.Error("Docker AI log analysis error", "container", containerName, "err", err)
-		errText := fmt.Sprintf("❌ %s\n\n_Error: %v_", tr("docker_ai_error"), err)
+		errText := fmt.Sprintf("❌ %s\n\n_Error: %v_", ctx.Tr("docker_ai_error"), err)
 		kb := tgbotapi.NewInlineKeyboardMarkup(
 			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("🔄 "+tr("docker_ai_analyze"), "container_ailog_"+containerName),
-				tgbotapi.NewInlineKeyboardButtonData("⬅️ "+tr("back"), "container_logs_"+containerName),
+				tgbotapi.NewInlineKeyboardButtonData("🔄 "+ctx.Tr("docker_ai_analyze"), "container_ailog_"+containerName),
+				tgbotapi.NewInlineKeyboardButtonData("⬅️ "+ctx.Tr("back"), "container_logs_"+containerName),
 			),
 		)
 		edit := tgbotapi.NewEditMessageText(chatID, msgID, errText)
@@ -514,16 +487,16 @@ func showContainerAIAnalysis(bot *tgbotapi.BotAPI, chatID int64, msgID int, cont
 		edit.ReplyMarkup = &kb
 		if _, sendErr := bot.Send(edit); sendErr != nil {
 			edit.ParseMode = ""
-			bot.Send(edit)
+			safeSend(bot, edit)
 		}
 		return
 	}
 
-	result := fmt.Sprintf("🤖 *%s — %s*\n\n%s", tr("docker_ai_title"), containerName, analysis)
+	result := fmt.Sprintf("🤖 *%s — %s*\n\n%s", ctx.Tr("docker_ai_title"), containerName, analysis)
 	kb := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📜 "+tr("logs"), "container_logs_"+containerName),
-			tgbotapi.NewInlineKeyboardButtonData("⬅️ "+tr("back"), "container_select_"+containerName),
+			tgbotapi.NewInlineKeyboardButtonData("📜 "+ctx.Tr("logs"), "container_logs_"+containerName),
+			tgbotapi.NewInlineKeyboardButtonData("⬅️ "+ctx.Tr("back"), "container_select_"+containerName),
 		),
 	)
 	finalEdit := tgbotapi.NewEditMessageText(chatID, msgID, result)
@@ -532,7 +505,7 @@ func showContainerAIAnalysis(bot *tgbotapi.BotAPI, chatID int64, msgID int, cont
 	if _, sendErr := bot.Send(finalEdit); sendErr != nil {
 		slog.Error("Error sending Docker AI analysis (Markdown)", "err", sendErr)
 		finalEdit.ParseMode = ""
-		bot.Send(finalEdit)
+		safeSend(bot, finalEdit)
 	}
 }
 
@@ -558,9 +531,9 @@ func getContainerInfoText(c ContainerInfo) (string, *tgbotapi.InlineKeyboardMark
 }
 
 // handleContainerCommand handles the /container command
-func handleContainerCommand(bot *tgbotapi.BotAPI, chatID int64, args string) {
+func handleContainerCommand(ctx *AppContext, bot BotAPI, chatID int64, args string) {
 	if args == "" {
-		sendDockerMenu(bot, chatID)
+		sendDockerMenu(ctx, bot, chatID)
 		return
 	}
 
@@ -571,15 +544,15 @@ func handleContainerCommand(bot *tgbotapi.BotAPI, chatID int64, args string) {
 			msg.ParseMode = "Markdown"
 			text, _ := getContainerInfoText(c)
 			msg.Text = text
-			bot.Send(msg)
+			safeSend(bot, msg)
 			return
 		}
 	}
-	bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf("x Container `%s` not found.", args)))
+	safeSend(bot, tgbotapi.NewMessage(chatID, fmt.Sprintf("x Container `%s` not found.", args)))
 }
 
 // handleKillCommand handles the /kill command
-func handleKillCommand(bot *tgbotapi.BotAPI, chatID int64, args string) {
+func handleKillCommand(ctx *AppContext, bot BotAPI, chatID int64, args string) {
 	if args == "" {
 		sendMarkdown(bot, chatID, "Usage: `/kill container_name`\n\nThis will forcefully terminate the container (SIGKILL)")
 		return
@@ -604,11 +577,10 @@ func handleKillCommand(bot *tgbotapi.BotAPI, chatID int64, args string) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "docker", "kill", args)
-	output, err := cmd.CombinedOutput()
+	output, err := runCommandOutput(timeoutCtx, "docker", "kill", args)
 
 	if err != nil {
 		errMsg := strings.TrimSpace(string(output))
@@ -616,45 +588,45 @@ func handleKillCommand(bot *tgbotapi.BotAPI, chatID int64, args string) {
 			errMsg = err.Error()
 		}
 		sendMarkdown(bot, chatID, fmt.Sprintf("❌ Failed to kill `%s`:\n`%s`", args, errMsg))
-		addReportEvent("warning", fmt.Sprintf("Kill failed: %s - %s", args, errMsg))
+		ctx.State.AddReportEvent("warning", fmt.Sprintf("Kill failed: %s - %s", args, errMsg))
 	} else {
 		sendMarkdown(bot, chatID, fmt.Sprintf("💀 Container `%s` killed", args))
-		addReportEvent("action", fmt.Sprintf("Container killed: %s", args))
+		ctx.State.AddReportEvent("action", fmt.Sprintf("Container killed: %s", args))
 	}
 }
 
 // askDockerRestartConfirmation asks for confirmation to restart Docker (new message)
-func askDockerRestartConfirmation(bot *tgbotapi.BotAPI, chatID int64) {
-	text := fmt.Sprintf("🐳 *%s*\n\n⚠️ %s", tr("docker_restart_service_title"), tr("docker_restart_service_warn"))
+func askDockerRestartConfirmation(ctx *AppContext, bot BotAPI, chatID int64) {
+	text := fmt.Sprintf("🐳 *%s*\n\n⚠️ %s", ctx.Tr("docker_restart_service_title"), ctx.Tr("docker_restart_service_warn"))
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("✅ "+tr("yes"), "confirm_restart_docker"),
-			tgbotapi.NewInlineKeyboardButtonData("❌ "+tr("no"), "cancel_restart_docker"),
+			tgbotapi.NewInlineKeyboardButtonData("✅ "+ctx.Tr("yes"), "confirm_restart_docker"),
+			tgbotapi.NewInlineKeyboardButtonData("❌ "+ctx.Tr("no"), "cancel_restart_docker"),
 		),
 	)
 
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ParseMode = "Markdown"
 	msg.ReplyMarkup = kb
-	bot.Send(msg)
+	safeSend(bot, msg)
 }
 
 // askDockerRestartConfirmationEdit asks for confirmation to restart Docker (edit existing message)
-func askDockerRestartConfirmationEdit(bot *tgbotapi.BotAPI, chatID int64, msgID int) {
-	text := fmt.Sprintf("🐳 *%s*\n\n⚠️ %s", tr("docker_restart_service_title"), tr("docker_restart_service_warn"))
+func askDockerRestartConfirmationEdit(ctx *AppContext, bot BotAPI, chatID int64, msgID int) {
+	text := fmt.Sprintf("🐳 *%s*\n\n⚠️ %s", ctx.Tr("docker_restart_service_title"), ctx.Tr("docker_restart_service_warn"))
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("✅ "+tr("yes"), "confirm_restart_docker"),
-			tgbotapi.NewInlineKeyboardButtonData("❌ "+tr("no"), "cancel_restart_docker"),
+			tgbotapi.NewInlineKeyboardButtonData("✅ "+ctx.Tr("yes"), "confirm_restart_docker"),
+			tgbotapi.NewInlineKeyboardButtonData("❌ "+ctx.Tr("no"), "cancel_restart_docker"),
 		),
 	)
 	editMessage(bot, chatID, msgID, text, &kb)
 }
 
 // askRestartAllContainersConfirmation asks for confirmation to restart all containers
-func askRestartAllContainersConfirmation(bot *tgbotapi.BotAPI, chatID int64, msgID int) {
+func askRestartAllContainersConfirmation(ctx *AppContext, bot BotAPI, chatID int64, msgID int) {
 	containers := getContainerList()
 	running := 0
 	for _, c := range containers {
@@ -664,22 +636,22 @@ func askRestartAllContainersConfirmation(bot *tgbotapi.BotAPI, chatID int64, msg
 	}
 
 	text := fmt.Sprintf("🔄 *%s*\n\n⚠️ %s\n\n📦 %s: *%d*",
-		tr("docker_restart_all_title"),
-		tr("docker_restart_all_warn"),
-		tr("docker_restart_all_count"),
+		ctx.Tr("docker_restart_all_title"),
+		ctx.Tr("docker_restart_all_warn"),
+		ctx.Tr("docker_restart_all_count"),
 		running)
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("✅ "+tr("yes"), "confirm_restart_all"),
-			tgbotapi.NewInlineKeyboardButtonData("❌ "+tr("no"), "cancel_restart_all"),
+			tgbotapi.NewInlineKeyboardButtonData("✅ "+ctx.Tr("yes"), "confirm_restart_all"),
+			tgbotapi.NewInlineKeyboardButtonData("❌ "+ctx.Tr("no"), "cancel_restart_all"),
 		),
 	)
 	editMessage(bot, chatID, msgID, text, &kb)
 }
 
 // executeRestartAllContainers restarts all running containers
-func executeRestartAllContainers(bot *tgbotapi.BotAPI, chatID int64, msgID int) {
+func executeRestartAllContainers(ctx *AppContext, bot BotAPI, chatID int64, msgID int) {
 	containers := getContainerList()
 	var running []string
 	for _, c := range containers {
@@ -689,17 +661,16 @@ func executeRestartAllContainers(bot *tgbotapi.BotAPI, chatID int64, msgID int) 
 	}
 
 	if len(running) == 0 {
-		editMessage(bot, chatID, msgID, "📭 "+tr("docker_restart_all_none"), nil)
+		editMessage(bot, chatID, msgID, "📭 "+ctx.Tr("docker_restart_all_none"), nil)
 		return
 	}
 
-	editMessage(bot, chatID, msgID, fmt.Sprintf("🔄 %s (%d)...", tr("docker_restart_all_running"), len(running)), nil)
+	editMessage(bot, chatID, msgID, fmt.Sprintf("🔄 %s (%d)...", ctx.Tr("docker_restart_all_running"), len(running)), nil)
 
 	var succeeded, failed []string
 	for _, name := range running {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		cmd := exec.CommandContext(ctx, "docker", "restart", name)
-		err := cmd.Run()
+		timeoutCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		err := runCommand(timeoutCtx, "docker", "restart", name)
 		cancel()
 
 		if err != nil {
@@ -711,22 +682,22 @@ func executeRestartAllContainers(bot *tgbotapi.BotAPI, chatID int64, msgID int) 
 	}
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("🔄 *%s*\n\n", tr("docker_restart_all_result")))
+	b.WriteString(fmt.Sprintf("🔄 *%s*\n\n", ctx.Tr("docker_restart_all_result")))
 
 	if len(succeeded) > 0 {
-		b.WriteString(fmt.Sprintf("✅ %s: *%d*\n", tr("docker_restart_all_ok"), len(succeeded)))
+		b.WriteString(fmt.Sprintf("✅ %s: *%d*\n", ctx.Tr("docker_restart_all_ok"), len(succeeded)))
 		for _, name := range succeeded {
 			b.WriteString(fmt.Sprintf("  • `%s`\n", name))
 		}
 	}
 	if len(failed) > 0 {
-		b.WriteString(fmt.Sprintf("\n❌ %s: *%d*\n", tr("docker_restart_all_fail"), len(failed)))
+		b.WriteString(fmt.Sprintf("\n❌ %s: *%d*\n", ctx.Tr("docker_restart_all_fail"), len(failed)))
 		for _, name := range failed {
 			b.WriteString(fmt.Sprintf("  • `%s`\n", name))
 		}
 	}
 
-	addReportEvent("action", fmt.Sprintf("Restart all containers: %d ok, %d failed", len(succeeded), len(failed)))
+	ctx.State.AddReportEvent("action", fmt.Sprintf("Restart all containers: %d ok, %d failed", len(succeeded), len(failed)))
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
@@ -738,20 +709,19 @@ func executeRestartAllContainers(bot *tgbotapi.BotAPI, chatID int64, msgID int) 
 }
 
 // executeDockerServiceRestart restarts the Docker service
-func executeDockerServiceRestart(bot *tgbotapi.BotAPI, chatID int64, msgID int) {
+func executeDockerServiceRestart(ctx *AppContext, bot BotAPI, chatID int64, msgID int) {
 	editMessage(bot, chatID, msgID, "🔄 Restarting Docker service...", nil)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	var cmd *exec.Cmd
-	if _, err := exec.LookPath("systemctl"); err == nil {
-		cmd = exec.CommandContext(ctx, "systemctl", "restart", "docker")
+	var output []byte
+	var err error
+	if commandExists("systemctl") {
+		output, err = runCommandOutput(timeoutCtx, "systemctl", "restart", "docker")
 	} else {
-		cmd = exec.CommandContext(ctx, "service", "docker", "restart")
+		output, err = runCommandOutput(timeoutCtx, "service", "docker", "restart")
 	}
-
-	output, err := cmd.CombinedOutput()
 	var resultText string
 	if err != nil {
 		errMsg := strings.TrimSpace(string(output))
@@ -759,10 +729,10 @@ func executeDockerServiceRestart(bot *tgbotapi.BotAPI, chatID int64, msgID int) 
 			errMsg = err.Error()
 		}
 		resultText = fmt.Sprintf("❌ Docker restart failed:\n`%s`", errMsg)
-		addReportEvent("critical", fmt.Sprintf("Docker restart failed: %s", errMsg))
+		ctx.State.AddReportEvent("critical", fmt.Sprintf("Docker restart failed: %s", errMsg))
 	} else {
 		resultText = "✅ Docker service restarted successfully"
-		addReportEvent("action", "Docker service restarted (manual)")
+		ctx.State.AddReportEvent("action", "Docker service restarted (manual)")
 	}
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(
@@ -775,14 +745,22 @@ func executeDockerServiceRestart(bot *tgbotapi.BotAPI, chatID int64, msgID int) 
 }
 
 // checkContainerStates monitors for container state changes (down/up)
-func checkContainerStates(bot *tgbotapi.BotAPI) {
+func checkContainerStates(ctx *AppContext, bot BotAPI) {
 	containers := getContainerList()
 	if containers == nil {
 		return
 	}
 
-	containerStateMutex.Lock()
-	defer containerStateMutex.Unlock()
+	ctx.Docker.mu.Lock()
+	defer ctx.Docker.mu.Unlock()
+
+	// Initialize maps if nil
+	if ctx.Docker.LastStates == nil {
+		ctx.Docker.LastStates = make(map[string]bool)
+	}
+	if ctx.Docker.ContainerDowntime == nil {
+		ctx.Docker.ContainerDowntime = make(map[string]time.Time)
+	}
 
 	currentStates := make(map[string]bool)
 	for _, c := range containers {
@@ -790,57 +768,57 @@ func checkContainerStates(bot *tgbotapi.BotAPI) {
 	}
 
 	// Check for containers that stopped (went DOWN)
-	for name, wasRunning := range lastContainerStates {
+	for name, wasRunning := range ctx.Docker.LastStates {
 		isRunning, exists := currentStates[name]
 		if exists && wasRunning && !isRunning {
 			// Container just went DOWN - record the time
-			containerDowntimeStart[name] = time.Now()
+			ctx.Docker.ContainerDowntime[name] = time.Now()
 
-			if !isQuietHours() {
+			if !ctx.IsQuietHours() {
 				msg := fmt.Sprintf("🔴 *Container DOWN*\n\n"+
 					"📦 `%s`\n\n"+
 					"_The container has stopped unexpectedly._", name)
-				m := tgbotapi.NewMessage(AllowedUserID, msg)
+				m := tgbotapi.NewMessage(ctx.Config.AllowedUserID, msg)
 				m.ParseMode = "Markdown"
-				bot.Send(m)
+				safeSend(bot, m)
 			}
-			addReportEvent("warning", fmt.Sprintf("🔴 Container stopped: %s", name))
+			ctx.State.AddReportEvent("warning", fmt.Sprintf("🔴 Container stopped: %s", name))
 		}
 	}
 
 	// Check for containers that started (came back UP)
 	for name, isRunning := range currentStates {
-		wasRunning, wasTracked := lastContainerStates[name]
+		wasRunning, wasTracked := ctx.Docker.LastStates[name]
 
 		// Container came back UP (was tracked and was down, now running)
 		if wasTracked && !wasRunning && isRunning {
 			var downtimeMsg string
-			if downStart, hasDowntime := containerDowntimeStart[name]; hasDowntime {
+			if downStart, hasDowntime := ctx.Docker.ContainerDowntime[name]; hasDowntime {
 				duration := time.Since(downStart)
-				downtimeMsg = fmt.Sprintf("\n⏱ Downtime: `%s`", formatDuration(duration))
-				delete(containerDowntimeStart, name)
-				addReportEvent("info", fmt.Sprintf("🟢 Container recovered: %s (down for %s)", name, formatDuration(duration)))
+				downtimeMsg = fmt.Sprintf("\n⏱ Downtime: `%s`", format.FormatDuration(duration))
+				delete(ctx.Docker.ContainerDowntime, name)
+				ctx.State.AddReportEvent("info", fmt.Sprintf("🟢 Container recovered: %s (down for %s)", name, format.FormatDuration(duration)))
 			} else {
-				addReportEvent("info", fmt.Sprintf("🟢 Container started: %s", name))
+				ctx.State.AddReportEvent("info", fmt.Sprintf("🟢 Container started: %s", name))
 			}
 
-			if !isQuietHours() {
+			if !ctx.IsQuietHours() {
 				msg := fmt.Sprintf("🟢 *Container UP*\n\n"+
 					"📦 `%s`\n\n"+
 					"_The container is now running._"+
 					"%s", name, downtimeMsg)
-				m := tgbotapi.NewMessage(AllowedUserID, msg)
+				m := tgbotapi.NewMessage(ctx.Config.AllowedUserID, msg)
 				m.ParseMode = "Markdown"
-				bot.Send(m)
+				safeSend(bot, m)
 			}
 		}
 	}
 
-	lastContainerStates = currentStates
+	ctx.Docker.LastStates = currentStates
 }
 
 // handleCriticalRAM handles critical RAM situations
-func handleCriticalRAM(bot *tgbotapi.BotAPI, s Stats) {
+func handleCriticalRAM(ctx *AppContext, bot BotAPI, s Stats) {
 	containers := getContainerList()
 
 	type containerMem struct {
@@ -853,9 +831,8 @@ func handleCriticalRAM(bot *tgbotapi.BotAPI, s Stats) {
 		if !c.Running {
 			continue
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		cmd := exec.CommandContext(ctx, "docker", "stats", "--no-stream", "--format", "{{.MemPerc}}", c.Name)
-		out, _ := cmd.Output()
+		timeoutCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		out, _ := runCommandStdout(timeoutCtx, "docker", "stats", "--no-stream", "--format", "{{.MemPerc}}", c.Name)
 		cancel()
 
 		memStr := strings.TrimSuffix(strings.TrimSpace(string(out)), "%")
@@ -864,22 +841,21 @@ func handleCriticalRAM(bot *tgbotapi.BotAPI, s Stats) {
 		}
 	}
 
-	ramThreshold := cfg.Docker.AutoRestartOnRAMCritical.RAMThreshold
+	ramThreshold := ctx.Config.Docker.AutoRestartOnRAMCritical.RAMThreshold
 	if s.RAM >= ramThreshold && len(heavyContainers) > 0 {
 		sort.Slice(heavyContainers, func(i, j int) bool {
 			return heavyContainers[i].memPct > heavyContainers[j].memPct
 		})
 
 		target := heavyContainers[0]
-		if canAutoRestart(target.name) {
+		if canAutoRestart(ctx, target.name) {
 			slog.Warn("RAM critical, auto-restart", "ram", s.RAM, "container", target.name, "mem_pct", target.memPct)
 
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			cmd := exec.CommandContext(ctx, "docker", "restart", target.name)
-			err := cmd.Run()
+			timeoutCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			err := runCommand(timeoutCtx, "docker", "restart", target.name)
 			cancel()
 
-			recordAutoRestart(target.name)
+			recordAutoRestart(ctx, target.name)
 
 			var msgText string
 			if err != nil {
@@ -887,30 +863,34 @@ func handleCriticalRAM(bot *tgbotapi.BotAPI, s Stats) {
 					"RAM critical: `%.1f%%`\n"+
 					"Container: `%s`\n"+
 					"Error: %v", s.RAM, target.name, err)
-				addReportEvent("critical", fmt.Sprintf("Auto-restart failed: %s (%v)", target.name, err))
+				ctx.State.AddReportEvent("critical", fmt.Sprintf("Auto-restart failed: %s (%v)", target.name, err))
 			} else {
 				msgText = fmt.Sprintf("🔄 *Auto-restart done*\n\n"+
 					"RAM was critical: `%.1f%%`\n"+
 					"Restarted: `%s` (`%.1f%%` mem)\n\n"+
 					"_Watching..._", s.RAM, target.name, target.memPct)
-				addReportEvent("action", fmt.Sprintf("Auto-restart: %s (RAM %.1f%%)", target.name, s.RAM))
+				ctx.State.AddReportEvent("action", fmt.Sprintf("Auto-restart: %s (RAM %.1f%%)", target.name, s.RAM))
 			}
 
-			if !isQuietHours() {
-				msg := tgbotapi.NewMessage(AllowedUserID, msgText)
+			if !ctx.IsQuietHours() {
+				msg := tgbotapi.NewMessage(ctx.Config.AllowedUserID, msgText)
 				msg.ParseMode = "Markdown"
-				bot.Send(msg)
+				safeSend(bot, msg)
 			}
 		}
 	}
 }
 
 // canAutoRestart checks if container can be auto-restarted
-func canAutoRestart(containerName string) bool {
-	autoRestartsMutex.Lock()
-	defer autoRestartsMutex.Unlock()
+func canAutoRestart(ctx *AppContext, containerName string) bool {
+	ctx.Docker.mu.Lock()
+	defer ctx.Docker.mu.Unlock()
 
-	restarts := autoRestarts[containerName]
+	if ctx.Docker.AutoRestarts == nil {
+		ctx.Docker.AutoRestarts = make(map[string][]time.Time)
+	}
+
+	restarts := ctx.Docker.AutoRestarts[containerName]
 	cutoff := time.Now().Add(-1 * time.Hour)
 
 	count := 0
@@ -920,7 +900,7 @@ func canAutoRestart(containerName string) bool {
 		}
 	}
 
-	maxRestarts := cfg.Docker.AutoRestartOnRAMCritical.MaxRestartsPerHour
+	maxRestarts := ctx.Config.Docker.AutoRestartOnRAMCritical.MaxRestartsPerHour
 	if maxRestarts <= 0 {
 		maxRestarts = 3
 	}
@@ -929,21 +909,29 @@ func canAutoRestart(containerName string) bool {
 }
 
 // recordAutoRestart records an auto-restart
-func recordAutoRestart(containerName string) {
-	autoRestartsMutex.Lock()
-	defer autoRestartsMutex.Unlock()
+func recordAutoRestart(ctx *AppContext, containerName string) {
+	ctx.Docker.mu.Lock()
+	defer ctx.Docker.mu.Unlock()
 
-	autoRestarts[containerName] = append(autoRestarts[containerName], time.Now())
-	saveState()
+	if ctx.Docker.AutoRestarts == nil {
+		ctx.Docker.AutoRestarts = make(map[string][]time.Time)
+	}
+
+	ctx.Docker.AutoRestarts[containerName] = append(ctx.Docker.AutoRestarts[containerName], time.Now())
+	saveState(ctx)
 }
 
 // cleanRestartCounter cleans old restart records
-func cleanRestartCounter() {
-	autoRestartsMutex.Lock()
-	defer autoRestartsMutex.Unlock()
+func cleanRestartCounter(ctx *AppContext) {
+	ctx.Docker.mu.Lock()
+	defer ctx.Docker.mu.Unlock()
+
+	if ctx.Docker.AutoRestarts == nil {
+		return
+	}
 
 	cutoff := time.Now().Add(-2 * time.Hour)
-	for name, times := range autoRestarts {
+	for name, times := range ctx.Docker.AutoRestarts {
 		var newTimes []time.Time
 		for _, t := range times {
 			if t.After(cutoff) {
@@ -951,9 +939,9 @@ func cleanRestartCounter() {
 			}
 		}
 		if len(newTimes) == 0 {
-			delete(autoRestarts, name)
+			delete(ctx.Docker.AutoRestarts, name)
 		} else {
-			autoRestarts[name] = newTimes
+			ctx.Docker.AutoRestarts[name] = newTimes
 		}
 	}
 }

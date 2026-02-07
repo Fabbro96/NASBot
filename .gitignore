@@ -2,6 +2,7 @@
 nasbot
 nasbot_test
 *.exe
+fswatchdog_bin
 
 # Config with secrets (contains bot token!)
 config.json

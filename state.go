@@ -1,6 +1,3 @@
-//go:build !fswatchdog
-// +build !fswatchdog
-
 package main
 
 import (
@@ -10,7 +7,7 @@ import (
 	"time"
 )
 
-// BotState for persistence
+// BotState for persistence (DTO)
 type BotState struct {
 	LastReportTime time.Time              `json:"last_report_time"`
 	AutoRestarts   map[string][]time.Time `json:"auto_restarts"`
@@ -37,7 +34,9 @@ type BotState struct {
 	Healthchecks HealthchecksState `json:"healthchecks"`
 }
 
-// HealthchecksState tracks ping statistics
+// Ensure HealthchecksState and DowntimeLog are defined here or in types.go
+// If they are in types.go, I shouldn't redefine them unless they were only in state.go.
+// They were in state.go in the original file, so I need them here.
 type HealthchecksState struct {
 	TotalPings      int           `json:"total_pings"`
 	SuccessfulPings int           `json:"successful_pings"`
@@ -48,7 +47,6 @@ type HealthchecksState struct {
 	DowntimeEvents  []DowntimeLog `json:"downtime_events"`
 }
 
-// DowntimeLog tracks individual downtime events
 type DowntimeLog struct {
 	StartTime time.Time `json:"start_time"`
 	EndTime   time.Time `json:"end_time"`
@@ -56,8 +54,10 @@ type DowntimeLog struct {
 	Reason    string    `json:"reason"`
 }
 
-func loadState() {
-	data, err := os.ReadFile(DefaultStateFile)
+const StateFile = "nasbot_state.json"
+
+func loadState(ctx *AppContext) {
+	data, err := os.ReadFile(StateFile)
 	if err != nil {
 		slog.Info("First run - no state found")
 		return
@@ -67,101 +67,94 @@ func loadState() {
 		slog.Warn("State load error", "err", err)
 		return
 	}
-	lastReportTime = state.LastReportTime
+
+	ctx.State.mu.Lock()
+	ctx.State.LastReport = state.LastReportTime
+	ctx.State.mu.Unlock()
+
+	ctx.Docker.mu.Lock()
 	if state.AutoRestarts != nil {
-		autoRestarts = state.AutoRestarts
+		ctx.Docker.AutoRestarts = state.AutoRestarts
 	}
+	ctx.Docker.mu.Unlock()
+
+	ctx.Monitor.mu.Lock()
+	ctx.Monitor.Healthchecks = state.Healthchecks
+	ctx.Monitor.mu.Unlock()
+
+	ctx.Settings.mu.Lock()
 	if state.Language != "" {
-		currentLanguage = state.Language
+		ctx.Settings.Language = state.Language
 	}
 	if state.ReportMode > 0 {
-		reportMode = state.ReportMode
+		ctx.Settings.ReportMode = state.ReportMode
 	}
 
-	// Load user-configurable settings
 	if state.ReportMorningHour > 0 || state.ReportMorningMinute > 0 {
-		reportMorningHour = state.ReportMorningHour
-		reportMorningMinute = state.ReportMorningMinute
+		ctx.Settings.ReportMorning = TimePoint{Hour: state.ReportMorningHour, Minute: state.ReportMorningMinute}
 	}
 	if state.ReportEveningHour > 0 || state.ReportEveningMinute > 0 {
-		reportEveningHour = state.ReportEveningHour
-		reportEveningMinute = state.ReportEveningMinute
+		ctx.Settings.ReportEvening = TimePoint{Hour: state.ReportEveningHour, Minute: state.ReportEveningMinute}
 	}
 
 	if state.QuietStartHour > 0 || state.QuietStartMinute > 0 {
-		quietHoursEnabled = state.QuietHoursEnabled
-		quietStartHour = state.QuietStartHour
-		quietStartMinute = state.QuietStartMinute
-		quietEndHour = state.QuietEndHour
-		quietEndMinute = state.QuietEndMinute
+		ctx.Settings.QuietHours.Enabled = state.QuietHoursEnabled
+		ctx.Settings.QuietHours.Start = TimePoint{Hour: state.QuietStartHour, Minute: state.QuietStartMinute}
+		ctx.Settings.QuietHours.End = TimePoint{Hour: state.QuietEndHour, Minute: state.QuietEndMinute}
 	}
 
 	if state.DockerPruneDay != "" {
-		dockerPruneEnabled = state.DockerPruneEnabled
-		dockerPruneDay = state.DockerPruneDay
-		dockerPruneHour = state.DockerPruneHour
+		ctx.Settings.DockerPrune.Enabled = state.DockerPruneEnabled
+		ctx.Settings.DockerPrune.Day = state.DockerPruneDay
+		ctx.Settings.DockerPrune.Hour = state.DockerPruneHour
 	}
-
-	// Load healthchecks state
-	healthchecksMutex.Lock()
-	healthchecksState = state.Healthchecks
-	healthchecksMutex.Unlock()
-
-	slog.Info("State restored")
+	ctx.Settings.mu.Unlock()
 }
 
-func saveState() {
-	autoRestartsMutex.Lock()
-	healthchecksMutex.Lock()
-	state := BotState{
-		LastReportTime:      lastReportTime,
-		AutoRestarts:        autoRestarts,
-		Language:            currentLanguage,
-		ReportMode:          reportMode,
-		ReportMorningHour:   reportMorningHour,
-		ReportMorningMinute: reportMorningMinute,
-		ReportEveningHour:   reportEveningHour,
-		ReportEveningMinute: reportEveningMinute,
-		QuietHoursEnabled:   quietHoursEnabled,
-		QuietStartHour:      quietStartHour,
-		QuietStartMinute:    quietStartMinute,
-		QuietEndHour:        quietEndHour,
-		QuietEndMinute:      quietEndMinute,
-		DockerPruneEnabled:  dockerPruneEnabled,
-		DockerPruneDay:      dockerPruneDay,
-		DockerPruneHour:     dockerPruneHour,
-		Healthchecks:        healthchecksState,
-	}
-	healthchecksMutex.Unlock()
-	autoRestartsMutex.Unlock()
+func saveState(ctx *AppContext) {
+	ctx.State.mu.Lock()
+	lastReport := ctx.State.LastReport
+	ctx.State.mu.Unlock()
 
-	data, err := json.Marshal(state)
+	ctx.Docker.mu.RLock()
+	autoRestarts := ctx.Docker.AutoRestarts
+	ctx.Docker.mu.RUnlock()
+
+	ctx.Monitor.mu.Lock()
+	healthchecks := ctx.Monitor.Healthchecks
+	ctx.Monitor.mu.Unlock()
+
+	ctx.Settings.mu.RLock()
+	settings := ctx.Settings
+	ctx.Settings.mu.RUnlock()
+
+	state := BotState{
+		LastReportTime:      lastReport,
+		AutoRestarts:        autoRestarts,
+		Language:            settings.Language,
+		ReportMode:          settings.ReportMode,
+		ReportMorningHour:   settings.ReportMorning.Hour,
+		ReportMorningMinute: settings.ReportMorning.Minute,
+		ReportEveningHour:   settings.ReportEvening.Hour,
+		ReportEveningMinute: settings.ReportEvening.Minute,
+		QuietHoursEnabled:   settings.QuietHours.Enabled,
+		QuietStartHour:      settings.QuietHours.Start.Hour,
+		QuietStartMinute:    settings.QuietHours.Start.Minute,
+		QuietEndHour:        settings.QuietHours.End.Hour,
+		QuietEndMinute:      settings.QuietHours.End.Minute,
+		DockerPruneEnabled:  settings.DockerPrune.Enabled,
+		DockerPruneDay:      settings.DockerPrune.Day,
+		DockerPruneHour:     settings.DockerPrune.Hour,
+		Healthchecks:        healthchecks,
+	}
+
+	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
-		slog.Warn("State serialize error", "err", err)
+		slog.Error("State marshal error", "err", err)
 		return
 	}
-	if err := os.WriteFile(DefaultStateFile, data, 0644); err != nil {
-		slog.Warn("State save error", "err", err)
+
+	if err := os.WriteFile(StateFile, data, 0644); err != nil {
+		slog.Error("State save error", "err", err)
 	}
-}
-
-// isQuietHours checks if we are in quiet hours based on config
-func isQuietHours() bool {
-	if !quietHoursEnabled {
-		return false
-	}
-
-	now := time.Now().In(location)
-	hour := now.Hour()
-	minute := now.Minute()
-	currentMins := hour*60 + minute
-
-	startMins := quietStartHour*60 + quietStartMinute
-	endMins := quietEndHour*60 + quietEndMinute
-
-	// Handle overnight quiet hours (e.g., 23:30 - 07:00)
-	if startMins > endMins {
-		return currentMins >= startMins || currentMins < endMins
-	}
-	return currentMins >= startMins && currentMins < endMins
 }

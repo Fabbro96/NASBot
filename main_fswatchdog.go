@@ -1,6 +1,3 @@
-//go:build fswatchdog
-// +build fswatchdog
-
 package main
 
 import (
@@ -12,7 +9,7 @@ import (
 
 // Global variables are in config.go
 
-func main() {
+func runFSWatchdogService() {
 	setupLogger()
 	slog.Info("Starting FS Watchdog Service...")
 

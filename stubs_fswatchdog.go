@@ -1,6 +1,3 @@
-//go:build fswatchdog
-// +build fswatchdog
-
 package main
 
 import "log/slog"

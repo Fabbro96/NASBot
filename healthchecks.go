@@ -1,6 +1,3 @@
-//go:build !fswatchdog
-// +build !fswatchdog
-
 package main
 
 import (
@@ -10,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"nasbot/internal/format"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -22,13 +21,17 @@ const MaxDowntimeEvents = 50
 // ═══════════════════════════════════════════════════════════════════
 
 // startHealthchecksPinger starts the background goroutine that pings healthchecks.io
-func startHealthchecksPinger(bot *tgbotapi.BotAPI) {
-	if !cfg.Healthchecks.Enabled || cfg.Healthchecks.PingURL == "" {
+func startHealthchecksPinger(ctx *AppContext, bot BotAPI, runCtx ...context.Context) {
+	if !ctx.Config.Healthchecks.Enabled || ctx.Config.Healthchecks.PingURL == "" {
 		slog.Info("Healthchecks.io disabled or no URL configured")
 		return
 	}
+	rc := context.Background()
+	if len(runCtx) > 0 && runCtx[0] != nil {
+		rc = runCtx[0]
+	}
 
-	period := cfg.Healthchecks.PeriodSeconds
+	period := ctx.Config.Healthchecks.PeriodSeconds
 	if period <= 0 {
 		period = 60 // default 1 minute
 	}
@@ -39,130 +42,154 @@ func startHealthchecksPinger(bot *tgbotapi.BotAPI) {
 	defer ticker.Stop()
 
 	// Initial ping on startup
-	pingHealthchecks(bot)
+	pingHealthchecks(ctx, bot)
 
-	for range ticker.C {
-		pingHealthchecks(bot)
+	for {
+		select {
+		case <-rc.Done():
+			return
+		case <-ticker.C:
+			pingHealthchecks(ctx, bot)
+		}
 	}
 }
 
 // pingHealthchecks sends a ping to healthchecks.io
-func pingHealthchecks(bot *tgbotapi.BotAPI) {
-	if cfg.Healthchecks.PingURL == "" {
+func pingHealthchecks(appCtx *AppContext, bot BotAPI) {
+	if appCtx.Config.Healthchecks.PingURL == "" {
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.Healthchecks.PingURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, appCtx.Config.Healthchecks.PingURL, nil)
 	if err != nil {
-		recordHealthcheckFailure(bot, fmt.Sprintf("request error: %v", err))
+		recordHealthcheckFailure(appCtx, bot, fmt.Sprintf("request error: %v", err))
 		return
 	}
 
-	resp, err := httpClient.Do(req)
+	if appCtx.HTTP == nil {
+		appCtx.HTTP = &http.Client{Timeout: 10 * time.Second}
+	}
+	resp, err := appCtx.HTTP.Do(req)
 	if err != nil {
-		recordHealthcheckFailure(bot, fmt.Sprintf("network error: %v", err))
+		recordHealthcheckFailure(appCtx, bot, fmt.Sprintf("network error: %v", err))
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		recordHealthcheckSuccess(bot)
+		recordHealthcheckSuccess(appCtx, bot)
 	} else {
-		recordHealthcheckFailure(bot, fmt.Sprintf("HTTP %d", resp.StatusCode))
+		recordHealthcheckFailure(appCtx, bot, fmt.Sprintf("HTTP %d", resp.StatusCode))
 	}
 }
 
 // recordHealthcheckSuccess records a successful ping
-func recordHealthcheckSuccess(bot *tgbotapi.BotAPI) {
-	healthchecksMutex.Lock()
-	defer healthchecksMutex.Unlock()
+func recordHealthcheckSuccess(ctx *AppContext, bot BotAPI) {
+	var (
+		shouldNotify bool
+		downtimeStr  string
+		totalPings   int
+	)
 
-	healthchecksState.TotalPings++
-	healthchecksState.SuccessfulPings++
-	healthchecksState.LastPingTime = time.Now()
-	healthchecksState.LastPingSuccess = true
+	ctx.Monitor.mu.Lock()
+	ctx.Monitor.Healthchecks.TotalPings++
+	ctx.Monitor.Healthchecks.SuccessfulPings++
+	ctx.Monitor.Healthchecks.LastPingTime = time.Now()
+	ctx.Monitor.Healthchecks.LastPingSuccess = true
 
 	// If we were in downtime, close the event and notify recovery
-	if healthchecksInDowntime && len(healthchecksState.DowntimeEvents) > 0 {
-		lastIdx := len(healthchecksState.DowntimeEvents) - 1
-		event := &healthchecksState.DowntimeEvents[lastIdx]
+	if ctx.Monitor.HealthInDowntime && len(ctx.Monitor.Healthchecks.DowntimeEvents) > 0 {
+		lastIdx := len(ctx.Monitor.Healthchecks.DowntimeEvents) - 1
+		event := &ctx.Monitor.Healthchecks.DowntimeEvents[lastIdx]
 		event.EndTime = time.Now()
 		downtimeDuration := event.EndTime.Sub(event.StartTime)
-		event.Duration = formatDuration(downtimeDuration)
-		healthchecksInDowntime = false
-		slog.Info("Healthchecks: downtime ended", "duration", event.Duration)
+		event.Duration = format.FormatDuration(downtimeDuration)
+		ctx.Monitor.HealthInDowntime = false
 
-		// Send recovery notification
-		if bot != nil && !isQuietHours() {
-			period := cfg.Healthchecks.PeriodSeconds
+		slog.Info("Healthchecks: downtime ended", "duration", event.Duration)
+		shouldNotify = true
+		downtimeStr = event.Duration
+	}
+
+	totalPings = ctx.Monitor.Healthchecks.TotalPings
+	ctx.Monitor.mu.Unlock()
+
+	// Send recovery notification
+	if shouldNotify {
+		if bot != nil && !ctx.IsQuietHours() {
+			period := ctx.Config.Healthchecks.PeriodSeconds
 			if period <= 0 {
 				period = 60
 			}
-			periodStr := formatPeriod(period)
+			periodStr := format.FormatPeriod(period)
 
 			msg := fmt.Sprintf("🟢 *Healthchecks UP*\n\n"+
 				"_The check is now receiving pings normally._\n\n"+
 				"⏱ Downtime: `%s`\n"+
 				"📊 Total Pings: `%d`\n"+
 				"🔄 Period: `%s`",
-				event.Duration,
-				healthchecksState.TotalPings,
+				downtimeStr,
+				totalPings,
 				periodStr)
-			m := tgbotapi.NewMessage(AllowedUserID, msg)
+			m := tgbotapi.NewMessage(ctx.Config.AllowedUserID, msg)
 			m.ParseMode = "Markdown"
-			bot.Send(m)
+			safeSend(bot, m)
 		}
-		addReportEvent("info", fmt.Sprintf("🟢 Healthchecks recovered (down for %s)", event.Duration))
+		ctx.State.AddReportEvent("info", fmt.Sprintf("🟢 Healthchecks recovered (down for %s)", downtimeStr))
 	}
 
 	// Save state periodically (every 10 pings)
-	if healthchecksState.TotalPings%10 == 0 {
-		go saveState()
+	if totalPings%10 == 0 {
+		go saveState(ctx)
 	}
 }
 
 // recordHealthcheckFailure records a failed ping
-func recordHealthcheckFailure(bot *tgbotapi.BotAPI, reason string) {
-	healthchecksMutex.Lock()
-	defer healthchecksMutex.Unlock()
+func recordHealthcheckFailure(ctx *AppContext, bot BotAPI, reason string) {
+	ctx.Monitor.mu.Lock()
 
-	healthchecksState.TotalPings++
-	healthchecksState.FailedPings++
-	healthchecksState.LastPingTime = time.Now()
-	healthchecksState.LastPingSuccess = false
-	healthchecksState.LastFailure = time.Now()
+	ctx.Monitor.Healthchecks.TotalPings++
+	ctx.Monitor.Healthchecks.FailedPings++
+	ctx.Monitor.Healthchecks.LastPingTime = time.Now()
+	ctx.Monitor.Healthchecks.LastPingSuccess = false
+	ctx.Monitor.Healthchecks.LastFailure = time.Now()
 
 	slog.Error("Healthchecks ping failed", "reason", reason)
 
 	// Start a new downtime event if we weren't already in one
-	if !healthchecksInDowntime {
-		healthchecksInDowntime = true
+	if !ctx.Monitor.HealthInDowntime {
+		ctx.Monitor.HealthInDowntime = true
 		event := DowntimeLog{
 			StartTime: time.Now(),
 			Reason:    reason,
 		}
-		healthchecksState.DowntimeEvents = append(healthchecksState.DowntimeEvents, event)
+		ctx.Monitor.Healthchecks.DowntimeEvents = append(ctx.Monitor.Healthchecks.DowntimeEvents, event)
 
 		// Keep only the last N events
-		if len(healthchecksState.DowntimeEvents) > MaxDowntimeEvents {
-			healthchecksState.DowntimeEvents = healthchecksState.DowntimeEvents[len(healthchecksState.DowntimeEvents)-MaxDowntimeEvents:]
+		if len(ctx.Monitor.Healthchecks.DowntimeEvents) > MaxDowntimeEvents {
+			ctx.Monitor.Healthchecks.DowntimeEvents = ctx.Monitor.Healthchecks.DowntimeEvents[len(ctx.Monitor.Healthchecks.DowntimeEvents)-MaxDowntimeEvents:]
 		}
 
+		lastPingTime := ctx.Monitor.Healthchecks.LastPingTime
+		totalPings := ctx.Monitor.Healthchecks.TotalPings
+
+		ctx.Monitor.mu.Unlock() // Unlock before sending message to avoid deadlock if network is slow (though Send is usually fastish, but best practice)
+
 		// Notify user (respecting quiet hours)
-		if bot != nil && !isQuietHours() {
-			period := cfg.Healthchecks.PeriodSeconds
+		if bot != nil && !ctx.IsQuietHours() {
+			period := ctx.Config.Healthchecks.PeriodSeconds
 			if period <= 0 {
 				period = 60
 			}
-			periodStr := formatPeriod(period)
+			periodStr := format.FormatPeriod(period)
 
 			// Calculate last successful ping time
 			lastPingAgo := "N/A"
-			if !healthchecksState.LastPingTime.IsZero() {
-				lastPingAgo = formatDuration(time.Since(healthchecksState.LastPingTime))
+			if !lastPingTime.IsZero() {
+				lastPingAgo = format.FormatDuration(time.Since(lastPingTime))
 			}
 
 			msg := fmt.Sprintf("🔴 *Healthchecks DOWN*\n\n"+
@@ -173,81 +200,83 @@ func recordHealthcheckFailure(bot *tgbotapi.BotAPI, reason string) {
 				"_Monitoring for recovery..._",
 				reason,
 				periodStr,
-				healthchecksState.TotalPings,
+				totalPings,
 				lastPingAgo)
-			m := tgbotapi.NewMessage(AllowedUserID, msg)
+			m := tgbotapi.NewMessage(ctx.Config.AllowedUserID, msg)
 			m.ParseMode = "Markdown"
-			bot.Send(m)
+			safeSend(bot, m)
 		}
-		addReportEvent("warning", fmt.Sprintf("🔴 Healthchecks down: %s", reason))
+		ctx.State.AddReportEvent("warning", fmt.Sprintf("🔴 Healthchecks down: %s", reason))
+	} else {
+		ctx.Monitor.mu.Unlock()
 	}
 
-	go saveState()
+	go saveState(ctx)
 }
 
 // getHealthchecksStats returns formatted stats for the /health command
-func getHealthchecksStats() string {
-	healthchecksMutex.Lock()
-	defer healthchecksMutex.Unlock()
+func getHealthchecksStats(ctx *AppContext) string {
+	ctx.Monitor.mu.Lock()
+	defer ctx.Monitor.mu.Unlock()
 
-	if !cfg.Healthchecks.Enabled {
-		return tr("health_disabled")
+	if !ctx.Config.Healthchecks.Enabled {
+		return ctx.Tr("health_disabled")
 	}
 
-	if cfg.Healthchecks.PingURL == "" {
-		return tr("health_no_url")
+	if ctx.Config.Healthchecks.PingURL == "" {
+		return ctx.Tr("health_no_url")
 	}
 
 	var sb strings.Builder
-	sb.WriteString(tr("health_title"))
+	sb.WriteString(ctx.Tr("health_title"))
 
 	// Current status
-	if healthchecksState.LastPingSuccess {
-		sb.WriteString("✅ " + tr("health_status_ok") + "\n\n")
+	if ctx.Monitor.Healthchecks.LastPingSuccess {
+		sb.WriteString("✅ " + ctx.Tr("health_status_ok") + "\n\n")
 	} else {
-		sb.WriteString("❌ " + tr("health_status_fail") + "\n\n")
+		sb.WriteString("❌ " + ctx.Tr("health_status_fail") + "\n\n")
 	}
 
 	// Stats
-	total := healthchecksState.TotalPings
-	success := healthchecksState.SuccessfulPings
-	failed := healthchecksState.FailedPings
+	total := ctx.Monitor.Healthchecks.TotalPings
+	success := ctx.Monitor.Healthchecks.SuccessfulPings
+	failed := ctx.Monitor.Healthchecks.FailedPings
 
 	if total > 0 {
 		successRate := float64(success) / float64(total) * 100
-		sb.WriteString(fmt.Sprintf(tr("health_stats_fmt"), total, success, failed, successRate))
+		sb.WriteString(fmt.Sprintf(ctx.Tr("health_stats_fmt"), total, success, failed, successRate))
 	} else {
-		sb.WriteString(tr("health_no_data"))
+		sb.WriteString(ctx.Tr("health_no_data"))
 	}
 
 	// Last ping
-	if !healthchecksState.LastPingTime.IsZero() {
-		ago := time.Since(healthchecksState.LastPingTime)
-		sb.WriteString(fmt.Sprintf(tr("health_last_ping"), formatDuration(ago)))
+	if !ctx.Monitor.Healthchecks.LastPingTime.IsZero() {
+		ago := time.Since(ctx.Monitor.Healthchecks.LastPingTime)
+		sb.WriteString(fmt.Sprintf(ctx.Tr("health_last_ping"), format.FormatDuration(ago)))
 	}
 
 	// Configuration
-	period := cfg.Healthchecks.PeriodSeconds
+	period := ctx.Config.Healthchecks.PeriodSeconds
 	if period <= 0 {
 		period = 60
 	}
-	grace := cfg.Healthchecks.GraceSeconds
+	grace := ctx.Config.Healthchecks.GraceSeconds
 	if grace <= 0 {
 		grace = 60
 	}
-	sb.WriteString(fmt.Sprintf(tr("health_config_fmt"), period, grace))
+	sb.WriteString(fmt.Sprintf(ctx.Tr("health_config_fmt"), period, grace))
 
 	// Recent downtime events
-	if len(healthchecksState.DowntimeEvents) > 0 {
-		sb.WriteString("\n" + tr("health_downtime_title"))
+	if len(ctx.Monitor.Healthchecks.DowntimeEvents) > 0 {
+		sb.WriteString("\n" + ctx.Tr("health_downtime_title"))
 		// Show last 5 events
-		start := len(healthchecksState.DowntimeEvents) - 5
+		start := len(ctx.Monitor.Healthchecks.DowntimeEvents) - 5
 		if start < 0 {
 			start = 0
 		}
-		for i := len(healthchecksState.DowntimeEvents) - 1; i >= start; i-- {
-			event := healthchecksState.DowntimeEvents[i]
-			startStr := event.StartTime.In(location).Format("02/01 15:04")
+		for i := len(ctx.Monitor.Healthchecks.DowntimeEvents) - 1; i >= start; i-- {
+			event := ctx.Monitor.Healthchecks.DowntimeEvents[i]
+			startStr := event.StartTime.In(ctx.State.TimeLocation).Format("02/01 15:04")
 			if event.EndTime.IsZero() {
 				sb.WriteString(fmt.Sprintf("• `%s` — _%s_ (ongoing)\n", startStr, event.Reason))
 			} else {
@@ -260,25 +289,25 @@ func getHealthchecksStats() string {
 }
 
 // getHealthchecksAISummary generates an AI summary of downtime patterns
-func getHealthchecksAISummary() string {
-	healthchecksMutex.Lock()
-	defer healthchecksMutex.Unlock()
+func getHealthchecksAISummary(ctx *AppContext) string {
+	ctx.Monitor.mu.Lock()
+	defer ctx.Monitor.mu.Unlock()
 
-	if len(healthchecksState.DowntimeEvents) == 0 {
-		return tr("health_ai_no_data")
+	if len(ctx.Monitor.Healthchecks.DowntimeEvents) == 0 {
+		return ctx.Tr("health_ai_no_data")
 	}
 
 	// Build context for AI
 	var sb strings.Builder
 	sb.WriteString("Healthchecks.io monitoring data:\n")
-	sb.WriteString(fmt.Sprintf("- Total pings: %d\n", healthchecksState.TotalPings))
-	sb.WriteString(fmt.Sprintf("- Successful: %d\n", healthchecksState.SuccessfulPings))
-	sb.WriteString(fmt.Sprintf("- Failed: %d\n", healthchecksState.FailedPings))
-	sb.WriteString(fmt.Sprintf("- Success rate: %.1f%%\n", float64(healthchecksState.SuccessfulPings)/float64(maxInt(healthchecksState.TotalPings, 1))*100))
+	sb.WriteString(fmt.Sprintf("- Total pings: %d\n", ctx.Monitor.Healthchecks.TotalPings))
+	sb.WriteString(fmt.Sprintf("- Successful: %d\n", ctx.Monitor.Healthchecks.SuccessfulPings))
+	sb.WriteString(fmt.Sprintf("- Failed: %d\n", ctx.Monitor.Healthchecks.FailedPings))
+	sb.WriteString(fmt.Sprintf("- Success rate: %.1f%%\n", float64(ctx.Monitor.Healthchecks.SuccessfulPings)/float64(maxInt(ctx.Monitor.Healthchecks.TotalPings, 1))*100))
 	sb.WriteString("\nDowntime events:\n")
 
-	for _, event := range healthchecksState.DowntimeEvents {
-		startStr := event.StartTime.In(location).Format("2006-01-02 15:04")
+	for _, event := range ctx.Monitor.Healthchecks.DowntimeEvents {
+		startStr := event.StartTime.In(ctx.State.TimeLocation).Format("2006-01-02 15:04")
 		if event.EndTime.IsZero() {
 			sb.WriteString(fmt.Sprintf("- %s: %s (ongoing)\n", startStr, event.Reason))
 		} else {
@@ -290,170 +319,183 @@ func getHealthchecksAISummary() string {
 }
 
 // handleHealthCommand handles the /health command
-func handleHealthCommand(bot *tgbotapi.BotAPI, chatID int64) {
-	stats := getHealthchecksStats()
+func handleHealthCommand(ctx *AppContext, bot BotAPI, chatID int64) {
+	stats := getHealthchecksStats(ctx)
 
 	// Create inline keyboard
 	var keyboard tgbotapi.InlineKeyboardMarkup
-	if cfg.Healthchecks.Enabled && cfg.GeminiAPIKey != "" && len(healthchecksState.DowntimeEvents) > 0 {
+
+	ctx.Monitor.mu.Lock()
+	hasEvents := len(ctx.Monitor.Healthchecks.DowntimeEvents) > 0
+	ctx.Monitor.mu.Unlock()
+
+	if ctx.Config.Healthchecks.Enabled && ctx.Config.GeminiAPIKey != "" && hasEvents {
 		keyboard = tgbotapi.NewInlineKeyboardMarkup(
 			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("🤖 "+tr("health_ai_analyze"), "health_ai"),
-				tgbotapi.NewInlineKeyboardButtonData("🔄 "+tr("health_refresh"), "health_refresh"),
+				tgbotapi.NewInlineKeyboardButtonData("🤖 "+ctx.Tr("health_ai_analyze"), "health_ai"),
+				tgbotapi.NewInlineKeyboardButtonData("🔄 "+ctx.Tr("health_refresh"), "health_refresh"),
 			),
 			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("🧹 "+tr("health_clear_history"), "health_clear"),
+				tgbotapi.NewInlineKeyboardButtonData("🧹 "+ctx.Tr("health_clear_history"), "health_clear"),
 			),
 		)
-	} else if cfg.Healthchecks.Enabled {
+	} else if ctx.Config.Healthchecks.Enabled {
 		keyboard = tgbotapi.NewInlineKeyboardMarkup(
 			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("🔄 "+tr("health_refresh"), "health_refresh"),
+				tgbotapi.NewInlineKeyboardButtonData("🔄 "+ctx.Tr("health_refresh"), "health_refresh"),
 			),
 		)
 	}
 
 	msg := tgbotapi.NewMessage(chatID, stats)
 	msg.ParseMode = "Markdown"
-	if cfg.Healthchecks.Enabled {
+	if ctx.Config.Healthchecks.Enabled {
 		msg.ReplyMarkup = keyboard
 	}
-	bot.Send(msg)
+	safeSend(bot, msg)
 }
 
 // handleHealthCallback handles callback queries for health buttons
-func handleHealthCallback(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery, action string) {
+func handleHealthCallback(ctx *AppContext, bot BotAPI, query *tgbotapi.CallbackQuery, action string) {
+	chatID := query.Message.Chat.ID
+	msgID := query.Message.MessageID
+
 	switch action {
 	case "health_refresh":
-		stats := getHealthchecksStats()
-		edit := tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, stats)
+		stats := getHealthchecksStats(ctx)
+		edit := tgbotapi.NewEditMessageText(chatID, msgID, stats)
 		edit.ParseMode = "Markdown"
 
+		ctx.Monitor.mu.Lock()
+		hasEvents := len(ctx.Monitor.Healthchecks.DowntimeEvents) > 0
+		ctx.Monitor.mu.Unlock()
+
 		var keyboard tgbotapi.InlineKeyboardMarkup
-		if cfg.GeminiAPIKey != "" && len(healthchecksState.DowntimeEvents) > 0 {
+		if ctx.Config.GeminiAPIKey != "" && hasEvents {
 			keyboard = tgbotapi.NewInlineKeyboardMarkup(
 				tgbotapi.NewInlineKeyboardRow(
-					tgbotapi.NewInlineKeyboardButtonData("🤖 "+tr("health_ai_analyze"), "health_ai"),
-					tgbotapi.NewInlineKeyboardButtonData("🔄 "+tr("health_refresh"), "health_refresh"),
+					tgbotapi.NewInlineKeyboardButtonData("🤖 "+ctx.Tr("health_ai_analyze"), "health_ai"),
+					tgbotapi.NewInlineKeyboardButtonData("🔄 "+ctx.Tr("health_refresh"), "health_refresh"),
 				),
 				tgbotapi.NewInlineKeyboardRow(
-					tgbotapi.NewInlineKeyboardButtonData("🧹 "+tr("health_clear_history"), "health_clear"),
+					tgbotapi.NewInlineKeyboardButtonData("🧹 "+ctx.Tr("health_clear_history"), "health_clear"),
 				),
 			)
 		} else {
 			keyboard = tgbotapi.NewInlineKeyboardMarkup(
 				tgbotapi.NewInlineKeyboardRow(
-					tgbotapi.NewInlineKeyboardButtonData("🔄 "+tr("health_refresh"), "health_refresh"),
+					tgbotapi.NewInlineKeyboardButtonData("🔄 "+ctx.Tr("health_refresh"), "health_refresh"),
 				),
 			)
 		}
 		edit.ReplyMarkup = &keyboard
-		bot.Send(edit)
+		safeSend(bot, edit)
 
 	case "health_ai":
-		if cfg.GeminiAPIKey == "" {
-			cb := tgbotapi.NewCallback(callback.ID, tr("health_no_gemini"))
-			bot.Send(cb)
+		if ctx.Config.GeminiAPIKey == "" {
+			cb := tgbotapi.NewCallback(query.ID, ctx.Tr("health_no_gemini"))
+			safeSend(bot, cb)
 			return
 		}
 
-		chatID := callback.Message.Chat.ID
-		msgID := callback.Message.MessageID
-
 		// Show loading
 		modelName := "gemini-2.5-flash"
-		loadingText := fmt.Sprintf("⏳ %s\n_(%s)_", tr("health_analyzing"), modelName)
+		loadingText := fmt.Sprintf("⏳ %s\n_(%s)_", ctx.Tr("health_analyzing"), modelName)
 		loadingMsg := tgbotapi.NewEditMessageText(chatID, msgID, loadingText)
 		loadingMsg.ParseMode = "Markdown"
-		bot.Send(loadingMsg)
+		safeSend(bot, loadingMsg)
 
 		// Get AI analysis
-		aiContext := getHealthchecksAISummary()
-		prompt := fmt.Sprintf(tr("health_ai_prompt"), aiContext)
+		aiContext := getHealthchecksAISummary(ctx)
+		prompt := fmt.Sprintf(ctx.Tr("health_ai_prompt"), aiContext)
 
-		analysis, err := callGeminiWithFallback(prompt, func(model string) {
+		analysis, err := callGeminiWithFallback(ctx, prompt, func(model string) {
 			// Update the loading message with the current model
-			newText := fmt.Sprintf("⏳ %s\n_(%s)_", tr("health_analyzing"), model)
+			newText := fmt.Sprintf("⏳ %s\n_(%s)_", ctx.Tr("health_analyzing"), model)
 			edit := tgbotapi.NewEditMessageText(chatID, msgID, newText)
 			edit.ParseMode = "Markdown"
-			bot.Send(edit)
+			safeSend(bot, edit)
 		})
 		if err != nil {
 			slog.Error("Healthchecks AI error", "err", err)
-			errText := fmt.Sprintf("❌ %s\n\n_Error: %v_", tr("health_ai_error"), err)
+			errText := fmt.Sprintf("❌ %s\n\n_Error: %v_", ctx.Tr("health_ai_error"), err)
 			edit := tgbotapi.NewEditMessageText(chatID, msgID, errText)
 			edit.ParseMode = "Markdown"
 			keyboard := tgbotapi.NewInlineKeyboardMarkup(
 				tgbotapi.NewInlineKeyboardRow(
-					tgbotapi.NewInlineKeyboardButtonData("🔄 "+tr("health_ai_analyze"), "health_ai"),
-					tgbotapi.NewInlineKeyboardButtonData("⬅️ "+tr("back"), "health_refresh"),
+					tgbotapi.NewInlineKeyboardButtonData("🔄 "+ctx.Tr("health_ai_analyze"), "health_ai"),
+					tgbotapi.NewInlineKeyboardButtonData("⬅️ "+ctx.Tr("back"), "health_refresh"),
 				),
 			)
 			edit.ReplyMarkup = &keyboard
 			if _, sendErr := bot.Send(edit); sendErr != nil {
 				edit.ParseMode = ""
-				bot.Send(edit)
+				safeSend(bot, edit)
 			}
 			return
 		}
 
 		// Show analysis
-		result := fmt.Sprintf("🤖 *%s*\n\n%s", tr("health_ai_title"), analysis)
+		result := fmt.Sprintf("🤖 *%s*\n\n%s", ctx.Tr("health_ai_title"), analysis)
 		edit := tgbotapi.NewEditMessageText(chatID, msgID, result)
 		edit.ParseMode = "Markdown"
 		keyboard := tgbotapi.NewInlineKeyboardMarkup(
 			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("⬅️ "+tr("back"), "health_refresh"),
+				tgbotapi.NewInlineKeyboardButtonData("⬅️ "+ctx.Tr("back"), "health_refresh"),
 			),
 		)
 		edit.ReplyMarkup = &keyboard
 		if _, sendErr := bot.Send(edit); sendErr != nil {
 			slog.Error("Error sending AI analysis (Markdown)", "err", sendErr)
 			edit.ParseMode = ""
-			bot.Send(edit)
+			safeSend(bot, edit)
 		}
 
 	case "health_clear":
-		healthchecksMutex.Lock()
-		healthchecksState.DowntimeEvents = []DowntimeLog{}
-		healthchecksState.TotalPings = 0
-		healthchecksState.SuccessfulPings = 0
-		healthchecksState.FailedPings = 0
-		healthchecksMutex.Unlock()
-		saveState()
+		ctx.Monitor.mu.Lock()
+		ctx.Monitor.Healthchecks.DowntimeEvents = []DowntimeLog{}
+		ctx.Monitor.Healthchecks.TotalPings = 0
+		ctx.Monitor.Healthchecks.SuccessfulPings = 0
+		ctx.Monitor.Healthchecks.FailedPings = 0
+		ctx.Monitor.mu.Unlock()
+		saveState(ctx)
 
-		stats := getHealthchecksStats()
-		edit := tgbotapi.NewEditMessageText(callback.Message.Chat.ID, callback.Message.MessageID, stats+"\n\n✅ "+tr("health_history_cleared"))
+		stats := getHealthchecksStats(ctx)
+		edit := tgbotapi.NewEditMessageText(chatID, msgID, stats+"\n\n✅ "+ctx.Tr("health_history_cleared"))
 		edit.ParseMode = "Markdown"
 		keyboard := tgbotapi.NewInlineKeyboardMarkup(
 			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("🔄 "+tr("health_refresh"), "health_refresh"),
+				tgbotapi.NewInlineKeyboardButtonData("🔄 "+ctx.Tr("health_refresh"), "health_refresh"),
 			),
 		)
 		edit.ReplyMarkup = &keyboard
-		bot.Send(edit)
+		safeSend(bot, edit)
 	}
 
 	// Answer callback to remove loading indicator
-	bot.Send(tgbotapi.NewCallback(callback.ID, ""))
+	safeSend(bot, tgbotapi.NewCallback(query.ID, ""))
 }
 
 // pingHealthchecksStart sends a /start signal to healthchecks.io
-func pingHealthchecksStart() {
-	if !cfg.Healthchecks.Enabled || cfg.Healthchecks.PingURL == "" {
+func pingHealthchecksStart(ctx *AppContext) {
+	if !ctx.Config.Healthchecks.Enabled || ctx.Config.Healthchecks.PingURL == "" {
 		return
 	}
 
-	url := cfg.Healthchecks.PingURL + "/start"
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	url := ctx.Config.Healthchecks.PingURL + "/start"
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(timeoutCtx, http.MethodGet, url, nil)
 	if err != nil {
 		return
 	}
 
-	resp, err := httpClient.Do(req)
+	if ctx.HTTP == nil {
+		ctx.HTTP = &http.Client{Timeout: 10 * time.Second}
+	}
+
+	resp, err := ctx.HTTP.Do(req)
 	if err != nil {
 		return
 	}
@@ -461,10 +503,4 @@ func pingHealthchecksStart() {
 	slog.Info("Healthchecks.io /start signal sent")
 }
 
-// maxInt returns the larger of two integers
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
+// maxInt used to be here, now using utils.go version or removing dup

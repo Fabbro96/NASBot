@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"nasbot/internal/format"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -339,7 +341,7 @@ func (w *FSWatchdog) DeepScan(paths []string) *DeepScanResult {
 
 	slog.Info("[FSWatchdog] Deep scan complete",
 		"duration", result.Duration.Round(time.Millisecond).String(),
-		"scanned", formatBytes(uint64(result.TotalScanned)))
+		"scanned", format.FormatBytes(uint64(result.TotalScanned)))
 
 	return result
 }
@@ -349,7 +351,7 @@ func (w *FSWatchdog) DeepScan(paths []string) *DeepScanResult {
 // ═══════════════════════════════════════════════════════════════════
 
 // RunFSWatchdog starts the filesystem watchdog goroutine
-func RunFSWatchdog(bot *tgbotapi.BotAPI) {
+func RunFSWatchdog(bot BotAPI) {
 	w := GetFSWatchdog()
 
 	if !w.config.Enabled {
@@ -375,18 +377,23 @@ func RunFSWatchdog(bot *tgbotapi.BotAPI) {
 	}
 }
 
-func (w *FSWatchdog) checkAllPaths(bot *tgbotapi.BotAPI) {
-	w.checkAndAlert(bot, "/")
-	if PathSSD != "" {
-		w.checkAndAlert(bot, PathSSD)
-	}
-	if PathHDD != "" {
-		w.checkAndAlert(bot, PathHDD)
+func (w *FSWatchdog) checkAllPaths(bot BotAPI) {
+	paths := []string{"/", cfg.Paths.SSD, cfg.Paths.HDD}
+	seen := make(map[string]struct{}, len(paths))
+	for _, p := range paths {
+		if p == "" {
+			continue
+		}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		w.checkAndAlert(bot, p)
 	}
 }
 
 // checkAndAlert performs the lazy evaluation check
-func (w *FSWatchdog) checkAndAlert(bot *tgbotapi.BotAPI, path string) {
+func (w *FSWatchdog) checkAndAlert(bot BotAPI, path string) {
 	// Step 1: Light check (instant, no I/O)
 	usedPercent, freeGB, err := w.LightCheck(path)
 	if err != nil {
@@ -416,10 +423,10 @@ func (w *FSWatchdog) checkAndAlert(bot *tgbotapi.BotAPI, path string) {
 				"Free: `%.1fGB`\n\n"+
 				"_Monitoring..._", path, usedPercent, freeGB)
 
-			m := tgbotapi.NewMessage(AllowedUserID, msg)
+			m := tgbotapi.NewMessage(cfg.AllowedUserID, msg)
 			m.ParseMode = "Markdown"
 			if bot != nil {
-				bot.Send(m)
+				safeSend(bot, m)
 			} else {
 				slog.Info("Watchdog Alert (No Bot)", "msg", msg)
 			}
@@ -442,10 +449,10 @@ func (w *FSWatchdog) checkAndAlert(bot *tgbotapi.BotAPI, path string) {
 				"Free: `%.1fGB`\n\n"+
 				"_Starting deep scan to identify large files..._", path, usedPercent, freeGB)
 
-			m := tgbotapi.NewMessage(AllowedUserID, msg)
+			m := tgbotapi.NewMessage(cfg.AllowedUserID, msg)
 			m.ParseMode = "Markdown"
 			if bot != nil {
-				bot.Send(m)
+				safeSend(bot, m)
 			} else {
 				slog.Info("Watchdog Critical Alert (No Bot)", "msg", msg)
 			}
@@ -468,12 +475,12 @@ func (w *FSWatchdog) checkAndAlert(bot *tgbotapi.BotAPI, path string) {
 }
 
 // sendDeepScanReport formats and sends the deep scan results
-func (w *FSWatchdog) sendDeepScanReport(bot *tgbotapi.BotAPI, result *DeepScanResult, usedPercent, freeGB float64) {
+func (w *FSWatchdog) sendDeepScanReport(bot BotAPI, result *DeepScanResult, usedPercent, freeGB float64) {
 	var b strings.Builder
 
 	b.WriteString("📊 *Deep Scan Results*\n\n")
 	b.WriteString(fmt.Sprintf("⏱ Scan time: `%v`\n", result.Duration.Round(time.Millisecond)))
-	b.WriteString(fmt.Sprintf("📁 Total scanned: `%s`\n\n", formatBytes(uint64(result.TotalScanned))))
+	b.WriteString(fmt.Sprintf("📁 Total scanned: `%s`\n\n", format.FormatBytes(uint64(result.TotalScanned))))
 
 	// Top directories
 	if len(result.DirUsages) > 0 {
@@ -483,7 +490,7 @@ func (w *FSWatchdog) sendDeepScanReport(bot *tgbotapi.BotAPI, result *DeepScanRe
 				break
 			}
 			b.WriteString(fmt.Sprintf("`%s` %s\n",
-				formatBytes(uint64(dir.Size)),
+				format.FormatBytes(uint64(dir.Size)),
 				truncatePath(dir.Path, 35)))
 		}
 		b.WriteString("\n")
@@ -497,7 +504,7 @@ func (w *FSWatchdog) sendDeepScanReport(bot *tgbotapi.BotAPI, result *DeepScanRe
 				break
 			}
 			b.WriteString(fmt.Sprintf("`%s` %s\n",
-				formatBytes(uint64(file.Size)),
+				format.FormatBytes(uint64(file.Size)),
 				truncatePath(file.Path, 35)))
 		}
 	}
@@ -508,10 +515,10 @@ func (w *FSWatchdog) sendDeepScanReport(bot *tgbotapi.BotAPI, result *DeepScanRe
 	}
 
 	if !isQuietHours() {
-		m := tgbotapi.NewMessage(AllowedUserID, b.String())
+		m := tgbotapi.NewMessage(cfg.AllowedUserID, b.String())
 		m.ParseMode = "Markdown"
 		if bot != nil {
-			bot.Send(m)
+			safeSend(bot, m)
 		} else {
 			slog.Info("Deep Scan Report (No Bot)", "report", b.String())
 		}
@@ -545,7 +552,16 @@ func GetDiskInfoText() string {
 	var b strings.Builder
 	b.WriteString("💾 *Disk Status*\n\n")
 
-	for _, path := range []string{"/", PathSSD, PathHDD} {
+	paths := []string{"/", cfg.Paths.SSD, cfg.Paths.HDD}
+	seen := make(map[string]struct{}, len(paths))
+	for _, path := range paths {
+		if path == "" {
+			continue
+		}
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		seen[path] = struct{}{}
 		result, err := GetDiskUsage(path)
 		if err != nil {
 			continue
@@ -561,9 +577,12 @@ func GetDiskInfoText() string {
 		b.WriteString(fmt.Sprintf("%s `%s`\n", icon, path))
 		b.WriteString(fmt.Sprintf("   Used: `%.1f%%` · Free: `%s`\n",
 			result.UsedPercent,
-			formatBytes(result.FreeBytes)))
-		b.WriteString(fmt.Sprintf("   Inodes: `%.1f%%` free\n\n",
-			float64(result.FreeInodes)/float64(result.Inodes)*100))
+			format.FormatBytes(result.FreeBytes)))
+		inodePct := 0.0
+		if result.Inodes > 0 {
+			inodePct = float64(result.FreeInodes) / float64(result.Inodes) * 100
+		}
+		b.WriteString(fmt.Sprintf("   Inodes: `%.1f%%` free\n\n", inodePct))
 	}
 
 	w := GetFSWatchdog()

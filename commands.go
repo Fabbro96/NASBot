@@ -4,164 +4,225 @@
 package main
 
 import (
-	"context"
-	"fmt"
-	"io"
-	"net/http"
-	"os/exec"
-	"runtime/debug"
-	"strings"
-	"time"
+"context"
+"fmt"
+"io"
+"net/http"
+"os/exec"
+"runtime/debug"
+"strings"
+"time"
 
-	"github.com/shirou/gopsutil/v3/cpu"
-	"github.com/shirou/gopsutil/v3/disk"
-	"github.com/shirou/gopsutil/v3/host"
-	"github.com/shirou/gopsutil/v3/mem"
+"github.com/shirou/gopsutil/v3/cpu"
+"github.com/shirou/gopsutil/v3/disk"
+"github.com/shirou/gopsutil/v3/host"
+"github.com/shirou/gopsutil/v3/mem"
 )
+
+const (
+maxLogLines     = 15
+maxLogChars     = 3500
+cpuWarmC        = 60
+cpuHotC         = 75
+diskWarmC       = 45
+maxTopProcesses = 10
+maxProcNameLen  = 15
+
+logCmdTimeout = 3 * time.Second
+netTimeout    = 3 * time.Second
+psTimeout     = 3 * time.Second
+hostIPTimeout = 1 * time.Second
+publicIPURL   = "https://api.ipify.org"
+)
+
+func cpuTempStatus(ctx *AppContext, temp float64) (icon, status string) {
+	icon = "✅"
+	status = ctx.Tr("temp_status_good")
+	if temp > cpuWarmC {
+		icon = "🟡"
+		status = ctx.Tr("temp_status_warm")
+	}
+	if temp > cpuHotC {
+		icon = "🔥"
+		status = ctx.Tr("temp_status_hot")
+	}
+	return
+}
+
+func diskTempStatus(ctx *AppContext, temp int, health string) (icon, status string) {
+	icon = "✅"
+	status = ctx.Tr("temp_disk_healthy")
+	if strings.Contains(strings.ToUpper(health), "FAIL") {
+		icon = "🚨"
+		status = ctx.Tr("temp_disk_fail")
+	} else if temp > diskWarmC && temp > 0 {
+		icon = "🟡"
+		status = ctx.Tr("temp_disk_warm")
+	}
+	return
+}
+
+func runCommandOutput(ctx context.Context, name string, args ...string) ([]byte, error) {
+	return exec.CommandContext(ctx, name, args...).CombinedOutput()
+}
+
+func getLocalIP(ctx context.Context) string {
+	out, err := runCommandOutput(ctx, "hostname", "-I")
+	if err != nil {
+		return "n/a"
+	}
+	ips := strings.Fields(string(out))
+	if len(ips) == 0 {
+		return "n/a"
+	}
+	return ips[0]
+}
+
+func getPublicIP(ctx *AppContext, c context.Context) string {
+	req, err := http.NewRequestWithContext(c, http.MethodGet, publicIPURL, nil)
+	if err != nil {
+		return ctx.Tr("net_checking")
+	}
+	
+	client := http.DefaultClient
+	if ctx.HTTP != nil {
+		client = ctx.HTTP
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return ctx.Tr("net_checking")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return ctx.Tr("net_checking")
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64))
+	if err != nil {
+		return ctx.Tr("net_checking")
+	}
+	ip := strings.TrimSpace(string(body))
+	if ip == "" {
+		return ctx.Tr("net_checking")
+	}
+	return ip
+}
 
 // ═══════════════════════════════════════════════════════════════════
 //  TEXT GENERATORS (use cache, instant response)
 // ═══════════════════════════════════════════════════════════════════
 
-func getStatusText() string {
-	statsMutex.RLock()
-	s := statsCache
-	ready := statsReady
-	statsMutex.RUnlock()
+func getStatusText(ctx *AppContext) string {
+	s, ready := ctx.Stats.Get()
 
 	if !ready {
-		return tr("loading")
+		return ctx.Tr("loading")
 	}
 
 	var b strings.Builder
 
-	b.WriteString(fmt.Sprintf(tr("status_title"), time.Now().Format("15:04")))
+	b.WriteString(fmt.Sprintf(ctx.Tr("status_title"), time.Now().Format("15:04")))
 
-	b.WriteString(fmt.Sprintf(tr("cpu_fmt"), makeProgressBar(s.CPU), s.CPU))
-	b.WriteString(fmt.Sprintf(tr("ram_fmt"), makeProgressBar(s.RAM), s.RAM))
+	b.WriteString(fmt.Sprintf(ctx.Tr("cpu_fmt"), makeProgressBar(s.CPU), s.CPU))
+	b.WriteString(fmt.Sprintf(ctx.Tr("ram_fmt"), makeProgressBar(s.RAM), s.RAM))
 	if s.Swap > 5 {
-		b.WriteString(fmt.Sprintf(tr("swap_fmt"), makeProgressBar(s.Swap), s.Swap))
+		b.WriteString(fmt.Sprintf(ctx.Tr("swap_fmt"), makeProgressBar(s.Swap), s.Swap))
 	}
 
-	b.WriteString(fmt.Sprintf(tr("ssd_fmt"), s.VolSSD.Used, formatBytes(s.VolSSD.Free)))
-	b.WriteString(fmt.Sprintf(tr("hdd_fmt"), s.VolHDD.Used, formatBytes(s.VolHDD.Free)))
+	b.WriteString(fmt.Sprintf(ctx.Tr("ssd_fmt"), s.VolSSD.Used, formatBytes(s.VolSSD.Free)))
+	b.WriteString(fmt.Sprintf(ctx.Tr("hdd_fmt"), s.VolHDD.Used, formatBytes(s.VolHDD.Free)))
 
 	if s.DiskUtil > 10 {
-		b.WriteString(fmt.Sprintf(tr("disk_io_fmt"), s.DiskUtil))
+		b.WriteString(fmt.Sprintf(ctx.Tr("disk_io_fmt"), s.DiskUtil))
 		if s.ReadMBs > 1 || s.WriteMBs > 1 {
-			b.WriteString(fmt.Sprintf(tr("disk_rw_fmt"), s.ReadMBs, s.WriteMBs))
+			b.WriteString(fmt.Sprintf(ctx.Tr("disk_rw_fmt"), s.ReadMBs, s.WriteMBs))
 		}
 		b.WriteString("\n")
 	}
 
-	b.WriteString(fmt.Sprintf(tr("uptime_fmt"), formatUptime(s.Uptime)))
+	b.WriteString(fmt.Sprintf(ctx.Tr("uptime_fmt"), formatUptime(s.Uptime)))
 
 	return b.String()
 }
 
-func getTempText() string {
+func getTempText(ctx *AppContext) string {
 	var b strings.Builder
-	b.WriteString("🌡 *Temperatures*\n\n")
+	b.WriteString(ctx.Tr("temp_title"))
 
 	cpuTemp := readCPUTemp()
-	cpuIcon := "✅"
-	cpuStatus := "looking good"
-	if cpuTemp > 60 {
-		cpuIcon = "🟡"
-		cpuStatus = "a bit warm"
-	}
-	if cpuTemp > 75 {
-		cpuIcon = "🔥"
-		cpuStatus = "running hot!"
-	}
-	b.WriteString(fmt.Sprintf("%s CPU: %.0f°C — %s\n\n", cpuIcon, cpuTemp, cpuStatus))
+	cpuIcon, cpuStatus := cpuTempStatus(ctx, cpuTemp)
+	b.WriteString(fmt.Sprintf(ctx.Tr("temp_cpu"), cpuIcon, cpuTemp, cpuStatus))
 
-	b.WriteString("*Disks*\n")
-	for _, dev := range []string{"sda", "sdb"} {
+	b.WriteString(ctx.Tr("temp_disks"))
+	for _, dev := range getSmartDevices() {
 		temp, health := readDiskSMART(dev)
-		icon := "✅"
-		status := "healthy"
-		if strings.Contains(strings.ToUpper(health), "FAIL") {
-			icon = "🚨"
-			status = "FAILING!"
-		} else if temp > 45 {
-			icon = "🟡"
-			status = "warm"
-		}
+		icon, status := diskTempStatus(ctx, temp, health)
 		b.WriteString(fmt.Sprintf("%s %s: %d°C — %s\n", icon, dev, temp, status))
 	}
 	return b.String()
 }
 
-func getNetworkText() string {
+func getNetworkText(ctx *AppContext) string {
 	var b strings.Builder
-	b.WriteString("🌐 *Network*\n\n")
+	b.WriteString(ctx.Tr("net_title"))
 
-	localIP := "n/a"
-	if out, err := exec.Command("hostname", "-I").Output(); err == nil {
-		ips := strings.Fields(string(out))
-		if len(ips) > 0 {
-			localIP = ips[0]
-		}
-	}
-	b.WriteString(fmt.Sprintf("🏠 Local: `%s`\n", localIP))
+	localCtx, cancelLocal := context.WithTimeout(context.Background(), hostIPTimeout)
+	defer cancelLocal()
+	b.WriteString(fmt.Sprintf(ctx.Tr("net_local"), getLocalIP(localCtx)))
 
-	publicIP := "checking..."
-	client := http.Client{Timeout: 3 * time.Second}
-	if resp, err := client.Get("https://api.ipify.org"); err == nil {
-		defer resp.Body.Close()
-		if body, err := io.ReadAll(resp.Body); err == nil {
-			publicIP = string(body)
-		}
-	}
-	b.WriteString(fmt.Sprintf("🌍 Public: `%s`\n", publicIP))
+	publicCtx, cancelPublic := context.WithTimeout(context.Background(), netTimeout)
+	defer cancelPublic()
+	b.WriteString(fmt.Sprintf(ctx.Tr("net_public"), getPublicIP(ctx, publicCtx)))
 
 	return b.String()
 }
 
-func getLogsText() string {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+func getLogsText(ctx *AppContext) string {
+	c, cancel := context.WithTimeout(context.Background(), logCmdTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "dmesg")
-	out, err := cmd.Output()
-	if err != nil {
-		cmd = exec.CommandContext(ctx, "journalctl", "-n", "15", "--no-pager")
-		out, _ = cmd.Output()
+	out, err := runCommandOutput(c, "dmesg")
+	if err != nil || len(out) == 0 {
+		out, _ = runCommandOutput(c, "journalctl", "-n", fmt.Sprint(maxLogLines), "--no-pager")
+	}
+	if len(out) == 0 {
+		return fmt.Sprintf("%s_No logs available_\n", ctx.Tr("logs_title"))
 	}
 
 	lines := strings.Split(string(out), "\n")
-	start := len(lines) - 15
+	start := len(lines) - maxLogLines
 	if start < 0 {
 		start = 0
 	}
 	recentLogs := strings.Join(lines[start:], "\n")
 
-	if len(recentLogs) > 3500 {
-		recentLogs = recentLogs[:3500] + "..."
+	if len(recentLogs) > maxLogChars {
+		recentLogs = recentLogs[:maxLogChars] + "..."
 	}
 
-	return fmt.Sprintf("*Recent system logs*\n```\n%s\n```", recentLogs)
+	return fmt.Sprintf("%s```\n%s\n```", ctx.Tr("logs_title"), recentLogs)
 }
 
-func getTopProcText() string {
-	cmd := exec.Command("ps", "-Ao", "pid,comm,pcpu,pmem", "--sort=-pcpu")
-	out, err := cmd.Output()
+func getTopProcText(ctx *AppContext) string {
+	c, cancel := context.WithTimeout(context.Background(), psTimeout)
+	defer cancel()
+
+	out, err := runCommandOutput(c, "ps", "-Ao", "pid,comm,pcpu,pmem", "--sort=-pcpu")
 	if err != nil {
 		return fmt.Sprintf("❌ Error fetching processes: %v", err)
 	}
 
 	lines := strings.Split(string(out), "\n")
 	if len(lines) < 2 {
-		return "_No processes found_"
+		return ctx.Tr("top_none")
 	}
 
 	count := 0
 	var b strings.Builder
-	b.WriteString("🔥 *Top Processes (by CPU)*\n\n")
-	b.WriteString("`PID   CPU%  MEM%  COMMAND`\n")
+	b.WriteString(ctx.Tr("top_title"))
+	b.WriteString(ctx.Tr("top_header"))
 
-	for i := 1; i < len(lines) && count < 10; i++ {
+	for i := 1; i < len(lines) && count < maxTopProcesses; i++ {
 		line := strings.TrimSpace(lines[i])
 		if line == "" {
 			continue
@@ -176,12 +237,12 @@ func getTopProcText() string {
 		cpuPct := fields[2]
 		memPct := fields[3]
 
-		if len(cmdName) > 15 {
-			cmdName = cmdName[:13] + ".."
+		if len(cmdName) > maxProcNameLen {
+			cmdName = cmdName[:maxProcNameLen-2] + ".."
 		}
 
 		b.WriteString(fmt.Sprintf("`%-5s %-4s %-4s %s`\n",
-			pid, cpuPct, memPct, cmdName))
+pid, cpuPct, memPct, cmdName))
 
 		count++
 	}
@@ -189,161 +250,149 @@ func getTopProcText() string {
 	return b.String()
 }
 
-func getHelpText() string {
+func getHelpText(ctx *AppContext) string {
 	var b strings.Builder
-	b.WriteString("👋 *Hey! I'm NASBot*\n\n")
-	b.WriteString("Here's what I can do for you:\n\n")
+	b.WriteString(ctx.Tr("help_intro"))
 
-	b.WriteString("*📊 Monitoring*\n")
+	b.WriteString(ctx.Tr("help_mon"))
 	b.WriteString("/status — quick system overview\n")
 	b.WriteString("/quick — ultra-compact one-liner\n")
 	b.WriteString("/temp — check temperatures\n")
 	b.WriteString("/top — top processes by CPU\n")
 	b.WriteString("/sysinfo — detailed system info\n")
-	b.WriteString("/diskpred — disk space prediction\n")
-	b.WriteString("/diskinfo — detailed disk status\n\n")
+	b.WriteString("/diskpred — disk space prediction\n\n")
 
-	b.WriteString("*🐳 Docker*\n")
+	b.WriteString(ctx.Tr("help_docker"))
 	b.WriteString("/docker — manage containers\n")
 	b.WriteString("/dstats — container resources\n")
 	b.WriteString("/kill `name` — force kill container\n")
 	b.WriteString("/logsearch `name` `keyword` — search logs\n")
 	b.WriteString("/restartdocker — restart Docker service\n\n")
 
-	b.WriteString("*🌐 Network*\n")
+	b.WriteString(ctx.Tr("help_net"))
 	b.WriteString("/net — network info\n")
 	b.WriteString("/speedtest — run speed test\n\n")
 
-	b.WriteString("*⚙️ Settings & System*\n")
+	b.WriteString(ctx.Tr("help_settings"))
 	b.WriteString("/settings — *configure everything*\n")
 	b.WriteString("/report — full detailed report\n")
 	b.WriteString("/ping — check if bot is alive\n")
-	b.WriteString("/health — healthchecks.io status\n")
 	b.WriteString("/config — show current config\n")
+	b.WriteString("/configjson — show full config.json (redacted)\n")
+	b.WriteString("/configset <json> — update config.json\n")
 	b.WriteString("/logs — recent system logs\n")
-	b.WriteString("/testllm — test Gemini API connection\n")
 	b.WriteString("/reboot · /shutdown — power control\n\n")
 
+	ctx.Settings.mu.RLock()
+	reportMode := ctx.Settings.ReportMode
+	morning := ctx.Settings.ReportMorning
+	evening := ctx.Settings.ReportEvening
+	quiet := ctx.Settings.QuietHours
+	ctx.Settings.mu.RUnlock()
+
 	if reportMode > 0 {
-		b.WriteString("_📨 Reports: ")
+		b.WriteString(ctx.Tr("help_reports"))
 		if reportMode == 2 {
 			b.WriteString(fmt.Sprintf("%02d:%02d & %02d:%02d_\n",
-				reportMorningHour, reportMorningMinute,
-				reportEveningHour, reportEveningMinute))
+morning.Hour, morning.Minute,
+evening.Hour, evening.Minute))
 		} else {
-			b.WriteString(fmt.Sprintf("%02d:%02d_\n", reportMorningHour, reportMorningMinute))
+			b.WriteString(fmt.Sprintf("%02d:%02d_\n", morning.Hour, morning.Minute))
 		}
 	}
 
-	if quietHoursEnabled {
-		b.WriteString(fmt.Sprintf("_🌙 Quiet: %02d:%02d — %02d:%02d_",
-			quietStartHour, quietStartMinute,
-			quietEndHour, quietEndMinute))
+	if quiet.Enabled {
+		b.WriteString(fmt.Sprintf(ctx.Tr("help_quiet"),
+quiet.Start.Hour, quiet.Start.Minute,
+quiet.End.Hour, quiet.End.Minute))
 	}
 
 	return b.String()
 }
 
-func getPingText() string {
-	uptime := time.Since(botStartTime)
+func getPingText(ctx *AppContext) string {
+	ctx.Bot.mu.Lock()
+	start := ctx.Bot.StartTime
+	ctx.Bot.mu.Unlock()
+	uptime := time.Since(start)
 
-	statsMutex.RLock()
-	ready := statsReady
-	statsMutex.RUnlock()
+	_, ready := ctx.Stats.Get()
 
 	status := "✅"
-	statusText := "All systems operational"
+	statusText := ctx.Tr("ping_ok")
 	if !ready {
 		status = "⚠️"
-		statusText = "Stats not ready yet"
+		statusText = ctx.Tr("ping_not_ready")
 	}
 
-	return fmt.Sprintf(`%s *Pong!*
-
-%s
-
-🤖 Bot uptime: `+"`%s`"+`
-🖥 Collecting stats: %v
-📡 Last check: `+"`%s`"+`
-
-_I'm alive and watching!_`,
-		status,
-		statusText,
-		formatDuration(uptime),
-		ready,
-		time.Now().In(location).Format("15:04:05"))
+	return fmt.Sprintf(ctx.Tr("ping_pong")+"\n\n"+
+"%s\n\n"+
+ctx.Tr("ping_uptime")+"\n"+
+ctx.Tr("ping_collecting")+"\n"+
+ctx.Tr("ping_last_check")+"\n\n"+
+ctx.Tr("ping_alive"),
+status,
+statusText,
+formatDuration(uptime),
+ready,
+time.Now().In(ctx.State.TimeLocation).Format("15:04:05"))
 }
 
-func getConfigText() string {
+func getConfigText(ctx *AppContext) string {
 	var b strings.Builder
-	b.WriteString("⚙️ *Current Configuration*\n\n")
+	b.WriteString(ctx.Tr("config_title"))
+	
+	cfg := ctx.Config
 
 	// Reports
-	b.WriteString("*Reports:* ")
+	b.WriteString(ctx.Tr("cfg_reports"))
 	if cfg.Reports.Enabled {
 		if cfg.Reports.Morning.Enabled && cfg.Reports.Evening.Enabled {
-			b.WriteString(fmt.Sprintf("✅ %02d:%02d & %02d:%02d\n",
-				cfg.Reports.Morning.Hour, cfg.Reports.Morning.Minute,
-				cfg.Reports.Evening.Hour, cfg.Reports.Evening.Minute))
+			b.WriteString(fmt.Sprintf(ctx.Tr("cfg_both"),
+cfg.Reports.Morning.Hour, cfg.Reports.Morning.Minute,
+cfg.Reports.Evening.Hour, cfg.Reports.Evening.Minute))
 		} else if cfg.Reports.Morning.Enabled {
-			b.WriteString(fmt.Sprintf("✅ Morning only (%02d:%02d)\n",
-				cfg.Reports.Morning.Hour, cfg.Reports.Morning.Minute))
+			b.WriteString(fmt.Sprintf(ctx.Tr("cfg_morning_only"),
+cfg.Reports.Morning.Hour, cfg.Reports.Morning.Minute))
 		} else if cfg.Reports.Evening.Enabled {
-			b.WriteString(fmt.Sprintf("✅ Evening only (%02d:%02d)\n",
-				cfg.Reports.Evening.Hour, cfg.Reports.Evening.Minute))
+			b.WriteString(fmt.Sprintf(ctx.Tr("cfg_evening_only"),
+cfg.Reports.Evening.Hour, cfg.Reports.Evening.Minute))
 		} else {
-			b.WriteString("❌ Disabled\n")
+			b.WriteString(ctx.Tr("cfg_disabled"))
 		}
 	} else {
-		b.WriteString("❌ Disabled\n")
+		b.WriteString(ctx.Tr("cfg_disabled"))
 	}
 
 	// Quiet hours
-	b.WriteString("*Quiet Hours:* ")
+	b.WriteString(ctx.Tr("cfg_quiet"))
 	if cfg.QuietHours.Enabled {
-		b.WriteString(fmt.Sprintf("✅ %02d:%02d — %02d:%02d\n",
-			cfg.QuietHours.StartHour, cfg.QuietHours.StartMinute,
-			cfg.QuietHours.EndHour, cfg.QuietHours.EndMinute))
+		b.WriteString(fmt.Sprintf(ctx.Tr("cfg_quiet_fmt"),
+cfg.QuietHours.StartHour, cfg.QuietHours.StartMinute,
+cfg.QuietHours.EndHour, cfg.QuietHours.EndMinute))
 	} else {
-		b.WriteString("❌ Disabled\n")
+		b.WriteString(ctx.Tr("cfg_disabled"))
 	}
 
 	// Notifications
 	b.WriteString("\n*Notifications:*\n")
-	if cfg.Notifications.CPU.Enabled {
-		b.WriteString(fmt.Sprintf("  CPU: ⚠️ >%.0f%% | 🚨 >%.0f%%\n",
-			cfg.Notifications.CPU.WarningThreshold, cfg.Notifications.CPU.CriticalThreshold))
-	} else {
-		b.WriteString("  CPU: ❌\n")
+	writeNotifLine := func(name string, rc ResourceConfig) {
+		if rc.Enabled {
+			if rc.CriticalThreshold > 0 {
+				b.WriteString(fmt.Sprintf("  %s: ⚠️ >%.0f%% | 🚨 >%.0f%%\n", name, rc.WarningThreshold, rc.CriticalThreshold))
+			} else {
+				b.WriteString(fmt.Sprintf("  %s: ⚠️ >%.0f%%\n", name, rc.WarningThreshold))
+			}
+		} else {
+			b.WriteString(fmt.Sprintf("  %s: ❌\n", name))
+		}
 	}
-	if cfg.Notifications.RAM.Enabled {
-		b.WriteString(fmt.Sprintf("  RAM: ⚠️ >%.0f%% | 🚨 >%.0f%%\n",
-			cfg.Notifications.RAM.WarningThreshold, cfg.Notifications.RAM.CriticalThreshold))
-	} else {
-		b.WriteString("  RAM: ❌\n")
-	}
-	if cfg.Notifications.Swap.Enabled {
-		b.WriteString(fmt.Sprintf("  Swap: ⚠️ >%.0f%%\n", cfg.Notifications.Swap.WarningThreshold))
-	} else {
-		b.WriteString("  Swap: ❌\n")
-	}
-	if cfg.Notifications.DiskSSD.Enabled {
-		b.WriteString(fmt.Sprintf("  SSD: ⚠️ >%.0f%% | 🚨 >%.0f%%\n",
-			cfg.Notifications.DiskSSD.WarningThreshold, cfg.Notifications.DiskSSD.CriticalThreshold))
-	} else {
-		b.WriteString("  SSD: ❌\n")
-	}
-	if cfg.Notifications.DiskHDD.Enabled {
-		b.WriteString(fmt.Sprintf("  HDD: ⚠️ >%.0f%% | 🚨 >%.0f%%\n",
-			cfg.Notifications.DiskHDD.WarningThreshold, cfg.Notifications.DiskHDD.CriticalThreshold))
-	} else {
-		b.WriteString("  HDD: ❌\n")
-	}
-	if cfg.Notifications.DiskIO.Enabled {
-		b.WriteString(fmt.Sprintf("  I/O: ⚠️ >%.0f%%\n", cfg.Notifications.DiskIO.WarningThreshold))
-	} else {
-		b.WriteString("  I/O: ❌\n")
-	}
+	writeNotifLine("CPU", cfg.Notifications.CPU)
+	writeNotifLine("RAM", cfg.Notifications.RAM)
+	writeNotifLine("Swap", ResourceConfig{Enabled: cfg.Notifications.Swap.Enabled, WarningThreshold: cfg.Notifications.Swap.WarningThreshold})
+	writeNotifLine("SSD", cfg.Notifications.DiskSSD)
+	writeNotifLine("HDD", cfg.Notifications.DiskHDD)
+	writeNotifLine("I/O", ResourceConfig{Enabled: cfg.Notifications.DiskIO.Enabled, WarningThreshold: cfg.Notifications.DiskIO.WarningThreshold})
 	b.WriteString(fmt.Sprintf("  SMART: %s\n", boolToEmoji(cfg.Notifications.SMART.Enabled)))
 
 	// Docker
@@ -355,26 +404,26 @@ func getConfigText() string {
 	}
 	if cfg.Docker.WeeklyPrune.Enabled {
 		b.WriteString(fmt.Sprintf("  Prune: ✅ %s @ %02d:00\n",
-			strings.Title(cfg.Docker.WeeklyPrune.Day), cfg.Docker.WeeklyPrune.Hour))
+titleCaseWord(cfg.Docker.WeeklyPrune.Day), cfg.Docker.WeeklyPrune.Hour))
 	} else {
 		b.WriteString("  Prune: ❌\n")
 	}
 	if cfg.Docker.AutoRestartOnRAMCritical.Enabled {
 		b.WriteString(fmt.Sprintf("  Auto-restart: ✅ RAM >%.0f%%\n",
-			cfg.Docker.AutoRestartOnRAMCritical.RAMThreshold))
+cfg.Docker.AutoRestartOnRAMCritical.RAMThreshold))
 	} else {
 		b.WriteString("  Auto-restart: ❌\n")
 	}
 
 	// Intervals
 	b.WriteString(fmt.Sprintf("\n*Intervals:* Stats %ds · Monitor %ds",
-		cfg.Intervals.StatsSeconds, cfg.Intervals.MonitorSeconds))
+cfg.Intervals.StatsSeconds, cfg.Intervals.MonitorSeconds))
 
 	return b.String()
 }
 
 // getSysInfoText returns detailed system information
-func getSysInfoText() string {
+func getSysInfoText(ctx *AppContext) string {
 	var b strings.Builder
 	b.WriteString("🖥 *System Information*\n\n")
 
@@ -386,7 +435,7 @@ func getSysInfoText() string {
 		b.WriteString(fmt.Sprintf("*Kernel:* %s\n", h.KernelVersion))
 		b.WriteString(fmt.Sprintf("*Architecture:* %s\n", h.KernelArch))
 		b.WriteString(fmt.Sprintf("*Uptime:* %s\n", formatUptime(h.Uptime)))
-		b.WriteString(fmt.Sprintf("*Boot Time:* %s\n", time.Unix(int64(h.BootTime), 0).In(location).Format("02/01/2006 15:04")))
+		b.WriteString(fmt.Sprintf("*Boot Time:* %s\n", time.Unix(int64(h.BootTime), 0).In(ctx.State.TimeLocation).Format("02/01/2006 15:04")))
 	}
 
 	// CPU info
@@ -405,12 +454,18 @@ func getSysInfoText() string {
 		b.WriteString(fmt.Sprintf("\n*Total RAM:* %.1f GB\n", float64(v.Total)/1024/1024/1024))
 	}
 
-	// Disk info
-	for _, path := range []string{PathSSD, PathHDD} {
+	// Disk info (Use Config for paths)
+	paths := []string{ctx.Config.Paths.SSD, ctx.Config.Paths.HDD}
+	// Fallback/Default handling should ideally be in Config.Paths but assuming they are populated
+	if paths[0] == "" { paths[0] = "/Volume1" } // Fallback same as old globals for safety
+	if paths[1] == "" { paths[1] = "/Volume2" }
+
+	for i, path := range paths {
+		if path == "" { continue }
 		d, err := disk.Usage(path)
 		if err == nil {
 			name := "SSD"
-			if path == PathHDD {
+			if i == 1 {
 				name = "HDD"
 			}
 			b.WriteString(fmt.Sprintf("*%s (%s):* %.0f GB total\n", name, path, float64(d.Total)/1024/1024/1024))
@@ -427,11 +482,11 @@ func getSysInfoText() string {
 }
 
 // getDiskPredictionText estimates when disks will be full
-func getDiskPredictionText() string {
-	diskUsageHistoryMutex.Lock()
-	history := make([]DiskUsagePoint, len(diskUsageHistory))
-	copy(history, diskUsageHistory)
-	diskUsageHistoryMutex.Unlock()
+func getDiskPredictionText(ctx *AppContext) string {
+	ctx.State.mu.Lock()
+	history := make([]DiskUsagePoint, len(ctx.State.DiskHistory))
+	copy(history, ctx.State.DiskHistory)
+	ctx.State.mu.Unlock()
 
 	var b strings.Builder
 	b.WriteString("📊 *Disk Space Prediction*\n\n")
@@ -446,43 +501,32 @@ func getDiskPredictionText() string {
 	ssdPred := predictDiskFull(history, true)
 	hddPred := predictDiskFull(history, false)
 
-	statsMutex.RLock()
-	s := statsCache
-	statsMutex.RUnlock()
+	s, _ := ctx.Stats.Get()
 
 	// SSD
-	b.WriteString(fmt.Sprintf("💿 *SSD* — %.1f%% used\n", s.VolSSD.Used))
-	if ssdPred.DaysUntilFull < 0 {
-		b.WriteString("   📈 _Usage decreasing or stable_\n")
-	} else if ssdPred.DaysUntilFull > 365 {
-		b.WriteString("   ✅ _More than a year until full_\n")
-	} else if ssdPred.DaysUntilFull > 30 {
-		b.WriteString(fmt.Sprintf("   ✅ ~%d days until full\n", int(ssdPred.DaysUntilFull)))
-	} else if ssdPred.DaysUntilFull > 7 {
-		b.WriteString(fmt.Sprintf("   ⚠️ ~%d days until full\n", int(ssdPred.DaysUntilFull)))
-	} else {
-		b.WriteString(fmt.Sprintf("   🚨 ~%d days until full!\n", int(ssdPred.DaysUntilFull)))
+	writeDiskPred := func(icon, name string, pred DiskPrediction, usedPct float64) {
+		b.WriteString(fmt.Sprintf("%s *%s* — %.1f%% used\n", icon, name, usedPct))
+		switch {
+		case pred.DaysUntilFull < 0:
+			b.WriteString("   📈 _Usage decreasing or stable_\n")
+		case pred.DaysUntilFull > 365:
+			b.WriteString("   ✅ _More than a year until full_\n")
+		case pred.DaysUntilFull > 30:
+			b.WriteString(fmt.Sprintf("   ✅ ~%d days until full\n", int(pred.DaysUntilFull)))
+		case pred.DaysUntilFull > 7:
+			b.WriteString(fmt.Sprintf("   ⚠️ ~%d days until full\n", int(pred.DaysUntilFull)))
+		default:
+			b.WriteString(fmt.Sprintf("   🚨 ~%d days until full!\n", int(pred.DaysUntilFull)))
+		}
+		b.WriteString(fmt.Sprintf("   _Rate: %.2f GB/day_\n\n", pred.GBPerDay))
 	}
-	b.WriteString(fmt.Sprintf("   _Rate: %.2f GB/day_\n\n", ssdPred.GBPerDay))
 
-	// HDD
-	b.WriteString(fmt.Sprintf("🗄 *HDD* — %.1f%% used\n", s.VolHDD.Used))
-	if hddPred.DaysUntilFull < 0 {
-		b.WriteString("   📈 _Usage decreasing or stable_\n")
-	} else if hddPred.DaysUntilFull > 365 {
-		b.WriteString("   ✅ _More than a year until full_\n")
-	} else if hddPred.DaysUntilFull > 30 {
-		b.WriteString(fmt.Sprintf("   ✅ ~%d days until full\n", int(hddPred.DaysUntilFull)))
-	} else if hddPred.DaysUntilFull > 7 {
-		b.WriteString(fmt.Sprintf("   ⚠️ ~%d days until full\n", int(hddPred.DaysUntilFull)))
-	} else {
-		b.WriteString(fmt.Sprintf("   🚨 ~%d days until full!\n", int(hddPred.DaysUntilFull)))
-	}
-	b.WriteString(fmt.Sprintf("   _Rate: %.2f GB/day_\n", hddPred.GBPerDay))
+	writeDiskPred("💿", "SSD", ssdPred, s.VolSSD.Used)
+	writeDiskPred("🗄", "HDD", hddPred, s.VolHDD.Used)
 
 	b.WriteString(fmt.Sprintf("\n_Based on %d data points (%s of data)_",
-		len(history),
-		formatDuration(time.Since(history[0].Time))))
+len(history),
+formatDuration(time.Since(history[0].Time))))
 
 	return b.String()
 }
@@ -530,18 +574,15 @@ func predictDiskFull(history []DiskUsagePoint, isSSD bool) DiskPrediction {
 }
 
 // recordDiskUsage adds current disk usage to history
-func recordDiskUsage() {
-	statsMutex.RLock()
-	s := statsCache
-	ready := statsReady
-	statsMutex.RUnlock()
+func recordDiskUsage(ctx *AppContext) {
+	s, ready := ctx.Stats.Get()
 
 	if !ready {
 		return
 	}
 
-	diskUsageHistoryMutex.Lock()
-	defer diskUsageHistoryMutex.Unlock()
+	ctx.State.mu.Lock()
+	defer ctx.State.mu.Unlock()
 
 	point := DiskUsagePoint{
 		Time:    time.Now(),
@@ -551,11 +592,11 @@ func recordDiskUsage() {
 		HDDFree: s.VolHDD.Free,
 	}
 
-	diskUsageHistory = append(diskUsageHistory, point)
+	ctx.State.DiskHistory = append(ctx.State.DiskHistory, point)
 
 	// Keep max 7 days of data (at 5-min intervals = 2016 points)
-	if len(diskUsageHistory) > 2016 {
-		diskUsageHistory = diskUsageHistory[1:]
+	if len(ctx.State.DiskHistory) > 2016 {
+		ctx.State.DiskHistory = ctx.State.DiskHistory[1:]
 	}
 }
 
@@ -563,21 +604,19 @@ func recordDiskUsage() {
 //  QUICK STATUS (ultra-compact one-liner)
 // ═══════════════════════════════════════════════════════════════════
 
-func getQuickText() string {
-	statsMutex.RLock()
-	s := statsCache
-	ready := statsReady
-	statsMutex.RUnlock()
+func getQuickText(ctx *AppContext) string {
+	s, ready := ctx.Stats.Get()
 
 	if !ready {
 		return "⏳"
 	}
 
 	// Get trend graphs
-	cpuGraph, ramGraph := getTrendSummary()
+	cpuGraph, ramGraph := getTrendSummary(ctx)
 
 	// Container count
-	containers := getCachedContainerList()
+	containers := getCachedContainerList(ctx)
+	
 	running := 0
 	for _, c := range containers {
 		if c.Running {
@@ -637,7 +676,7 @@ func getQuickText() string {
 //  LOG SEARCH
 // ═══════════════════════════════════════════════════════════════════
 
-func getLogSearchText(args string) string {
+func getLogSearchText(ctx *AppContext, args string) string {
 	// Parse: container keyword
 	parts := strings.SplitN(strings.TrimSpace(args), " ", 2)
 	if len(parts) < 2 {
@@ -648,10 +687,10 @@ func getLogSearchText(args string) string {
 	keyword := parts[1]
 
 	// Search logs
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	c, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "docker", "logs", "--tail", "500", container)
+	cmd := exec.CommandContext(c, "docker", "logs", "--tail", "500", container)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Sprintf("❌ Error: `%v`", err)
@@ -685,30 +724,10 @@ func getLogSearchText(args string) string {
 	b.WriteString(fmt.Sprintf("🔍 *Log Search*: `%s` in `%s`\n\n", keyword, container))
 	b.WriteString(fmt.Sprintf("Found %d matches (showing last %d):\n\n", len(matches), len(matches)))
 	b.WriteString("```\n")
-	for _, m := range matches {
+for _, m := range matches {
 		b.WriteString(m + "\n")
 	}
 	b.WriteString("```")
 
 	return b.String()
-}
-
-// ═══════════════════════════════════════════════════════════════════
-//  TEST LLM
-// ═══════════════════════════════════════════════════════════════════
-
-func getTestLLMText() string {
-	if cfg.GeminiAPIKey == "" {
-		return "❌ *Test LLM*\n\n`gemini_api_key` non configurata in config.json"
-	}
-
-	testPrompt := "Rispondi in una sola frase breve: Ciao, funziono correttamente?"
-
-	response, err := callGeminiWithFallback(testPrompt, nil)
-
-	if err != nil {
-		return fmt.Sprintf("❌ *Test LLM*\n\n*Errore:*\n`%s`\n\n_Possibili cause:_\n- API key non valida\n- Modello non disponibile\n- Problemi di rete", err.Error())
-	}
-
-	return fmt.Sprintf("✅ *Test LLM*\n\n🤖 Risposta Gemini:\n_%s_\n\n_API funzionante!_", response)
 }

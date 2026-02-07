@@ -2,121 +2,29 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"log/slog"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
+
+	"nasbot/internal/cmdexec"
+	"nasbot/internal/format"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-// formatUptime formats uptime in a readable format
-func formatUptime(seconds uint64) string {
-	days := seconds / 86400
-	hours := (seconds % 86400) / 3600
-	mins := (seconds % 3600) / 60
-	if days > 0 {
-		return fmt.Sprintf("%dd%dh", days, hours)
-	}
-	return fmt.Sprintf("%dh%dm", hours, mins)
-}
-
-// formatBytes formats bytes in a readable format
-func formatBytes(bytes uint64) string {
-	gb := float64(bytes) / 1024 / 1024 / 1024
-	if gb >= 1000 {
-		return fmt.Sprintf("%.0fT", gb/1024)
-	}
-	return fmt.Sprintf("%.0fG", gb)
-}
-
-// formatRAM formats RAM in a readable format
-func formatRAM(mb uint64) string {
-	if mb >= 1024 {
-		return fmt.Sprintf("%.1fG", float64(mb)/1024.0)
-	}
-	return fmt.Sprintf("%dM", mb)
-}
-
-// formatDuration formats a duration readably
-func formatDuration(d time.Duration) string {
-	d = d.Round(time.Second)
-	if d < time.Minute {
-		return fmt.Sprintf("%ds", int(d.Seconds()))
-	}
-	if d < time.Hour {
-		m := int(d.Minutes())
-		s := int(d.Seconds()) % 60
-		if s > 0 {
-			return fmt.Sprintf("%dm%ds", m, s)
-		}
-		return fmt.Sprintf("%dm", m)
-	}
-	h := int(d.Hours())
-	m := int(d.Minutes()) % 60
-	return fmt.Sprintf("%dh%dm", h, m)
-}
-
-// formatPeriod formats seconds into a human readable period
-func formatPeriod(seconds int) string {
-	if seconds < 60 {
-		return fmt.Sprintf("%d seconds", seconds)
-	}
-	if seconds < 3600 {
-		mins := seconds / 60
-		if mins == 1 {
-			return "1 minute"
-		}
-		return fmt.Sprintf("%d minutes", mins)
-	}
-	hours := seconds / 3600
-	if hours == 1 {
-		return "1 hour"
-	}
-	return fmt.Sprintf("%d hours", hours)
-}
-
-// truncate truncates a string to max length
-func truncate(s string, max int) string {
-	if len(s) <= max {
-		return s
-	}
-	return s[:max-1] + "~"
-}
-
-// safeFloat safely gets a float from an array
-func safeFloat(arr []float64, def float64) float64 {
-	if len(arr) > 0 {
-		return arr[0]
-	}
-	return def
-}
-
-// boolToEmoji converts a bool to an emoji
-func boolToEmoji(b bool) string {
-	if b {
-		return "✅"
-	}
-	return "❌"
-}
-
-// makeProgressBar creates a 10-step visual progress bar
-func makeProgressBar(percent float64) string {
-	if percent < 0 {
-		percent = 0
-	}
-	if percent > 100 {
-		percent = 100
-	}
-
-	filled := int((percent + 5) / 10)
-	if filled > 10 {
-		filled = 10
-	}
-
-	return strings.Repeat("█", filled) + strings.Repeat("░", 10-filled)
-}
+// Wrappers for format package (kept for backward compatibility)
+func formatUptime(seconds uint64) string           { return format.FormatUptime(seconds) }
+func formatBytes(bytes uint64) string              { return format.FormatBytes(bytes) }
+func formatRAM(mb uint64) string                   { return format.FormatRAM(mb) }
+func formatDuration(d time.Duration) string        { return format.FormatDuration(d) }
+func formatPeriod(seconds int) string              { return format.FormatPeriod(seconds) }
+func truncate(s string, max int) string            { return format.Truncate(s, max) }
+func safeFloat(arr []float64, def float64) float64 { return format.SafeFloat(arr, def) }
+func boolToEmoji(b bool) string                    { return format.BoolToEmoji(b) }
+func makeProgressBar(percent float64) string       { return format.MakeProgressBar(percent) }
+func titleCaseWord(s string) string                { return format.TitleCaseWord(s) }
 
 // readCPUTemp reads CPU temperature from thermal zone
 func readCPUTemp() float64 {
@@ -133,8 +41,7 @@ func readDiskSMART(device string) (temp int, health string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "smartctl", "-A", "/dev/"+device)
-	out, _ := cmd.Output()
+	out, _ := runCommandStdout(ctx, "smartctl", "-A", "/dev/"+device)
 	for _, line := range strings.Split(string(out), "\n") {
 		if strings.Contains(line, "Temperature_Celsius") || strings.Contains(line, "Temperature_Internal") {
 			fields := strings.Fields(line)
@@ -144,8 +51,7 @@ func readDiskSMART(device string) (temp int, health string) {
 		}
 	}
 
-	cmd = exec.CommandContext(ctx, "smartctl", "-H", "/dev/"+device)
-	out, _ = cmd.Output()
+	out, _ = runCommandStdout(ctx, "smartctl", "-H", "/dev/"+device)
 	health = "OK"
 	for _, line := range strings.Split(string(out), "\n") {
 		if strings.Contains(line, "PASSED") {
@@ -175,21 +81,39 @@ func parseUptime(status string) string {
 }
 
 // getSmartDevices returns configured devices or defaults to sda/sdb
-func getSmartDevices() []string {
-	if len(cfg.Notifications.SMART.Devices) > 0 {
-		return cfg.Notifications.SMART.Devices
+func getSmartDevices(ctx *AppContext) []string {
+	if ctx != nil && ctx.Config != nil && len(ctx.Config.Notifications.SMART.Devices) > 0 {
+		return ctx.Config.Notifications.SMART.Devices
 	}
 	return []string{"sda", "sdb"}
 }
 
-// titleCaseWord capitalizes the first letter of a word (ASCII-safe, rune-aware).
-func titleCaseWord(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return s
+// safeSend sends a Telegram message and logs any error
+func safeSend(bot BotAPI, msg tgbotapi.Chattable) {
+	if bot == nil {
+		return
 	}
-	lower := strings.ToLower(s)
-	r := []rune(lower)
-	r[0] = unicode.ToUpper(r[0])
-	return string(r)
+	if _, err := bot.Send(msg); err != nil {
+		slog.Error("Telegram send failed", "err", err)
+	}
+}
+
+func setCommandRunner(r cmdexec.Runner) (restore func()) {
+	return cmdexec.SetRunner(r)
+}
+
+func commandExists(name string) bool {
+	return cmdexec.Exists(name)
+}
+
+func runCommandOutput(ctx context.Context, name string, args ...string) ([]byte, error) {
+	return cmdexec.CombinedOutput(ctx, name, args...)
+}
+
+func runCommandStdout(ctx context.Context, name string, args ...string) ([]byte, error) {
+	return cmdexec.Output(ctx, name, args...)
+}
+
+func runCommand(ctx context.Context, name string, args ...string) error {
+	return cmdexec.Run(ctx, name, args...)
 }
