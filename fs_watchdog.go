@@ -466,7 +466,7 @@ func (w *FSWatchdog) checkAndAlert(bot BotAPI, path string) {
 			}
 
 			// Send results
-			w.sendDeepScanReport(bot, result, usedPercent, freeGB)
+			w.sendDeepScanReport(bot, result)
 		}()
 
 		w.lastAlertTime = time.Now()
@@ -475,7 +475,7 @@ func (w *FSWatchdog) checkAndAlert(bot BotAPI, path string) {
 }
 
 // sendDeepScanReport formats and sends the deep scan results
-func (w *FSWatchdog) sendDeepScanReport(bot BotAPI, result *DeepScanResult, usedPercent, freeGB float64) {
+func (w *FSWatchdog) sendDeepScanReport(bot BotAPI, result *DeepScanResult) {
 	var b strings.Builder
 
 	b.WriteString("📊 *Deep Scan Results*\n\n")

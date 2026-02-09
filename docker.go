@@ -145,7 +145,7 @@ func getDockerMenuText(ctx *AppContext) (string, *tgbotapi.InlineKeyboardMarkup)
 }
 
 // getDockerStatsText returns container resource usage stats
-func getDockerStatsText(ctx *AppContext) string {
+func getDockerStatsText(_ *AppContext) string {
 	timeoutCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 

@@ -495,9 +495,10 @@ func getHealthStatus(ctx *AppContext, s Stats) (icon, text string, hasProblems b
 	criticalCount := 0
 	warningCount := 0
 	for _, e := range events {
-		if e.Type == "critical" {
+		switch e.Type {
+		case "critical":
 			criticalCount++
-		} else if e.Type == "warning" {
+		case "warning":
 			warningCount++
 		}
 	}

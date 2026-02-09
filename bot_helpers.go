@@ -14,7 +14,7 @@ import (
 //  SPEEDTEST
 // ═══════════════════════════════════════════════════════════════════
 
-func handleSpeedtest(ctx *AppContext, bot BotAPI, chatID int64) {
+func handleSpeedtest(_ *AppContext, bot BotAPI, chatID int64) {
 	if !commandExists("speedtest-cli") {
 		sendMarkdown(bot, chatID, "❌ `speedtest-cli` not installed.\n\nInstall it with:\n`sudo apt install speedtest-cli`")
 		return
@@ -74,7 +74,7 @@ func handleSpeedtest(ctx *AppContext, bot BotAPI, chatID int64) {
 //  POWER MANAGEMENT
 // ═══════════════════════════════════════════════════════════════════
 
-func getPowerMenuText(ctx *AppContext) (string, *tgbotapi.InlineKeyboardMarkup) {
+func getPowerMenuText(_ *AppContext) (string, *tgbotapi.InlineKeyboardMarkup) {
 	text := "⚡ *Power Management*\n\nBe careful, these actions affect the physical system."
 	kb := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
