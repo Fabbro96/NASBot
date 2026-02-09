@@ -24,7 +24,7 @@ func TestTruncatePath(t *testing.T) {
 		{"exactLen", "/a/b/c", 6, "/a/b/c"},
 		{"deepLong", "/a/b/c/d/e/f", 10, "...d/e/f"},
 		{"deepTight", "/a/b/c/d/e/f", 8, "...d/e/f"},
-		{"deepTighter", "/a/b/c/d/e/f", 7, "...d/..."},
+		{"deepTighter", "/a/b/c/d/e/f", 7, "...d..."},
 	}
 
 	for _, tc := range cases {
