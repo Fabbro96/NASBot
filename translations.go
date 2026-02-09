@@ -110,6 +110,9 @@ var translations = map[string]map[string]string{
 
 		"logs_title":               "*Recent system logs*\n",
 		"crash_detected_prev_boot": "\n\n🚨 *Previous Boot Crash Detected!*\n\nThe system likely crashed or was rebooted due to:\n```\n%s\n```",
+		"oom_unknown_proc":         "unknown",
+		"oom_alert_simple":         "🚨 *OOM Kill Detected: %s*\n\nProcess `%s` was terminated due to memory pressure.\n\n_⚠️ System may be unstable. Check RAM usage._",
+		"oom_reboot_warning":       "🚨 *System Critical Loop*\n\nMultiple OOM kills detected in a short time. Rebooting now to restore stability...",
 		"oom_alert":                "🚨 *OOM Kill Detected!*\n\nThe kernel killed a process due to memory pressure.\n\n```\n%s\n```\n\n_⚠️ System may be unstable. Check RAM usage._",
 		"kernel_panic":             "💀 *Kernel Panic / Oops Detected!*\n\nA critical kernel error occurred.\n\n```\n%s\n```\n\n_⚠️ System reboot may be imminent._",
 		"fs_readonly":              "🔴 *Filesystem Remounted Read-Only!*\n\nA disk was remounted read-only due to errors.\n\n```\n%s\n```\n\n_⚠️ Check disk health immediately!_",
@@ -335,8 +338,9 @@ var translations = map[string]map[string]string{
 		"logs_title":               "*Log di sistema recenti*\n",
 		"crash_detected_prev_boot": "\n\n🚨 *Rilevato Crash Avvio Precedente!*\n\nIl sistema è stato probabilmente riavviato a causa di:\n```\n%s\n```",
 
+		"oom_unknown_proc":   "sconosciuto",
 		"oom_alert_simple":   "🚨 *OOM Kill Rilevato: %s*\n\nIl processo `%s` è stato terminato per mancanza di memoria.\n\n_⚠️ Il sistema potrebbe essere instabile. Controlla la RAM._",
-		"oom_reboot_warning": "🚨 *Loop Critico di Sistema*\n\nRilevati molteplici OOM Kill in breve tempo. Riavvio il sistema tra 1 minuto per ripristinare la stabilità...",
+		"oom_reboot_warning": "🚨 *Loop Critico di Sistema*\n\nRilevati molteplici OOM Kill in breve tempo. Riavvio immediato per ripristinare la stabilità...",
 		"oom_alert":          "🚨 *OOM Kill Rilevato!*\n\nIl kernel ha terminato un processo per mancanza di memoria.\n\n```\n%s\n```\n\n_⚠️ Il sistema potrebbe essere instabile. Controlla la RAM._",
 		"kernel_panic":       "💀 *Kernel Panic / Oops Rilevato!*\n\nSi è verificato un errore critico del kernel.\n\n```\n%s\n```\n\n_⚠️ Il sistema potrebbe riavviarsi._",
 		"fs_readonly":        "🔴 *Filesystem in Sola Lettura!*\n\nUn disco è stato rimontato in sola lettura a causa di errori.\n\n```\n%s\n```\n\n_⚠️ Controlla subito lo stato dei dischi!_",

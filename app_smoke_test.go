@@ -26,6 +26,10 @@ func TestTextGeneratorsSmoke(t *testing.T) {
 		},
 		Settings: &UserSettings{Language: "en"},
 		Bot:      &BotContext{StartTime: time.Now().Add(-1 * time.Hour)},
+		Monitor: &MonitorState{
+			CPUTrend: []TrendPoint{},
+			RAMTrend: []TrendPoint{},
+		},
 		Docker: &DockerManager{
 			Cache: DockerCache{Containers: []ContainerInfo{{Name: "x", Running: true}}, LastUpdate: time.Now()},
 		},

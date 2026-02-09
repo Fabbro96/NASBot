@@ -17,7 +17,7 @@ func init() {
     cmdRegistry = SetupCommandRegistry()
 }
 
-func handleCommand(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) {
+func handleCommand(bot BotAPI, msg *tgbotapi.Message) {
     if app == nil {
         slog.Error("App context is nil in handleCommand")
         return
@@ -25,10 +25,10 @@ func handleCommand(bot *tgbotapi.BotAPI, msg *tgbotapi.Message) {
     if cmdRegistry.Execute(app, bot, msg) {
         return
     }
-    bot.Send(tgbotapi.NewMessage(msg.Chat.ID, app.Tr("unknown_command")))
+    safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, app.Tr("unknown_command")))
 }
 
-func handleCallback(bot *tgbotapi.BotAPI, query *tgbotapi.CallbackQuery) {
+func handleCallback(bot BotAPI, query *tgbotapi.CallbackQuery) {
     if app == nil {
         slog.Error("App context is nil in handleCallback")
         return

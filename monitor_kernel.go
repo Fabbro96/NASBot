@@ -163,12 +163,13 @@ func checkKernelEvents(ctx *AppContext, bot BotAPI) {
 			// Track OOM for auto-reboot
 			handleOOMLoop(ctx, bot)
 
-			// Try to simplify message
+			// Only report the process name (no full log)
+			procName := ctx.Tr("oom_unknown_proc")
 			matches := reOOMProcess.FindStringSubmatch(lastLine)
 			if len(matches) > 1 {
-				procName := matches[1]
-				msg = fmt.Sprintf(ctx.Tr("oom_alert_simple"), procName, procName)
+				procName = matches[1]
 			}
+			msg = fmt.Sprintf(ctx.Tr("oom_alert_simple"), procName, procName)
 		}
 
 		// Fallback or standard message
@@ -219,7 +220,6 @@ func handleOOMLoop(ctx *AppContext, bot BotAPI) {
 
 		// Execute reboot in a separate goroutine to allow message to send
 		go func() {
-			time.Sleep(1 * time.Minute)
 			slog.Info("Rebooting system now...")
 			_ = runCommand(context.Background(), "reboot")
 		}()

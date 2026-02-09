@@ -1,11 +1,19 @@
 package main
 
 import (
+	"io"
+	"log/slog"
 	"reflect"
 	"testing"
 )
 
 func TestParseDockerJSON(t *testing.T) {
+	prevLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	t.Cleanup(func() {
+		slog.SetDefault(prevLogger)
+	})
+
 	tests := []struct {
 		name    string
 		input   string

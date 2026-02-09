@@ -527,15 +527,39 @@ func (w *FSWatchdog) sendDeepScanReport(bot BotAPI, result *DeepScanResult, used
 
 // truncatePath shortens a path for display
 func truncatePath(path string, maxLen int) string {
+	if path == "" {
+		return ""
+	}
+	if maxLen <= 0 {
+		return ""
+	}
+	if maxLen <= 4 {
+		if strings.HasPrefix(path, "/") {
+			return "/..."[:maxLen]
+		}
+		return strings.Repeat(".", maxLen)
+	}
+
+	parts := strings.Split(path, "/")
+	if len(parts) <= 2 && len(path) <= maxLen {
+		return path
+	}
+
+	if len(parts) > 4 {
+		result := "..." + filepath.Join(parts[len(parts)-3:]...)
+		if len(result) > maxLen {
+			return result[:maxLen-3] + "..."
+		}
+		return result
+	}
+
 	if len(path) <= maxLen {
 		return path
 	}
-	// Keep the last part of the path
-	parts := strings.Split(path, "/")
 	if len(parts) <= 2 {
 		return path[:maxLen-3] + "..."
 	}
-	// Show .../last/two/parts
+
 	result := "..." + filepath.Join(parts[len(parts)-3:]...)
 	if len(result) > maxLen {
 		return result[:maxLen-3] + "..."

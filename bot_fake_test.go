@@ -39,6 +39,7 @@ func newTestAppContext() *AppContext {
 		State:    &RuntimeState{TimeLocation: time.UTC},
 		Settings: &UserSettings{Language: "en"},
 		Bot:      &BotContext{StartTime: time.Now().Add(-10 * time.Minute)},
+		Monitor:  &MonitorState{},
 		Docker: &DockerManager{
 			Cache: DockerCache{Containers: []ContainerInfo{{Name: "x", Running: true}}, LastUpdate: time.Now()},
 		},
