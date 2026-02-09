@@ -77,6 +77,7 @@ type MonitorState struct {
 	NetDNSAlertTime            time.Time
 	KwLastSignatures           map[string]string
 	KwInitialized              bool
+	RecentOOMs                 []time.Time
 }
 
 // UserSettings holds persistent user preferences (loaded from JSON)

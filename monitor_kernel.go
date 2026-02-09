@@ -4,10 +4,22 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+)
+
+// Regex to extract process name from OOM logs
+// e.g. "Out of memory: Killed process 123 (python3)..."
+// e.g. "oom_reaper: reaped process 123 (python3)..."
+var reOOMProcess = regexp.MustCompile(`(?:Killed process|reaped process) \d+ \((.+?)\)`)
+
+// OOM Loop thresholds
+const (
+	oomLoopWindow    = 30 * time.Minute
+	oomLoopThreshold = 5
 )
 
 // kernelEventType defines a class of critical kernel events
@@ -145,8 +157,26 @@ func checkKernelEvents(ctx *AppContext, bot BotAPI) {
 		ctx.State.AddEvent("critical", fmt.Sprintf("%s detected", evt.Name))
 		slog.Warn("KernelWatchdog event detected", "event", evt.Name, "line", lastLine)
 
+		// Special handling for OOM
+		var msg string
+		if evt.Name == "OOM" {
+			// Track OOM for auto-reboot
+			handleOOMLoop(ctx, bot)
+
+			// Try to simplify message
+			matches := reOOMProcess.FindStringSubmatch(lastLine)
+			if len(matches) > 1 {
+				procName := matches[1]
+				msg = fmt.Sprintf(ctx.Tr("oom_alert_simple"), procName, procName)
+			}
+		}
+
+		// Fallback or standard message
+		if msg == "" {
+			msg = fmt.Sprintf(ctx.Tr(evt.TrKey), ctxText)
+		}
+
 		// ALWAYS send — critical events ignore quiet hours
-		msg := fmt.Sprintf(ctx.Tr(evt.TrKey), ctxText)
 		m := tgbotapi.NewMessage(ctx.Config.AllowedUserID, msg)
 		m.ParseMode = "Markdown"
 		safeSend(bot, m)
@@ -154,6 +184,45 @@ func checkKernelEvents(ctx *AppContext, bot BotAPI) {
 
 	if !ctx.Monitor.KwInitialized {
 		ctx.Monitor.KwInitialized = true
+	}
+}
+
+func handleOOMLoop(ctx *AppContext, bot BotAPI) {
+	ctx.Monitor.mu.Lock()
+	defer ctx.Monitor.mu.Unlock()
+
+	now := time.Now()
+	// Append current event
+	ctx.Monitor.RecentOOMs = append(ctx.Monitor.RecentOOMs, now)
+
+	// Prune old events
+	valid := make([]time.Time, 0, len(ctx.Monitor.RecentOOMs))
+	for _, t := range ctx.Monitor.RecentOOMs {
+		if now.Sub(t) < oomLoopWindow {
+			valid = append(valid, t)
+		}
+	}
+	ctx.Monitor.RecentOOMs = valid
+
+	// Check threshold
+	if len(valid) >= oomLoopThreshold {
+		// Reset to avoid multiple reboots triggers if it fails or takes time
+		ctx.Monitor.RecentOOMs = []time.Time{}
+
+		// Notify user
+		msg := tgbotapi.NewMessage(ctx.Config.AllowedUserID, ctx.Tr("oom_reboot_warning"))
+		msg.ParseMode = "Markdown"
+		safeSend(bot, msg)
+
+		// Log it
+		slog.Error("OOM Loop detected. Triggering reboot.", "count", len(valid), "window", oomLoopWindow)
+
+		// Execute reboot in a separate goroutine to allow message to send
+		go func() {
+			time.Sleep(1 * time.Minute)
+			slog.Info("Rebooting system now...")
+			_ = runCommand(context.Background(), "reboot")
+		}()
 	}
 }
 
@@ -182,4 +251,56 @@ func getKernelLogLines() []string {
 	}
 
 	return strings.Split(text, "\n")
+}
+
+func checkPreviousBootCrash(ctx *AppContext) string {
+	if !commandExists("journalctl") {
+		return ""
+	}
+
+	c, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Check previous boot kernel logs
+	out, err := runCommandStdout(c, "journalctl", "-b", "-1", "-k", "-n", "100", "--no-pager")
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(string(out), "\n")
+
+	var crashLines []string
+
+	// Scan for OOM or Panic
+	for _, line := range lines {
+		low := strings.ToLower(line)
+		isHit := false
+		for _, evt := range kernelEventTypes {
+			if evt.Name != "OOM" && evt.Name != "KernelPanic" {
+				continue
+			}
+			for _, k := range evt.Keywords {
+				if strings.Contains(low, k) {
+					isHit = true
+					break
+				}
+			}
+			if isHit {
+				break
+			}
+		}
+
+		if isHit {
+			crashLines = append(crashLines, strings.TrimSpace(line))
+		}
+	}
+
+	if len(crashLines) > 0 {
+		// Dedup and limit
+		if len(crashLines) > 5 {
+			crashLines = crashLines[len(crashLines)-5:]
+		}
+		return fmt.Sprintf(ctx.Tr("crash_detected_prev_boot"), strings.Join(crashLines, "\n"))
+	}
+
+	return ""
 }
