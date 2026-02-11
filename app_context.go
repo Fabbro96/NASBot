@@ -110,6 +110,48 @@ type PruneSettings struct {
 
 // InitApp initializes the application context
 func InitApp(cfg *Config) *AppContext {
+	// Default settings seeded from config, overridden by persisted state later.
+	reportMode := 2
+	reportMorning := TimePoint{7, 30}
+	reportEvening := TimePoint{18, 30}
+	quietHours := QuietSettings{
+		Enabled: true,
+		Start:   TimePoint{23, 30},
+		End:     TimePoint{7, 0},
+	}
+	dockerPrune := PruneSettings{Enabled: true, Day: "sunday", Hour: 4}
+
+	if cfg != nil {
+		// Reports: mirror config as defaults for user settings.
+		if !cfg.Reports.Enabled {
+			reportMode = 0
+		} else if cfg.Reports.Morning.Enabled && cfg.Reports.Evening.Enabled {
+			reportMode = 2
+			reportMorning = TimePoint{cfg.Reports.Morning.Hour, cfg.Reports.Morning.Minute}
+			reportEvening = TimePoint{cfg.Reports.Evening.Hour, cfg.Reports.Evening.Minute}
+		} else if cfg.Reports.Morning.Enabled {
+			reportMode = 1
+			reportMorning = TimePoint{cfg.Reports.Morning.Hour, cfg.Reports.Morning.Minute}
+		} else if cfg.Reports.Evening.Enabled {
+			reportMode = 1
+			reportMorning = TimePoint{cfg.Reports.Evening.Hour, cfg.Reports.Evening.Minute}
+		}
+
+		// Quiet hours defaults.
+		quietHours = QuietSettings{
+			Enabled: cfg.QuietHours.Enabled,
+			Start:   TimePoint{cfg.QuietHours.StartHour, cfg.QuietHours.StartMinute},
+			End:     TimePoint{cfg.QuietHours.EndHour, cfg.QuietHours.EndMinute},
+		}
+
+		// Docker prune defaults.
+		dockerPrune = PruneSettings{
+			Enabled: cfg.Docker.WeeklyPrune.Enabled,
+			Day:     cfg.Docker.WeeklyPrune.Day,
+			Hour:    cfg.Docker.WeeklyPrune.Hour,
+		}
+	}
+
 	// Initialize HTTP client
 	httpClient := &http.Client{
 		Timeout: 30 * time.Second,
@@ -145,19 +187,11 @@ func InitApp(cfg *Config) *AppContext {
 		},
 		Settings: &UserSettings{
 			Language:      "en",
-			ReportMode:    2,
-			ReportMorning: TimePoint{7, 30},
-			ReportEvening: TimePoint{18, 30},
-			QuietHours: QuietSettings{
-				Enabled: true,
-				Start:   TimePoint{23, 30},
-				End:     TimePoint{7, 0},
-			},
-			DockerPrune: PruneSettings{
-				Enabled: true,
-				Day:     "sunday",
-				Hour:    4,
-			},
+			ReportMode:    reportMode,
+			ReportMorning: reportMorning,
+			ReportEvening: reportEvening,
+			QuietHours:    quietHours,
+			DockerPrune:   dockerPrune,
 		},
 		HTTP: httpClient,
 	}
@@ -271,6 +305,10 @@ func (ctx *AppContext) IsQuietHours() bool {
 	nowMin := now.Hour()*60 + now.Minute()
 	startMin := q.Start.Hour*60 + q.Start.Minute
 	endMin := q.End.Hour*60 + q.End.Minute
+	if startMin == endMin {
+		// Avoid muting notifications for a zero-length quiet window.
+		return false
+	}
 
 	if startMin < endMin {
 		// Same day (e.g. 14:00 to 16:00)

@@ -39,14 +39,17 @@ func (c *ConfigSetCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Messag
 		sendMarkdown(bot, msg.Chat.ID, fmt.Sprintf(ctx.Tr("configset_error"), err))
 		return
 	}
-	ignored, err := applyConfigPatch(patch)
+	result, err := applyConfigPatch(patch)
 	if err != nil {
 		sendMarkdown(bot, msg.Chat.ID, fmt.Sprintf(ctx.Tr("configset_error"), err))
 		return
 	}
 	response := ctx.Tr("configset_success")
-	if len(ignored) > 0 {
-		response += fmt.Sprintf("\n"+ctx.Tr("configset_ignored"), strings.Join(ignored, ", "))
+	if len(result.Ignored) > 0 {
+		response += fmt.Sprintf("\n"+ctx.Tr("configset_ignored"), strings.Join(result.Ignored, ", "))
+	}
+	if len(result.Corrected) > 0 {
+		response += fmt.Sprintf("\n"+ctx.Tr("configset_corrected"), strings.Join(result.Corrected, ", "))
 	}
 	sendMarkdown(bot, msg.Chat.ID, response)
 }

@@ -189,7 +189,7 @@ func editMessage(bot BotAPI, chatID int64, msgID int, text string, keyboard *tgb
 	}
 }
 
-func getMainKeyboard(ctx *AppContext) tgbotapi.InlineKeyboardMarkup {
+func getMainKeyboard(_ *AppContext) tgbotapi.InlineKeyboardMarkup {
 	// Future: use ctx.Tr for button labels
 	return tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(

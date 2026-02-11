@@ -85,6 +85,7 @@ var translations = map[string]map[string]string{
 		"configset_error":       "❌ Config update failed: %v",
 		"configset_success":     "✅ Config updated and saved",
 		"configset_ignored":     "Ignored locked fields: %s",
+		"configset_corrected":   "Corrected values: %s",
 		"configjson_title":      "🧾 *config.json* (bot credentials redacted)",
 		"generating_report":     "⏳ Generating report using *%s*...",
 
@@ -313,6 +314,7 @@ var translations = map[string]map[string]string{
 		"configset_error":       "❌ Aggiornamento config fallito: %v",
 		"configset_success":     "✅ Config aggiornata e salvata",
 		"configset_ignored":     "Campi bloccati ignorati: %s",
+		"configset_corrected":   "Valori corretti: %s",
 		"configjson_title":      "🧾 *config.json* (credenziali bot rimosse)",
 		"generating_report":     "⏳ Generazione report con *%s* in corso...",
 		// Nuove aggiunte
