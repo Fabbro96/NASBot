@@ -26,6 +26,7 @@ This policy applies to local development, pull requests, and releases.
 - Security workflow enforces: Dependency Review + CodeQL analysis.
 - Branch protection baseline: see [BRANCH_PROTECTION.md](BRANCH_PROTECTION.md).
 - GitHub UI rollout guide: see [GITHUB_RULESET_SETUP.md](GITHUB_RULESET_SETUP.md).
+- Ruleset automation: run `scripts/apply_github_rulesets.sh`.
 
 ## Incident Response (Leak)
 1. Rotate leaked secrets immediately.

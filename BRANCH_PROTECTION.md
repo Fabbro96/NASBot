@@ -47,6 +47,8 @@ Create a tag ruleset for `v*`:
 
 Detailed click-by-click guide: [GITHUB_RULESET_SETUP.md](GITHUB_RULESET_SETUP.md).
 
+Automated apply/update: `scripts/apply_github_rulesets.sh`.
+
 ## Verification Checklist
 - A PR without passing checks cannot merge.
 - A PR without approval cannot merge.

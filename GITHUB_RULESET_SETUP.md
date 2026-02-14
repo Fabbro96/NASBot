@@ -2,6 +2,21 @@
 
 Use this guide to enforce protections in GitHub UI.
 
+## Automated rollout (recommended)
+
+Use the repository script to create/update rulesets via GitHub API:
+
+```bash
+chmod +x scripts/apply_github_rulesets.sh
+scripts/apply_github_rulesets.sh --repo Fabbro96/NASBot
+```
+
+Preview without changes:
+
+```bash
+scripts/apply_github_rulesets.sh --repo Fabbro96/NASBot --dry-run
+```
+
 ## 1) Branch Ruleset for `main`
 
 1. Open repository **Settings**.
@@ -58,3 +73,4 @@ Use this guide to enforce protections in GitHub UI.
 - `CODEOWNERS` is already present in `.github/CODEOWNERS`.
 - Baseline policy reference: `BRANCH_PROTECTION.md`.
 - Security policy reference: `SECURITY.md`.
+- Ruleset templates are versioned in `.github/rulesets/`.
