@@ -3,6 +3,14 @@ set -euo pipefail
 
 mode="ci"
 tag="${GITHUB_REF_NAME:-}"
+temp_config_created="false"
+
+cleanup() {
+  if [[ "$temp_config_created" == "true" ]]; then
+    rm -f config.json
+  fi
+}
+trap cleanup EXIT
 
 if [[ "${1:-}" == "release" ]]; then
   mode="release"
@@ -53,9 +61,26 @@ check_changelog_entry() {
   fi
 }
 
+ensure_test_config() {
+  if [[ -f config.json ]]; then
+    return
+  fi
+
+  if [[ -f config.example.json ]]; then
+    cp config.example.json config.json
+    temp_config_created="true"
+    echo "ci_guard: created temporary config.json from config.example.json"
+    return
+  fi
+
+  echo "❌ Neither config.json nor config.example.json is available."
+  exit 1
+}
+
 chmod +x scripts/secret_scan.sh
 scripts/secret_scan.sh --repo
 check_config_not_tracked
+ensure_test_config
 check_gofmt
 go vet ./...
 go test -race -count=1 ./...
