@@ -45,6 +45,8 @@ Create a tag ruleset for `v*`:
 3. Add tag ruleset for `v*` with protection above.
 4. Save and verify by opening a PR from a test branch.
 
+Detailed click-by-click guide: [GITHUB_RULESET_SETUP.md](GITHUB_RULESET_SETUP.md).
+
 ## Verification Checklist
 - A PR without passing checks cannot merge.
 - A PR without approval cannot merge.
