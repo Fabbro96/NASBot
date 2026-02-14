@@ -18,7 +18,7 @@ Enable **Require status checks to pass before merging** and select these checks:
 - `Build & Test (Go 1.22.x)`
 - `Build & Test (Go 1.23.x)`
 - `Dependency Review`
-- `CodeQL Analysis`
+- `CodeQL Analysis (go)`
 
 Also enable:
 - Require branches to be up to date before merging: **ON**

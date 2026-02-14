@@ -51,7 +51,7 @@
             "context": "Dependency Review"
           },
           {
-            "context": "CodeQL Analysis"
+            "context": "CodeQL Analysis (go)"
           }
         ]
       }
