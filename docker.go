@@ -739,4 +739,3 @@ func executeDockerServiceRestart(ctx *AppContext, bot BotAPI, chatID int64, msgI
 	)
 	editMessage(bot, chatID, msgID, resultText, &kb)
 }
-
