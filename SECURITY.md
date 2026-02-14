@@ -19,6 +19,7 @@ This policy applies to local development, pull requests, and releases.
 
 ## Branch & Release Rules
 - Before merge/release, run:
+  - `scripts/shellcheck_all.sh`
   - `scripts/ci_guard.sh`
   - `./build_release.sh`
 - Create annotated tags only from validated commits.
