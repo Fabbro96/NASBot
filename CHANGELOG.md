@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented in this file.
 
+## v0.1.1 - 2026-02-14
+
+### Added
+- Hardened CI quality gate script (`scripts/ci_guard.sh`) used by CI and release workflows.
+- Versioned GitHub ruleset templates for branch/tag protections under `.github/rulesets/`.
+- Ruleset automation script (`scripts/apply_github_rulesets.sh`) with create/update and dry-run modes.
+- CODEOWNERS baseline for repository and security-critical paths.
+- Operational rollout guide for rulesets (`GITHUB_RULESET_SETUP.md`).
+
+### Changed
+- CI workflow now uses a unified quality gate with timeout guards.
+- Release workflow now validates semantic tag and changelog presence before publishing assets.
+- Security policy and branch protection docs now include automation and enforcement guidance.
+
+### Validation
+- Quality gate passing (`scripts/ci_guard.sh`).
+- Tests passing (`go test ./...`).
+- Build passing (`go build ./...`).
+- Release binaries built successfully (`./build_release.sh`).
+
 ## v0.1.0 - 2026-02-14
 
 ### Added
