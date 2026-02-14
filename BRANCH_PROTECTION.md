@@ -9,7 +9,7 @@ This document defines the mandatory GitHub protection settings for `main`.
 - Require a pull request before merging: **ON**
 - Require approvals: **1** minimum
 - Dismiss stale approvals when new commits are pushed: **ON**
-- Require review from code owners: **ON** (after `CODEOWNERS` is added)
+- Require review from code owners: **ON** (`.github/CODEOWNERS` now present)
 - Require conversation resolution before merging: **ON**
 
 ## Required Status Checks

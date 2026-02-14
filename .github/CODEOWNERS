@@ -1,0 +1,9 @@
+# Default owners for the whole repository
+* @Fabbro96
+
+# Security and release critical paths
+/.github/workflows/ @Fabbro96
+/SECURITY.md @Fabbro96
+/BRANCH_PROTECTION.md @Fabbro96
+/scripts/ @Fabbro96
+/.githooks/ @Fabbro96
