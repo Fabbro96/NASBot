@@ -35,6 +35,24 @@ jobs:
           chmod +x scripts/secret_scan.sh
           scripts/secret_scan.sh --repo
 
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Shell lint
+        run: |
+          chmod +x scripts/shellcheck_all.sh
+          scripts/shellcheck_all.sh
+
   build-test:
     name: Build & Test (Go ${{ matrix.go-version }})
     runs-on: ubuntu-latest

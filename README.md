@@ -122,6 +122,7 @@ go test ./...
 GitHub Actions pipelines:
 
 - `CI` (push/PR): secret scan, `gofmt` check, `go vet`, race tests, build, release script smoke.
+- `ShellCheck` (push/PR): strict lint for all `.sh` scripts.
 - `Security` (PR + weekly): Dependency Review + CodeQL.
 - `Release` (tag `v*`): build binaries, generate checksums, publish GitHub Release artifacts.
 - `Dependabot`: weekly updates for `gomod` and GitHub Actions.
