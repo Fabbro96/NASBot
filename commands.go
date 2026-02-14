@@ -1,41 +1,41 @@
 package main
 
 import (
-"context"
-"io"
-"net"
-"net/http"
-"strings"
-"time"
+	"context"
+	"io"
+	"net"
+	"net/http"
+	"strings"
+	"time"
 )
 
 const (
-publicIPURL     = "https://api.ipify.org"
-hostIPTimeout   = 2 * time.Second
-netTimeout      = 5 * time.Second
-logCmdTimeout   = 5 * time.Second
-psTimeout       = 4 * time.Second
-maxLogLines     = 120
-maxLogChars     = 3500
-maxTopProcesses = 8
-maxProcNameLen  = 16
-cpuWarmC        = 75.0
-cpuHotC         = 85.0
-diskWarmC       = 45
+	publicIPURL     = "https://api.ipify.org"
+	hostIPTimeout   = 2 * time.Second
+	netTimeout      = 5 * time.Second
+	logCmdTimeout   = 5 * time.Second
+	psTimeout       = 4 * time.Second
+	maxLogLines     = 120
+	maxLogChars     = 3500
+	maxTopProcesses = 8
+	maxProcNameLen  = 16
+	cpuWarmC        = 75.0
+	cpuHotC         = 85.0
+	diskWarmC       = 45
 )
 
 var (
-reportMode          int
-reportMorningHour   int
-reportMorningMinute int
-reportEveningHour   int
-reportEveningMinute int
-quietHoursEnabled   bool
-quietStartHour      int
-quietStartMinute    int
-quietEndHour        int
-quietEndMinute      int
-httpClient          = &http.Client{Timeout: netTimeout}
+	reportMode          int
+	reportMorningHour   int
+	reportMorningMinute int
+	reportEveningHour   int
+	reportEveningMinute int
+	quietHoursEnabled   bool
+	quietStartHour      int
+	quietStartMinute    int
+	quietEndHour        int
+	quietEndMinute      int
+	httpClient          = &http.Client{Timeout: netTimeout}
 )
 
 func cpuTempStatus(ctx *AppContext, temp float64) (icon, status string) {

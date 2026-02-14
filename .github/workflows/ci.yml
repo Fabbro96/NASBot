@@ -18,6 +18,7 @@ jobs:
   secret-scan:
     name: Secret Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,6 +38,7 @@ jobs:
   build-test:
     name: Build & Test (Go ${{ matrix.go-version }})
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -55,23 +57,10 @@ jobs:
       - name: Download modules
         run: go mod download
 
-      - name: Verify formatting (gofmt)
+      - name: Quality gate
         run: |
-          fmt_files=$(gofmt -l .)
-          if [ -n "$fmt_files" ]; then
-            echo "Files not formatted with gofmt:"
-            echo "$fmt_files"
-            exit 1
-          fi
-
-      - name: Vet
-        run: go vet ./...
-
-      - name: Unit tests (race)
-        run: go test -race -count=1 ./...
-
-      - name: Build
-        run: go build ./...
+          chmod +x scripts/ci_guard.sh scripts/secret_scan.sh
+          scripts/ci_guard.sh
 
       - name: Release script smoke
         run: |

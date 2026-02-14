@@ -17,6 +17,7 @@ jobs:
   release:
     name: Build and Publish Release
     runs-on: ubuntu-latest
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -31,8 +32,10 @@ jobs:
       - name: Download modules
         run: go mod download
 
-      - name: Test
-        run: go test ./...
+      - name: Release guard
+        run: |
+          chmod +x scripts/ci_guard.sh scripts/secret_scan.sh
+          scripts/ci_guard.sh release "${GITHUB_REF_NAME}"
 
       - name: Build release binaries
         run: |
