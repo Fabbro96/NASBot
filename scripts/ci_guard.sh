@@ -1,9 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." >/dev/null 2>&1 && pwd)"
+cd "$REPO_ROOT"
+
 mode="ci"
 tag="${GITHUB_REF_NAME:-}"
 temp_config_created="false"
+
+usage() {
+	cat <<'EOF'
+Usage:
+  scripts/ci_guard.sh [release [vX.Y.Z]]
+
+Modes:
+  ci       Default quality checks
+  release  Adds semantic tag and changelog checks
+EOF
+}
 
 cleanup() {
   if [[ "$temp_config_created" == "true" ]]; then
@@ -15,7 +30,27 @@ trap cleanup EXIT
 if [[ "${1:-}" == "release" ]]; then
   mode="release"
   tag="${2:-$tag}"
+elif [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+  exit 0
+elif [[ -n "${1:-}" ]]; then
+  echo "Unknown mode: $1"
+  usage
+  exit 1
 fi
+
+check_required_commands() {
+  local missing=()
+  for cmd in git go gofmt grep; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      missing+=("$cmd")
+    fi
+  done
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    echo "❌ Missing required commands: ${missing[*]}"
+    exit 1
+  fi
+}
 
 check_config_not_tracked() {
   if git ls-files --error-unmatch config.json >/dev/null 2>&1; then
@@ -76,6 +111,8 @@ ensure_test_config() {
   echo "❌ Neither config.json nor config.example.json is available."
   exit 1
 }
+
+check_required_commands
 
 chmod +x scripts/secret_scan.sh
 scripts/secret_scan.sh --repo

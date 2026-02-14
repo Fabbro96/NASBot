@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." >/dev/null 2>&1 && pwd)"
+cd "$REPO_ROOT"
+
 repo=""
 dry_run="false"
 
@@ -37,7 +41,16 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if ! command -v python >/dev/null 2>&1; then
+  echo "❌ python is required to parse ruleset templates"
+  exit 1
+fi
+
 if [[ -z "$repo" ]]; then
+  if ! git remote get-url origin >/dev/null 2>&1; then
+    echo "❌ Cannot detect repository. Use --repo owner/name"
+    exit 1
+  fi
   repo=$(git remote get-url origin | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')
 fi
 
@@ -55,8 +68,18 @@ if [[ "$dry_run" != "true" ]]; then
   gh auth status >/dev/null
 fi
 
+template_exists() {
+  local path="$1"
+  if [[ ! -f "$path" ]]; then
+    echo "❌ Missing template: $path"
+    exit 1
+  fi
+}
+
 apply_ruleset() {
   local file="$1"
+
+  template_exists "$file"
 
   local name target
   name=$(python - <<PY
