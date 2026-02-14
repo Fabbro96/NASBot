@@ -1,6 +1,8 @@
 package main
 
 import (
+	"strings"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -35,6 +37,19 @@ func (c *TempCmd) Description() string { return "Show temperature sensors" }
 type PowerCmd struct{ Action string }
 
 func (c *PowerCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, args string) {
+	if c.Action == "reboot" && isForceRebootArg(args) {
+		executeForcedReboot(ctx, bot, msg.Chat.ID, 0, "manual-force-command")
+		return
+	}
 	askPowerConfirmation(ctx, bot, msg.Chat.ID, 0, c.Action)
 }
 func (c *PowerCmd) Description() string { return "Reboot or shutdown" }
+
+func isForceRebootArg(args string) bool {
+	switch strings.ToLower(strings.TrimSpace(args)) {
+	case "force", "-f", "--force", "now":
+		return true
+	default:
+		return false
+	}
+}

@@ -142,14 +142,16 @@ type KernelWatchdogConfig struct {
 }
 
 type NetworkWatchdogConfig struct {
-	Enabled           bool     `json:"enabled"`
-	CheckIntervalSecs int      `json:"check_interval_seconds"`
-	Targets           []string `json:"targets"`
-	DNSHost           string   `json:"dns_host"`
-	Gateway           string   `json:"gateway"`
-	FailureThreshold  int      `json:"failure_threshold"`
-	CooldownMins      int      `json:"cooldown_minutes"`
-	RecoveryNotify    bool     `json:"recovery_notify"`
+	Enabled              bool     `json:"enabled"`
+	CheckIntervalSecs    int      `json:"check_interval_seconds"`
+	Targets              []string `json:"targets"`
+	DNSHost              string   `json:"dns_host"`
+	Gateway              string   `json:"gateway"`
+	FailureThreshold     int      `json:"failure_threshold"`
+	CooldownMins         int      `json:"cooldown_minutes"`
+	RecoveryNotify       bool     `json:"recovery_notify"`
+	ForceRebootOnDown    bool     `json:"force_reboot_on_prolonged_down"`
+	ForceRebootAfterMins int      `json:"force_reboot_after_minutes"`
 }
 
 type RaidWatchdogConfig struct {

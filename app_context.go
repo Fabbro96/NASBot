@@ -75,6 +75,7 @@ type MonitorState struct {
 	NetDownSince               time.Time
 	NetDownAlertTime           time.Time
 	NetDNSAlertTime            time.Time
+	NetForceRebootTriggered    bool
 	KwLastSignatures           map[string]string
 	KwInitialized              bool
 	RecentOOMs                 []time.Time

@@ -169,7 +169,8 @@ func getHelpText(ctx *AppContext) string {
 	b.WriteString("/configset <json> — update config.json\n")
 	b.WriteString("/logs — recent system logs\n")
 	b.WriteString("/ask <question> — ask AI about recent logs\n")
-	b.WriteString("/reboot · /shutdown — power control\n\n")
+	b.WriteString("/reboot · /shutdown — power control\n")
+	b.WriteString("/reboot force · /forcereboot — forced reboot (no confirm)\n\n")
 
 	ctx.Settings.mu.RLock()
 	reportMode := ctx.Settings.ReportMode
@@ -303,6 +304,18 @@ func getConfigText(ctx *AppContext) string {
 			ctx.Config.Docker.AutoRestartOnRAMCritical.RAMThreshold))
 	} else {
 		b.WriteString("  Auto-restart: ❌\n")
+	}
+
+	// Network watchdog force reboot
+	b.WriteString("\n*Network Watchdog:*\n")
+	if ctx.Config.NetworkWatchdog.Enabled {
+		if ctx.Config.NetworkWatchdog.ForceRebootOnDown {
+			b.WriteString(fmt.Sprintf("  Force reboot: ✅ after %d min down\n", ctx.Config.NetworkWatchdog.ForceRebootAfterMins))
+		} else {
+			b.WriteString("  Force reboot: ❌\n")
+		}
+	} else {
+		b.WriteString("  Enabled: ❌\n")
 	}
 
 	// Intervals

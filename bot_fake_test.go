@@ -84,3 +84,24 @@ func TestHandleCallbackLanguage(t *testing.T) {
 		t.Fatalf("expected callback ack request")
 	}
 }
+
+func TestHandleCallbackLanguageSpanish(t *testing.T) {
+	prev := app
+	app = newTestAppContext()
+	t.Cleanup(func() { app = prev })
+
+	bot := &fakeBot{}
+	query := &tgbotapi.CallbackQuery{
+		ID:      "2",
+		Data:    "set_lang_es",
+		Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: 1}, MessageID: 11},
+	}
+
+	handleCallback(bot, query)
+	if app.Settings.GetLanguage() != "es" {
+		t.Fatalf("language not updated to es")
+	}
+	if len(bot.requests) == 0 {
+		t.Fatalf("expected callback ack request")
+	}
+}

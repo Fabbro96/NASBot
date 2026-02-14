@@ -30,11 +30,12 @@ func TestSanitizeConfig_DefaultsAndClamps(t *testing.T) {
 			GraceSeconds:  10,
 		},
 		NetworkWatchdog: NetworkWatchdogConfig{
-			CheckIntervalSecs: 5,
-			FailureThreshold:  0,
-			CooldownMins:      0,
-			DNSHost:           "",
-			Targets:           nil,
+			CheckIntervalSecs:    5,
+			FailureThreshold:     0,
+			CooldownMins:         0,
+			ForceRebootAfterMins: 0,
+			DNSHost:              "",
+			Targets:              nil,
 		},
 		FSWatchdog: FSWatchdogConfig{
 			CheckIntervalMins: 0,
@@ -87,6 +88,9 @@ func TestSanitizeConfig_DefaultsAndClamps(t *testing.T) {
 	if cfg.NetworkWatchdog.DNSHost == "" {
 		t.Fatalf("network watchdog dns_host should default when empty")
 	}
+	if cfg.NetworkWatchdog.ForceRebootAfterMins != 3 {
+		t.Fatalf("network watchdog force reboot after should default to 3, got %d", cfg.NetworkWatchdog.ForceRebootAfterMins)
+	}
 	if len(cfg.FSWatchdog.DeepScanPaths) == 0 || cfg.FSWatchdog.DeepScanPaths[0] != "/" {
 		t.Fatalf("fs watchdog deep_scan_paths should default to /")
 	}
@@ -110,11 +114,12 @@ func TestSanitizeConfig_NormalizesLists(t *testing.T) {
 			CriticalThreshold: 90,
 		},
 		NetworkWatchdog: NetworkWatchdogConfig{
-			Targets:           []string{" 1.1.1.1 ", "", "1.1.1.1", "8.8.8.8"},
-			CheckIntervalSecs: 60,
-			FailureThreshold:  3,
-			CooldownMins:      10,
-			DNSHost:           "google.com",
+			Targets:              []string{" 1.1.1.1 ", "", "1.1.1.1", "8.8.8.8"},
+			CheckIntervalSecs:    60,
+			FailureThreshold:     3,
+			CooldownMins:         10,
+			ForceRebootAfterMins: 2000,
+			DNSHost:              "google.com",
 		},
 	}
 
@@ -134,6 +139,9 @@ func TestSanitizeConfig_NormalizesLists(t *testing.T) {
 	}
 	if len(cfg.NetworkWatchdog.Targets) != 2 || cfg.NetworkWatchdog.Targets[0] != "1.1.1.1" || cfg.NetworkWatchdog.Targets[1] != "8.8.8.8" {
 		t.Fatalf("network targets not normalized: %#v", cfg.NetworkWatchdog.Targets)
+	}
+	if cfg.NetworkWatchdog.ForceRebootAfterMins != 1440 {
+		t.Fatalf("network force reboot minutes should be clamped to 1440, got %d", cfg.NetworkWatchdog.ForceRebootAfterMins)
 	}
 }
 

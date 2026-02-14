@@ -1,21 +1,31 @@
 # 🖥️ NASBot
 
-> A lightweight, bilingual (EN/IT) Telegram bot to monitor your home server/NAS.
+> A lightweight Telegram bot to monitor and control your home server/NAS.
 
 ![Platform](https://img.shields.io/badge/Platform-Linux%20ARM64-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-A self-hosted bot that gives you a **live dashboard** of your system (CPU, RAM, Disks, Docker) directly in Telegram. No web interface, no complex setup, just a single binary.
+A self-hosted bot that gives you a **live dashboard** (CPU, RAM, Disks, Docker) directly in Telegram. No web UI, just a single binary.
 
 ## ✨ Key Features
 
 - **📊 Live Stats**: CPU, RAM, Swap, Disk (SSD/HDD), Net, Temperatures.
 - **🐳 Docker Manager**: Start, stop, restart, and kill containers via buttons.
 - **🤖 AI Reports**: Daily summaries powered by **Gemini 2.5 Flash** (optional).
-- **🌍 Bilingual**: Full support for **English** 🇬🇧 and **Italian** 🇮🇹.
+- **🌍 Multi-language**: EN, IT, ES, DE, ZH, UK (full key coverage with EN fallback).
 - **🔔 Smart Alerts**: Notify on high usage, stopped containers, or critical errors.
 - **🛡️ Watchdogs**: Auto-restart Docker or containers if they crash or freeze.
+- **⚙️ Legacy Config Auto-Heal**: Missing fields in old `config.json` are auto-added with defaults.
 - **📨 Reports**: Scheduled summary (morning/evening) with trends and events.
+
+## 🧩 Code Layout (Short)
+
+- `handlers.go`: bot entrypoints (`handleCommand`, `handleCallback`)
+- `handlers_callback_routes.go`: callback routing logic (settings, docker/power, scoped handlers)
+- `handlers_settings.go`: language + settings keyboards/text helpers
+- `config.go`: load/sanitize/patch flow
+- `config_defaults.go`: default template + recursive missing-field merge
+- `translations.go`: translations + automatic key coverage sync
 
 ---
 

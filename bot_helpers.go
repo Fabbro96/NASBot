@@ -82,6 +82,9 @@ func getPowerMenuText(_ *AppContext) (string, *tgbotapi.InlineKeyboardMarkup) {
 			tgbotapi.NewInlineKeyboardButtonData("🛑 Shutdown NAS", "pre_confirm_shutdown"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("💥 Force Reboot", "force_reboot_now"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("⬅️ Back", "back_main"),
 		),
 	)
@@ -137,6 +140,26 @@ func handlePowerConfirm(ctx *AppContext, bot BotAPI, chatID int64, msgID int, da
 		time.Sleep(1 * time.Second)
 		if err := runCommand(context.Background(), cmd); err != nil {
 			slog.Error("Power command failed", "cmd", cmd, "err", err)
+		}
+	}()
+}
+
+func executeForcedReboot(ctx *AppContext, bot BotAPI, chatID int64, msgID int, reason string) {
+	ctx.State.AddEvent("action", "Forced reboot triggered: "+reason)
+
+	if msgID > 0 {
+		editMessage(bot, chatID, msgID, ctx.Tr("force_reboot_triggered"), nil)
+	} else {
+		msg := tgbotapi.NewMessage(chatID, ctx.Tr("force_reboot_triggered"))
+		msg.ParseMode = "Markdown"
+		safeSend(bot, msg)
+	}
+
+	go func() {
+		time.Sleep(1 * time.Second)
+		slog.Warn("Executing forced reboot", "reason", reason)
+		if err := runCommand(context.Background(), "reboot", "-f"); err != nil {
+			slog.Error("Forced reboot command failed", "err", err)
 		}
 	}()
 }

@@ -30,25 +30,38 @@ type ConfigPatchResult struct {
 
 // loadConfig reads config.json and populates the global Config struct
 func loadConfig() {
-	file, err := os.Open(configFile)
+	fileContent, err := os.ReadFile(configFile)
 	if err != nil {
 		slog.Error("Config file not found", "file", configFile, "err", err)
 		fmt.Println("Error: config.json not found. Please create it based on config.example.json")
 		os.Exit(1)
 	}
-	defer file.Close()
 
-	decoder := json.NewDecoder(file)
-	if err := decoder.Decode(&cfg); err != nil {
+	var configMap map[string]interface{}
+	if err := json.Unmarshal(fileContent, &configMap); err != nil {
 		slog.Error("Failed to parse config", "err", err)
 		os.Exit(1)
 	}
+
+	defaultsAdded := fillMissingConfigFields(configMap)
+
+	mergedContent, err := json.Marshal(configMap)
+	if err != nil {
+		slog.Error("Failed to serialize merged config", "err", err)
+		os.Exit(1)
+	}
+
+	if err := json.Unmarshal(mergedContent, &cfg); err != nil {
+		slog.Error("Failed to decode merged config", "err", err)
+		os.Exit(1)
+	}
+
 	changes := sanitizeConfig(&cfg)
-	if len(changes) > 0 {
+	if defaultsAdded || len(changes) > 0 {
 		if err := saveConfig(&cfg); err != nil {
 			slog.Error("Failed to save corrected config", "err", err)
 		} else {
-			slog.Warn("Config corrected", "changes", changes)
+			slog.Warn("Config corrected", "defaults_added", defaultsAdded, "changes", changes)
 		}
 	}
 
@@ -236,6 +249,12 @@ func sanitizeConfig(c *Config) []string {
 	clampIntField("network_watchdog.check_interval_seconds", &c.NetworkWatchdog.CheckIntervalSecs, 10, 3600)
 	clampIntField("network_watchdog.failure_threshold", &c.NetworkWatchdog.FailureThreshold, 1, 20)
 	clampIntField("network_watchdog.cooldown_minutes", &c.NetworkWatchdog.CooldownMins, 1, 120)
+	if c.NetworkWatchdog.ForceRebootAfterMins <= 0 {
+		c.NetworkWatchdog.ForceRebootAfterMins = 3
+		add("network_watchdog.force_reboot_after_minutes", c.NetworkWatchdog.ForceRebootAfterMins)
+	} else {
+		clampIntField("network_watchdog.force_reboot_after_minutes", &c.NetworkWatchdog.ForceRebootAfterMins, 1, 1440)
+	}
 	trimField("network_watchdog.dns_host", &c.NetworkWatchdog.DNSHost)
 	trimField("network_watchdog.gateway", &c.NetworkWatchdog.Gateway)
 	if c.NetworkWatchdog.DNSHost == "" {
@@ -357,6 +376,7 @@ func applyConfigPatch(patch map[string]interface{}) (ConfigPatchResult, error) {
 	for k, v := range patch {
 		configMap[k] = v
 	}
+	_ = fillMissingConfigFields(configMap)
 
 	// Serialize merged map
 	mergedContent, err := json.MarshalIndent(configMap, "", "  ")
