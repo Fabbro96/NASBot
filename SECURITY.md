@@ -25,6 +25,7 @@ This policy applies to local development, pull requests, and releases.
 - Create annotated tags only from validated commits.
 - CI enforces: secret scan + format/vet/test/build gates.
 - Security workflow enforces: Dependency Review + CodeQL analysis.
+- Branch protection baseline: see [BRANCH_PROTECTION.md](BRANCH_PROTECTION.md).
 
 ## Incident Response (Leak)
 1. Rotate leaked secrets immediately.
