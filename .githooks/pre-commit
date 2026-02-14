@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+scripts/secret_scan.sh
+
+echo "pre-commit: secret scan passed"

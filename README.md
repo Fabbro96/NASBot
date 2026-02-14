@@ -101,9 +101,27 @@ This bot executes commands like `docker` and `reboot`. Ensure `allowed_user_id` 
 
 `config.json` is ignored by git on purpose. Keep API keys and tokens there locally, and rotate them if they ever leak.
 
+Enable local hardening hooks:
+
+```bash
+git config core.hooksPath .githooks
+chmod +x .githooks/pre-commit scripts/secret_scan.sh
+```
+
+See [SECURITY.md](SECURITY.md) for full hardening policy and leak response steps.
+
 ## 🧪 Testing
 Run all tests:
 
 ```bash
 go test ./...
 ```
+
+## 🔁 CI/CD
+
+GitHub Actions pipelines:
+
+- `CI` (push/PR): secret scan, `gofmt` check, `go vet`, race tests, build, release script smoke.
+- `Security` (PR + weekly): Dependency Review + CodeQL.
+- `Release` (tag `v*`): build binaries, generate checksums, publish GitHub Release artifacts.
+- `Dependabot`: weekly updates for `gomod` and GitHub Actions.

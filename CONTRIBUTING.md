@@ -25,11 +25,12 @@ Feature requests are welcome! Please:
 ### Pull Requests
 
 1. Fork the repo and create your branch from `main`
-2. If you've added code, add comments explaining the logic
-3. Ensure the code compiles: `go build -o nasbot .`
-4. Test your changes on a real system if possible
-5. Update the README if you added new features/commands
-6. Submit your PR with a clear description
+2. Ensure local hooks are enabled (required): `git config core.hooksPath .githooks`
+3. Ensure the code compiles: `go build ./...`
+4. Run tests: `go test ./...`
+5. If relevant, validate release build: `./build_release.sh`
+6. Update docs if you added new features/commands
+7. Submit your PR with a clear description
 
 ## Development Setup
 
@@ -40,6 +41,10 @@ cd nasbot
 
 # Install dependencies
 go mod download
+
+# Enable hardening hooks (required)
+git config core.hooksPath .githooks
+chmod +x .githooks/pre-commit scripts/secret_scan.sh
 
 # Create config
 cp config.example.json config.json
@@ -59,18 +64,30 @@ go build -o nasbot .
 - Comment exported functions and complex logic
 - Keep functions focused and reasonably sized
 
+## Security Rules (Required)
+
+- Do not commit real secrets in any file.
+- Keep credentials only in local `config.json` (gitignored).
+- Use `config.example.json` for templates and examples.
+- Follow [SECURITY.md](SECURITY.md) before release/tag.
+
 ## Project Structure
 
 ```
 .
-├── main.go              # All bot code (single file for simplicity)
+├── handlers*.go         # Command/callback handling
+├── monitors_*.go        # Monitoring runtime/raid/stress manager
+├── reports*.go          # Runtime/schedule/AI report generation
+├── translations*.go     # i18n dictionaries/runtime helpers
 ├── config.json          # Your config (gitignored)
 ├── config.example.json  # Example config for new users
+├── SECURITY.md          # Hardening policy and leak response
+├── .githooks/           # Local commit hooks (secret scanner)
 ├── go.mod               # Go module definition
 ├── go.sum               # Dependency checksums
 ├── README.md            # Documentation
 ├── LICENSE              # MIT License
-└── setup_autostart.sh   # Autostart setup script
+└── build_release.sh     # Release build script
 ```
 
 ## Adding New Commands

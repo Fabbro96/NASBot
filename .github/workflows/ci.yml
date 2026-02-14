@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+    tags-ignore: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secret-scan:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Policy secret scanner (repo)
+        run: |
+          chmod +x scripts/secret_scan.sh
+          scripts/secret_scan.sh --repo
+
+  build-test:
+    name: Build & Test (Go ${{ matrix.go-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ["1.22.x", "1.23.x"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Verify formatting (gofmt)
+        run: |
+          fmt_files=$(gofmt -l .)
+          if [ -n "$fmt_files" ]; then
+            echo "Files not formatted with gofmt:"
+            echo "$fmt_files"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Unit tests (race)
+        run: go test -race -count=1 ./...
+
+      - name: Build
+        run: go build ./...
+
+      - name: Release script smoke
+        run: |
+          chmod +x build_release.sh
+          ./build_release.sh
+
+      - name: Upload build artifacts
+        if: matrix.go-version == '1.22.x'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nasbot-binaries
+          path: |
+            nasbot
+            nasbot-arm64
