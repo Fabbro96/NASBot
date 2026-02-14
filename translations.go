@@ -110,6 +110,13 @@ var translations = map[string]map[string]string{
 		"netwd_started": "[NetworkWatchdog] Started (check every %ds)",
 
 		"logs_title":               "*Recent system logs*\n",
+		"ask_usage":                "Usage: `/ask <question>`\n\nExample: `/ask How many OOMs are in the logs?`",
+		"ask_no_gemini":            "Gemini API key not configured",
+		"ask_analyzing":            "Analyzing logs...",
+		"ask_error":                "Log analysis failed",
+		"ask_title":                "Log Q&A",
+		"ask_no_logs":              "_No logs available to analyze_",
+		"ask_prompt":               "Answer the user's question using only the logs. Be EXTREMELY concise. Max 10-15 lines. If the logs do not contain the answer, say so.\n\nQuestion:\n%s\n\nLogs:\n%s",
 		"crash_detected_prev_boot": "\n\n🚨 *Previous Boot Crash Detected!*\n\nThe system likely crashed or was rebooted due to:\n```\n%s\n```",
 		"oom_unknown_proc":         "unknown",
 		"oom_alert_simple":         "🚨 *OOM Kill Detected: %s*\n\nProcess `%s` was terminated due to memory pressure.\n\n_⚠️ System may be unstable. Check RAM usage._",
@@ -338,6 +345,13 @@ var translations = map[string]map[string]string{
 		"netwd_started": "[NetworkWatchdog] Avviato (check ogni %ds)",
 
 		"logs_title":               "*Log di sistema recenti*\n",
+		"ask_usage":                "Uso: `/ask <domanda>`\n\nEsempio: `/ask Quanti OOM ci sono nei log?`",
+		"ask_no_gemini":            "API Gemini non configurata",
+		"ask_analyzing":            "Analizzo i log...",
+		"ask_error":                "Analisi dei log fallita",
+		"ask_title":                "Q&A Log",
+		"ask_no_logs":              "_Nessun log disponibile da analizzare_",
+		"ask_prompt":               "Rispondi alla domanda usando solo i log. Sii ESTREMAMENTE conciso. Massimo 10-15 righe. Se i log non contengono la risposta, dillo. Rispondi in italiano.\n\nDomanda:\n%s\n\nLog:\n%s",
 		"crash_detected_prev_boot": "\n\n🚨 *Rilevato Crash Avvio Precedente!*\n\nIl sistema è stato probabilmente riavviato a causa di:\n```\n%s\n```",
 
 		"oom_unknown_proc":   "sconosciuto",

@@ -98,12 +98,15 @@ func checkKernelEvents(ctx *AppContext, bot BotAPI) {
 		return
 	}
 
-	ctx.Monitor.mu.Lock()
-	defer ctx.Monitor.mu.Unlock()
+	processKernelLines(ctx, bot, lines)
+}
 
+func processKernelLines(ctx *AppContext, bot BotAPI, lines []string) {
+	ctx.Monitor.mu.Lock()
 	if ctx.Monitor.KwLastSignatures == nil {
 		ctx.Monitor.KwLastSignatures = make(map[string]string)
 	}
+	ctx.Monitor.mu.Unlock()
 
 	for _, evt := range kernelEventTypes {
 		lastIdx := -1
@@ -126,17 +129,21 @@ func checkKernelEvents(ctx *AppContext, bot BotAPI) {
 			continue
 		}
 
+		ctx.Monitor.mu.Lock()
 		// On first run, record the baseline without alerting
 		if !ctx.Monitor.KwInitialized {
 			ctx.Monitor.KwLastSignatures[evt.Name] = lastLine
+			ctx.Monitor.mu.Unlock()
 			continue
 		}
 
 		// Skip if we already alerted for this exact line
 		if prev, ok := ctx.Monitor.KwLastSignatures[evt.Name]; ok && prev == lastLine {
+			ctx.Monitor.mu.Unlock()
 			continue
 		}
 		ctx.Monitor.KwLastSignatures[evt.Name] = lastLine
+		ctx.Monitor.mu.Unlock()
 
 		// Build context (±3 lines around the event)
 		start := lastIdx - 3
@@ -183,9 +190,11 @@ func checkKernelEvents(ctx *AppContext, bot BotAPI) {
 		safeSend(bot, m)
 	}
 
+	ctx.Monitor.mu.Lock()
 	if !ctx.Monitor.KwInitialized {
 		ctx.Monitor.KwInitialized = true
 	}
+	ctx.Monitor.mu.Unlock()
 }
 
 func handleOOMLoop(ctx *AppContext, bot BotAPI) {

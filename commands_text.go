@@ -168,6 +168,7 @@ func getHelpText(ctx *AppContext) string {
 	b.WriteString("/configjson — show full config.json (redacted)\n")
 	b.WriteString("/configset <json> — update config.json\n")
 	b.WriteString("/logs — recent system logs\n")
+	b.WriteString("/ask <question> — ask AI about recent logs\n")
 	b.WriteString("/reboot · /shutdown — power control\n\n")
 
 	ctx.Settings.mu.RLock()

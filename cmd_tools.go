@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"strings"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -31,6 +34,67 @@ func (c *HelpCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, ar
 	sendMarkdown(bot, msg.Chat.ID, getHelpText(ctx))
 }
 func (c *HelpCmd) Description() string { return "Show help message" }
+
+type AskCmd struct{}
+
+func (c *AskCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, args string) {
+	question := strings.TrimSpace(args)
+	if question == "" {
+		sendMarkdown(bot, msg.Chat.ID, ctx.Tr("ask_usage"))
+		return
+	}
+	if ctx.Config.GeminiAPIKey == "" {
+		sendMarkdown(bot, msg.Chat.ID, ctx.Tr("ask_no_gemini"))
+		return
+	}
+
+	modelName := "gemini-2.5-flash"
+	loadingText := fmt.Sprintf("⏳ %s\n_(%s)_", ctx.Tr("ask_analyzing"), modelName)
+	loadingMsg := tgbotapi.NewMessage(msg.Chat.ID, loadingText)
+	loadingMsg.ParseMode = "Markdown"
+	sentMsg, err := bot.Send(loadingMsg)
+	if err != nil {
+		loadingMsg.ParseMode = ""
+		sentMsg, _ = bot.Send(loadingMsg)
+	}
+
+	logs, err := getRecentLogs(ctx)
+	if err != nil {
+		errText := ctx.Tr("ask_no_logs")
+		if sentMsg.MessageID != 0 {
+			editMessage(bot, msg.Chat.ID, sentMsg.MessageID, errText, nil)
+			return
+		}
+		sendMarkdown(bot, msg.Chat.ID, errText)
+		return
+	}
+
+	prompt := fmt.Sprintf(ctx.Tr("ask_prompt"), question, logs)
+
+	analysis, err := callGeminiWithFallback(ctx, prompt, func(model string) {
+		newText := fmt.Sprintf("⏳ %s\n_(%s)_", ctx.Tr("ask_analyzing"), model)
+		edit := tgbotapi.NewEditMessageText(msg.Chat.ID, sentMsg.MessageID, newText)
+		edit.ParseMode = "Markdown"
+		safeSend(bot, edit)
+	})
+	if err != nil {
+		errText := fmt.Sprintf("❌ %s\n\n_Error: %v_", ctx.Tr("ask_error"), err)
+		if sentMsg.MessageID != 0 {
+			editMessage(bot, msg.Chat.ID, sentMsg.MessageID, errText, nil)
+			return
+		}
+		sendMarkdown(bot, msg.Chat.ID, errText)
+		return
+	}
+
+	result := fmt.Sprintf("🤖 *%s*\n\n%s", ctx.Tr("ask_title"), analysis)
+	if sentMsg.MessageID != 0 {
+		editMessage(bot, msg.Chat.ID, sentMsg.MessageID, result, nil)
+		return
+	}
+	sendMarkdown(bot, msg.Chat.ID, result)
+}
+func (c *AskCmd) Description() string { return "Ask the AI about recent logs" }
 
 type QuickCmd struct{}
 

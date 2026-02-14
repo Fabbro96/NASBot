@@ -9,6 +9,15 @@ import (
 
 func getLogsText(ctx *AppContext) string {
 	tr := ctx.Tr
+	recentLogs, err := getRecentLogs(ctx)
+	if err != nil {
+		return fmt.Sprintf("%s_No logs available_\n", tr("logs_title"))
+	}
+
+	return fmt.Sprintf("%s```\n%s\n```", tr("logs_title"), recentLogs)
+}
+
+func getRecentLogs(_ *AppContext) (string, error) {
 	reqCtx, cancel := context.WithTimeout(context.Background(), logCmdTimeout)
 	defer cancel()
 
@@ -17,7 +26,7 @@ func getLogsText(ctx *AppContext) string {
 		out, _ = runCommandOutput(reqCtx, "journalctl", "-n", fmt.Sprint(maxLogLines), "--no-pager")
 	}
 	if len(out) == 0 {
-		return fmt.Sprintf("%s_No logs available_\n", tr("logs_title"))
+		return "", fmt.Errorf("no logs available")
 	}
 
 	lines := strings.Split(string(out), "\n")
@@ -28,10 +37,10 @@ func getLogsText(ctx *AppContext) string {
 	recentLogs := strings.Join(lines[start:], "\n")
 
 	if len(recentLogs) > maxLogChars {
-		recentLogs = recentLogs[:maxLogChars] + "..."
+		recentLogs = recentLogs[len(recentLogs)-maxLogChars:]
 	}
 
-	return fmt.Sprintf("%s```\n%s\n```", tr("logs_title"), recentLogs)
+	return strings.TrimSpace(recentLogs), nil
 }
 
 // ═══════════════════════════════════════════════════════════════════
