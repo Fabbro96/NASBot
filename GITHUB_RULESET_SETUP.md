@@ -41,7 +41,7 @@ scripts/apply_github_rulesets.sh --repo Fabbro96/NASBot --dry-run
    - `Build & Test (Go 1.22.x)`
    - `Build & Test (Go 1.23.x)`
    - `Dependency Review`
-   - `CodeQL Analysis`
+   - `CodeQL Analysis (go)`
 8. Save ruleset.
 
 ## 2) Tag Ruleset for Releases (`v*`)
