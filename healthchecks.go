@@ -21,14 +21,10 @@ const MaxDowntimeEvents = 50
 // ═══════════════════════════════════════════════════════════════════
 
 // startHealthchecksPinger starts the background goroutine that pings healthchecks.io
-func startHealthchecksPinger(ctx *AppContext, bot BotAPI, runCtx ...context.Context) {
+func startHealthchecksPinger(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 	if !ctx.Config.Healthchecks.Enabled || ctx.Config.Healthchecks.PingURL == "" {
 		slog.Info("Healthchecks.io disabled or no URL configured")
 		return
-	}
-	rc := context.Background()
-	if len(runCtx) > 0 && runCtx[0] != nil {
-		rc = runCtx[0]
 	}
 
 	period := ctx.Config.Healthchecks.PeriodSeconds
@@ -46,7 +42,7 @@ func startHealthchecksPinger(ctx *AppContext, bot BotAPI, runCtx ...context.Cont
 
 	for {
 		select {
-		case <-rc.Done():
+		case <-runCtx.Done():
 			return
 		case <-ticker.C:
 			pingHealthchecks(ctx, bot)
@@ -220,11 +216,11 @@ func getHealthchecksStats(ctx *AppContext) string {
 	defer ctx.Monitor.mu.Unlock()
 
 	if !ctx.Config.Healthchecks.Enabled {
-		return ctx.Tr("health_disabled")
+		return ctx.Tr("health_disabled") + buildWatchdogStatusLocked(ctx)
 	}
 
 	if ctx.Config.Healthchecks.PingURL == "" {
-		return ctx.Tr("health_no_url")
+		return ctx.Tr("health_no_url") + buildWatchdogStatusLocked(ctx)
 	}
 
 	var sb strings.Builder
@@ -265,6 +261,7 @@ func getHealthchecksStats(ctx *AppContext) string {
 		grace = 60
 	}
 	sb.WriteString(fmt.Sprintf(ctx.Tr("health_config_fmt"), period, grace))
+	sb.WriteString(buildWatchdogStatusLocked(ctx))
 
 	// Recent downtime events
 	if len(ctx.Monitor.Healthchecks.DowntimeEvents) > 0 {
@@ -286,6 +283,43 @@ func getHealthchecksStats(ctx *AppContext) string {
 	}
 
 	return sb.String()
+}
+
+func buildWatchdogStatusLocked(ctx *AppContext) string {
+	netStatus := ctx.Tr("health_watchdogs_ok")
+	if ctx.Monitor.NetConsecutiveDegraded > 0 || ctx.Monitor.NetFailCount > 0 {
+		netStatus = ctx.Tr("health_watchdogs_warn")
+	}
+
+	kwStatus := ctx.Tr("health_watchdogs_ok")
+	if ctx.Monitor.KwConsecutiveCheckErrors > 0 {
+		kwStatus = ctx.Tr("health_watchdogs_err")
+	}
+
+	netAgo := ctx.Tr("health_watchdogs_never")
+	if !ctx.Monitor.NetLastCheckTime.IsZero() {
+		netAgo = format.FormatDuration(time.Since(ctx.Monitor.NetLastCheckTime))
+	}
+
+	kwAgo := ctx.Tr("health_watchdogs_never")
+	if !ctx.Monitor.KwLastCheckTime.IsZero() {
+		kwAgo = format.FormatDuration(time.Since(ctx.Monitor.KwLastCheckTime))
+	}
+
+	var b strings.Builder
+	b.WriteString("\n" + ctx.Tr("health_watchdogs_title"))
+	b.WriteString(fmt.Sprintf(ctx.Tr("health_watchdogs_network"), netStatus, netAgo, ctx.Monitor.NetConsecutiveDegraded, ctx.Monitor.NetFailCount))
+	b.WriteString(fmt.Sprintf(ctx.Tr("health_watchdogs_kernel"), kwStatus, kwAgo, ctx.Monitor.KwConsecutiveCheckErrors))
+
+	if ctx.Monitor.KwLastCheckError != "" {
+		errText := strings.ReplaceAll(ctx.Monitor.KwLastCheckError, "`", "'")
+		if len(errText) > 140 {
+			errText = errText[:140] + "..."
+		}
+		b.WriteString(fmt.Sprintf(ctx.Tr("health_watchdogs_last_error"), errText))
+	}
+
+	return b.String()
 }
 
 // getHealthchecksAISummary generates an AI summary of downtime patterns

@@ -70,6 +70,22 @@ func getQuickText(ctx *AppContext) string {
 	// Docker
 	b.WriteString(fmt.Sprintf(" · 🐳%d", running))
 
+	// Watchdog semaphores
+	ctx.Monitor.mu.Lock()
+	netDegraded := ctx.Monitor.NetConsecutiveDegraded > 0 || ctx.Monitor.NetFailCount > 0
+	kwErrors := ctx.Monitor.KwConsecutiveCheckErrors > 0
+	ctx.Monitor.mu.Unlock()
+
+	netSem := "🟢"
+	if netDegraded {
+		netSem = "🟡"
+	}
+	kwSem := "🟢"
+	if kwErrors {
+		kwSem = "🔴"
+	}
+	b.WriteString(fmt.Sprintf(" · WD K%s N%s", kwSem, netSem))
+
 	// Temp
 	b.WriteString(tempStr)
 

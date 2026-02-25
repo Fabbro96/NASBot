@@ -41,7 +41,9 @@ func readDiskSMART(device string) (temp int, health string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	out, _ := runCommandStdout(ctx, "smartctl", "-A", "/dev/"+device)
+	health = "UNKNOWN"
+
+	out, attrErr := runCommandStdout(ctx, "smartctl", "-A", "/dev/"+device)
 	for _, line := range strings.Split(string(out), "\n") {
 		if strings.Contains(line, "Temperature_Celsius") || strings.Contains(line, "Temperature_Internal") {
 			fields := strings.Fields(line)
@@ -51,14 +53,23 @@ func readDiskSMART(device string) (temp int, health string) {
 		}
 	}
 
-	out, _ = runCommandStdout(ctx, "smartctl", "-H", "/dev/"+device)
-	health = "OK"
+	out, healthErr := runCommandStdout(ctx, "smartctl", "-H", "/dev/"+device)
+	if healthErr == nil {
+		health = "OK"
+	}
 	for _, line := range strings.Split(string(out), "\n") {
 		if strings.Contains(line, "PASSED") {
 			health = "PASSED"
 		} else if strings.Contains(line, "FAILED") {
 			health = "FAILED!"
 		}
+	}
+
+	if attrErr != nil {
+		slog.Warn("smartctl attribute read failed", "device", device, "err", attrErr)
+	}
+	if healthErr != nil {
+		slog.Warn("smartctl health read failed", "device", device, "err", healthErr)
 	}
 
 	return temp, health

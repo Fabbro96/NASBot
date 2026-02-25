@@ -72,12 +72,17 @@ type MonitorState struct {
 	LastCriticalAlert          time.Time
 	LastCriticalContainerAlert map[string]time.Time
 	NetFailCount               int
+	NetLastCheckTime           time.Time
+	NetConsecutiveDegraded     int
 	NetDownSince               time.Time
 	NetDownAlertTime           time.Time
 	NetDNSAlertTime            time.Time
 	NetForceRebootTriggered    bool
 	KwLastSignatures           map[string]string
 	KwInitialized              bool
+	KwLastCheckTime            time.Time
+	KwConsecutiveCheckErrors   int
+	KwLastCheckError           string
 	RecentOOMs                 []time.Time
 }
 

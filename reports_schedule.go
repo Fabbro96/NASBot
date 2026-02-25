@@ -100,13 +100,9 @@ func getNextReportDescription(ctx *AppContext) string {
 	return fmt.Sprintf(ctx.Tr("report_daily"), morning.Hour, morning.Minute)
 }
 
-func periodicReport(ctx *AppContext, bot BotAPI, runCtx ...context.Context) {
+func periodicReport(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 	interval := time.Duration(ctx.Config.Intervals.StatsSeconds) * time.Second
-	rc := context.Background()
-	if len(runCtx) > 0 && runCtx[0] != nil {
-		rc = runCtx[0]
-	}
-	if !sleepWithContext(rc, interval*2) {
+	if !sleepWithContext(runCtx, interval*2) {
 		return
 	}
 
@@ -116,7 +112,7 @@ func periodicReport(ctx *AppContext, bot BotAPI, runCtx ...context.Context) {
 		ctx.Settings.mu.RUnlock()
 
 		if mode == 0 {
-			if !sleepWithContext(rc, 1*time.Hour) {
+			if !sleepWithContext(runCtx, 1*time.Hour) {
 				return
 			}
 			continue
@@ -131,7 +127,7 @@ func periodicReport(ctx *AppContext, bot BotAPI, runCtx ...context.Context) {
 		}
 
 		slog.Info("Next report scheduled", "time", nextReport.Format("02/01 15:04"))
-		if !sleepWithContext(rc, sleepDuration) {
+		if !sleepWithContext(runCtx, sleepDuration) {
 			return
 		}
 

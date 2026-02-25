@@ -1,41 +1,46 @@
-//go:build !fswatchdog
-// +build !fswatchdog
-
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+// Global app context (required for handlers.go compatibility)
 var app *AppContext
 
 func init() {
 	setupLogger()
-	loadConfig()
+	loadConfig() // Populates global 'cfg'
 }
 
 func main() {
+	slog.Info("NASBot boot sequence started", "pid", os.Getpid())
+
 	defer func() {
 		if r := recover(); r != nil {
-			slog.Error("PANIC recovered", "err", r)
+			slog.Error("PANIC recovered", "err", r, "stack", string(debug.Stack()))
 			if app != nil {
 				saveState(app)
 			}
+			closeLogger()
 		}
 	}()
 
 	acquirePIDLock()
 	defer releasePIDLock()
 
+	// Initialize AppContext with global cfg
 	app = InitApp(&cfg)
 
+	// Set Timezone
 	tz := app.Config.Timezone
 	if tz == "" {
 		tz = "Europe/Rome"
@@ -47,45 +52,61 @@ func main() {
 	}
 	app.State.TimeLocation = loc
 
+	// Load persistent state
 	loadState(app)
 
+	// Start Bot
 	bot, err := tgbotapi.NewBotAPI(app.Config.BotToken)
 	if err != nil {
 		slog.Error("Failed to start bot", "err", err)
+		closeLogger()
 		os.Exit(1)
 	}
 	slog.Info("NASBot started", "user", bot.Self.UserName)
 
+	// Clear webhook
 	if _, err := bot.Request(tgbotapi.DeleteWebhookConfig{DropPendingUpdates: true}); err != nil {
 		slog.Error("Delete webhook failed", "err", err)
 	}
 
+	// Startup Notification
 	sendStartupNotification(app, bot)
 
+	rootCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Signal Handling
 	sigChan := make(chan os.Signal, 1)
+	shutdownDone := make(chan struct{})
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
+	goSafe("signal-handler", func() {
 		<-sigChan
 		slog.Info("Shutdown signal received")
-		saveState(app)
-		releasePIDLock()
-		os.Exit(0)
-	}()
+		cancel()
+		bot.StopReceivingUpdates()
+		close(shutdownDone)
+	})
 
-	go statsCollector(app)
-	go monitorAlerts(app, bot)
-	go autonomousManager(app, bot)
-	go periodicReport(app, bot)
-	go startHealthchecksPinger(app, bot)
-	go pingHealthchecksStart(app)
+	// Start Background Tasks
+	goSafe("stats-collector", func() { statsCollector(app, rootCtx) })
+	goSafe("monitor-alerts", func() { monitorAlerts(app, bot, rootCtx) })
+	goSafe("autonomous-manager", func() { autonomousManager(app, bot, rootCtx) })
+	goSafe("periodic-report", func() { periodicReport(app, bot, rootCtx) })
+	goSafe("healthchecks-pinger", func() { startHealthchecksPinger(app, bot, rootCtx) })
 
+	// Send /start signal to healthchecks.io
+	goSafe("healthchecks-start-ping", func() { pingHealthchecksStart(app) })
+
+	// Wait for stats to be ready
 	time.Sleep(2 * time.Second)
 
+	// Update Loop
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 	updates := bot.GetUpdatesChan(u)
 
 	for update := range updates {
+		// Panic recovery for update loop
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -94,7 +115,7 @@ func main() {
 			}()
 
 			if update.CallbackQuery != nil {
-				go handleCallback(bot, update.CallbackQuery)
+				goSafe("callback-handler", func() { handleCallback(bot, update.CallbackQuery) })
 				return
 			}
 
@@ -107,13 +128,36 @@ func main() {
 			}
 
 			if update.Message.IsCommand() {
-				go handleCommand(bot, update.Message)
+				// handlers.go handleCommand
+				goSafe("command-handler", func() { handleCommand(bot, update.Message) })
 			}
 		}()
 	}
+
+	saveState(app)
+	select {
+	case <-shutdownDone:
+		slog.Info("NASBot shutdown complete")
+	default:
+		slog.Warn("Updates channel closed unexpectedly")
+	}
+	closeLogger()
 }
 
-func sendStartupNotification(ctx *AppContext, bot *tgbotapi.BotAPI) {
+func goSafe(name string, fn func()) {
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("Panic recovered in goroutine", "goroutine", name, "err", r, "stack", string(debug.Stack()))
+			}
+		}()
+		fn()
+	}()
+}
+
+func sendStartupNotification(ctx *AppContext, bot BotAPI) {
+	// Wait a bit for report time to be calculated if needed,
+	// but getNextReportDescription typically calculates it on the fly.
 	nextReportStr := getNextReportDescription(ctx)
 
 	var quietInfo string
@@ -134,9 +178,10 @@ func sendStartupNotification(ctx *AppContext, bot *tgbotapi.BotAPI) {
 
 	msg := tgbotapi.NewMessage(int64(ctx.Config.AllowedUserID), startupText)
 	msg.ParseMode = "Markdown"
-	bot.Send(msg)
+	safeSend(bot, msg)
 }
 
+// Global PID file variable
 var pidFile *os.File
 
 func acquirePIDLock() {

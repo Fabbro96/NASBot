@@ -31,7 +31,15 @@ func handleCallback(bot BotAPI, query *tgbotapi.CallbackQuery) {
 		slog.Error("App context is nil in handleCallback")
 		return
 	}
+	if query == nil || query.Message == nil {
+		slog.Warn("Invalid callback payload")
+		return
+	}
 	bot.Request(tgbotapi.NewCallback(query.ID, ""))
+	if query.From == nil || query.From.ID != int64(app.Config.AllowedUserID) {
+		slog.Warn("Unauthorized callback ignored")
+		return
+	}
 	chatID := query.Message.Chat.ID
 	msgID := query.Message.MessageID
 	data := query.Data

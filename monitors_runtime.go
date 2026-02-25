@@ -18,17 +18,13 @@ import (
 	"github.com/shirou/gopsutil/v3/process"
 )
 
-func monitorAlerts(ctx *AppContext, bot BotAPI, runCtx ...context.Context) {
+func monitorAlerts(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 	ticker := time.NewTicker(time.Duration(ctx.Config.Intervals.MonitorSeconds) * time.Second)
 	defer ticker.Stop()
-	rc := context.Background()
-	if len(runCtx) > 0 && runCtx[0] != nil {
-		rc = runCtx[0]
-	}
 
 	for {
 		select {
-		case <-rc.Done():
+		case <-runCtx.Done():
 			return
 		case <-ticker.C:
 			s, ready := ctx.Stats.Get()
@@ -100,16 +96,12 @@ func monitorAlerts(ctx *AppContext, bot BotAPI, runCtx ...context.Context) {
 	}
 }
 
-func statsCollector(ctx *AppContext, runCtx ...context.Context) {
+func statsCollector(ctx *AppContext, runCtx context.Context) {
 	var lastIO map[string]disk.IOCountersStat
 	var lastIOTime time.Time
 
 	ticker := time.NewTicker(time.Duration(ctx.Config.Intervals.StatsSeconds) * time.Second)
 	defer ticker.Stop()
-	rc := context.Background()
-	if len(runCtx) > 0 && runCtx[0] != nil {
-		rc = runCtx[0]
-	}
 
 	collect := func() {
 		c, _ := cpu.Percent(0, false)
@@ -190,7 +182,7 @@ func statsCollector(ctx *AppContext, runCtx ...context.Context) {
 	collect()
 	for {
 		select {
-		case <-rc.Done():
+		case <-runCtx.Done():
 			return
 		case <-ticker.C:
 			collect()

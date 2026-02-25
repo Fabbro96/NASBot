@@ -93,7 +93,25 @@ var kernelEventTypes = []kernelEventType{
 // ═══════════════════════════════════════════════════════════════════
 
 func checkKernelEvents(ctx *AppContext, bot BotAPI) {
-	lines := getKernelLogLines()
+	ctx.Monitor.mu.Lock()
+	ctx.Monitor.KwLastCheckTime = time.Now()
+	ctx.Monitor.mu.Unlock()
+
+	lines, err := getKernelLogLines()
+	if err != nil {
+		ctx.Monitor.mu.Lock()
+		ctx.Monitor.KwConsecutiveCheckErrors++
+		ctx.Monitor.KwLastCheckError = err.Error()
+		ctx.Monitor.mu.Unlock()
+		slog.Warn("KernelWatchdog log collection failed", "err", err)
+		return
+	}
+
+	ctx.Monitor.mu.Lock()
+	ctx.Monitor.KwConsecutiveCheckErrors = 0
+	ctx.Monitor.KwLastCheckError = ""
+	ctx.Monitor.mu.Unlock()
+
 	if len(lines) == 0 {
 		return
 	}
@@ -230,36 +248,45 @@ func handleOOMLoop(ctx *AppContext, bot BotAPI) {
 		// Execute reboot in a separate goroutine to allow message to send
 		go func() {
 			slog.Info("Rebooting system now...")
-			_ = runCommand(context.Background(), "reboot")
+			if err := runCommand(context.Background(), "reboot"); err != nil {
+				slog.Error("OOM reboot command failed", "err", err)
+			}
 		}()
 	}
 }
 
-func getKernelLogLines() []string {
+func getKernelLogLines() ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	// Try dmesg first (more reliable, no auth needed on most systems)
 	out, err := runCommandStdout(ctx, "dmesg", "--time-format", "reltime")
+	lastErr := err
 	if err != nil {
 		// Fallback: dmesg without format flag (older kernels)
 		ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel2()
 		out, err = runCommandStdout(ctx2, "dmesg")
+		lastErr = err
 	}
 	if err != nil {
 		// Fallback: journalctl kernel messages
 		ctx3, cancel3 := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel3()
-		out, _ = runCommandStdout(ctx3, "journalctl", "-k", "-n", "300", "--no-pager")
+		out, err = runCommandStdout(ctx3, "journalctl", "-k", "-n", "300", "--no-pager")
+		lastErr = err
+	}
+
+	if lastErr != nil {
+		return nil, fmt.Errorf("failed to collect kernel logs: %w", lastErr)
 	}
 
 	text := strings.TrimSpace(string(out))
 	if text == "" {
-		return nil
+		return nil, nil
 	}
 
-	return strings.Split(text, "\n")
+	return strings.Split(text, "\n"), nil
 }
 
 func checkPreviousBootCrash(ctx *AppContext) string {

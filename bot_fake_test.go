@@ -73,6 +73,7 @@ func TestHandleCallbackLanguage(t *testing.T) {
 	query := &tgbotapi.CallbackQuery{
 		ID:      "1",
 		Data:    "set_lang_it",
+		From:    &tgbotapi.User{ID: 1},
 		Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: 1}, MessageID: 10},
 	}
 
@@ -94,6 +95,7 @@ func TestHandleCallbackLanguageSpanish(t *testing.T) {
 	query := &tgbotapi.CallbackQuery{
 		ID:      "2",
 		Data:    "set_lang_es",
+		From:    &tgbotapi.User{ID: 1},
 		Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: 1}, MessageID: 11},
 	}
 
@@ -103,5 +105,53 @@ func TestHandleCallbackLanguageSpanish(t *testing.T) {
 	}
 	if len(bot.requests) == 0 {
 		t.Fatalf("expected callback ack request")
+	}
+}
+
+func TestHandleCallbackUnauthorizedIgnored(t *testing.T) {
+	prev := app
+	app = newTestAppContext()
+	t.Cleanup(func() { app = prev })
+
+	bot := &fakeBot{}
+	query := &tgbotapi.CallbackQuery{
+		ID:      "3",
+		Data:    "set_lang_it",
+		From:    &tgbotapi.User{ID: 999},
+		Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: 1}, MessageID: 12},
+	}
+
+	handleCallback(bot, query)
+	if app.Settings.GetLanguage() != "en" {
+		t.Fatalf("unauthorized callback should not modify settings")
+	}
+	if len(bot.requests) == 0 {
+		t.Fatalf("expected callback ack request")
+	}
+}
+
+func TestHandleCallbackNilIgnored(t *testing.T) {
+	prev := app
+	app = newTestAppContext()
+	t.Cleanup(func() { app = prev })
+
+	bot := &fakeBot{}
+	handleCallback(bot, nil)
+	if len(bot.requests) != 0 {
+		t.Fatalf("expected no callback ack for nil query")
+	}
+}
+
+func TestHandleCallbackNilMessageIgnored(t *testing.T) {
+	prev := app
+	app = newTestAppContext()
+	t.Cleanup(func() { app = prev })
+
+	bot := &fakeBot{}
+	query := &tgbotapi.CallbackQuery{ID: "4", Data: "set_lang_it", From: &tgbotapi.User{ID: 1}}
+
+	handleCallback(bot, query)
+	if len(bot.requests) != 0 {
+		t.Fatalf("expected no callback ack for callback without message")
 	}
 }
