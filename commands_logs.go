@@ -23,7 +23,14 @@ func getRecentLogs(_ *AppContext) (string, error) {
 
 	out, err := runCommandOutput(reqCtx, "dmesg")
 	if err != nil || len(out) == 0 {
-		out, _ = runCommandOutput(reqCtx, "journalctl", "-n", fmt.Sprint(maxLogLines), "--no-pager")
+		fallbackOut, fallbackErr := runCommandOutput(reqCtx, "journalctl", "-n", fmt.Sprint(maxLogLines), "--no-pager")
+		if fallbackErr != nil || len(fallbackOut) == 0 {
+			if err != nil {
+				return "", fmt.Errorf("dmesg failed: %w; journalctl failed: %v", err, fallbackErr)
+			}
+			return "", fmt.Errorf("no logs available")
+		}
+		out = fallbackOut
 	}
 	if len(out) == 0 {
 		return "", fmt.Errorf("no logs available")

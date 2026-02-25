@@ -20,6 +20,10 @@ func checkNetworkHealth(ctx *AppContext, bot BotAPI) {
 	cfg := ctx.Config
 	forceRebootAfter := networkForceRebootAfter(cfg)
 
+	ctx.Monitor.mu.Lock()
+	ctx.Monitor.NetLastCheckTime = time.Now()
+	ctx.Monitor.mu.Unlock()
+
 	targets := cfg.NetworkWatchdog.Targets
 	if len(targets) == 0 {
 		targets = []string{"1.1.1.1", "8.8.8.8"}
@@ -69,6 +73,7 @@ func checkNetworkHealth(ctx *AppContext, bot BotAPI) {
 		var downSince time.Time
 		ctx.Monitor.mu.Lock()
 		ctx.Monitor.NetFailCount = 0
+		ctx.Monitor.NetConsecutiveDegraded = 0
 		if !ctx.Monitor.NetDownSince.IsZero() {
 			shouldNotify = cfg.NetworkWatchdog.RecoveryNotify
 			downSince = ctx.Monitor.NetDownSince
@@ -90,6 +95,7 @@ func checkNetworkHealth(ctx *AppContext, bot BotAPI) {
 	if pingOk && !dnsOk {
 		shouldNotify := false
 		ctx.Monitor.mu.Lock()
+		ctx.Monitor.NetConsecutiveDegraded++
 		if time.Since(ctx.Monitor.NetDNSAlertTime) >= cooldown {
 			ctx.Monitor.NetDNSAlertTime = time.Now()
 			shouldNotify = true
@@ -114,6 +120,7 @@ func checkNetworkHealth(ctx *AppContext, bot BotAPI) {
 	var downFor time.Duration
 	ctx.Monitor.mu.Lock()
 	ctx.Monitor.NetFailCount++
+	ctx.Monitor.NetConsecutiveDegraded++
 	if ctx.Monitor.NetFailCount >= threshold {
 		if ctx.Monitor.NetDownSince.IsZero() {
 			ctx.Monitor.NetDownSince = time.Now()

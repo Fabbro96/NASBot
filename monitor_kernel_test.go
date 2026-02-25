@@ -1,9 +1,39 @@
 package main
 
 import (
+	"context"
+	"sync"
 	"testing"
 	"time"
 )
+
+type countingRunner struct {
+	mu       sync.Mutex
+	runCalls int
+}
+
+func (r *countingRunner) Exists(name string) bool { return true }
+
+func (r *countingRunner) CombinedOutput(ctx context.Context, name string, args ...string) ([]byte, error) {
+	return nil, nil
+}
+
+func (r *countingRunner) Output(ctx context.Context, name string, args ...string) ([]byte, error) {
+	return nil, nil
+}
+
+func (r *countingRunner) Run(ctx context.Context, name string, args ...string) error {
+	r.mu.Lock()
+	r.runCalls++
+	r.mu.Unlock()
+	return nil
+}
+
+func (r *countingRunner) Calls() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.runCalls
+}
 
 func TestProcessKernelLinesNoDeadlockOnOOM(t *testing.T) {
 	ctx := newTestAppContext()
@@ -56,5 +86,30 @@ func TestProcessKernelLinesNoDeadlockOnNonOOM(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatalf("processKernelLines appears to be deadlocked on non-OOM path")
+	}
+}
+
+func TestHandleOOMLoopTriggersRebootAtThreshold(t *testing.T) {
+	ctx := newTestAppContext()
+	b := &fakeBot{}
+
+	runner := &countingRunner{}
+	restore := setCommandRunner(runner)
+	t.Cleanup(restore)
+
+	for i := 0; i < oomLoopThreshold; i++ {
+		handleOOMLoop(ctx, b)
+	}
+
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if runner.Calls() > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if runner.Calls() == 0 {
+		t.Fatalf("expected reboot command to be invoked after OOM threshold")
 	}
 }

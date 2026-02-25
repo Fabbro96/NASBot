@@ -8,12 +8,8 @@ import (
 )
 
 // autonomousManager performs automatic monitoring decisions.
-func autonomousManager(ctx *AppContext, bot BotAPI, runCtx ...context.Context) {
+func autonomousManager(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 	cfg := ctx.Config
-	rc := context.Background()
-	if len(runCtx) > 0 && runCtx[0] != nil {
-		rc = runCtx[0]
-	}
 
 	ticker := time.NewTicker(10 * time.Second)
 	diskTicker := time.NewTicker(5 * time.Minute)
@@ -56,7 +52,7 @@ func autonomousManager(ctx *AppContext, bot BotAPI, runCtx ...context.Context) {
 
 	for {
 		select {
-		case <-rc.Done():
+		case <-runCtx.Done():
 			return
 		case <-ticker.C:
 			s, ready := ctx.Stats.Get()
