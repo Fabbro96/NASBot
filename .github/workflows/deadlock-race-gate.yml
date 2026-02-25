@@ -1,0 +1,47 @@
+name: Deadlock & Race Gate
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deadlock-race-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deadlock-race:
+    name: Deadlock & Race (Go 1.23.x)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache: true
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Ensure config.json for tests
+        run: |
+          if [ ! -f config.json ]; then
+            cp config.example.json config.json
+          fi
+
+      - name: Deadlock-targeted stress tests
+        run: |
+          go test -count=30 -run 'TestNoDeadlock_|TestProcessKernelLinesNoDeadlock|TestHandleOOMLoopTriggersRebootAtThreshold|TestPeriodicReportStopsOnCancelledContext|TestHandleCallback(Nil|NilMessage|Unauthorized)' ./...
+
+      - name: Full race gate
+        run: |
+          go test -race -count=1 ./...
