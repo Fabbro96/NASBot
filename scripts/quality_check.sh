@@ -58,7 +58,6 @@ for f in "${legacy_root_scripts[@]}"; do
     exit 1
   fi
 done
-
 # Ensure runtime artifacts are not tracked in git.
 for f in nasbot nasbot-arm64 nasbot_state.json config.json; do
   if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
