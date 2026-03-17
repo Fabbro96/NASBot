@@ -134,6 +134,9 @@ func handlePowerConfirm(ctx *AppContext, bot BotAPI, chatID int64, msgID int, da
 		actionMsg = "Shutting down... See you later!"
 	}
 
+	addPowerLifecycleEvent(ctx, action, false, "command", cmd, "user-confirmation")
+	saveState(ctx)
+
 	editMessage(bot, chatID, msgID, actionMsg, nil)
 
 	go func() {
@@ -145,7 +148,9 @@ func handlePowerConfirm(ctx *AppContext, bot BotAPI, chatID int64, msgID int, da
 }
 
 func executeForcedReboot(ctx *AppContext, bot BotAPI, chatID int64, msgID int, reason string) {
-	ctx.State.AddEvent("action", "Forced reboot triggered: "+reason)
+	source := powerSourceFromReason(reason)
+	addPowerLifecycleEvent(ctx, "reboot", true, source, "reboot -f", reason)
+	saveState(ctx)
 
 	if msgID > 0 {
 		editMessage(bot, chatID, msgID, ctx.Tr("force_reboot_triggered"), nil)

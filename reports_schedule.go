@@ -132,9 +132,7 @@ func periodicReport(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 		}
 
 		report := generateDailyReport(ctx, greeting, isMorning, nil)
-		msg := tgbotapi.NewMessage(ctx.Config.AllowedUserID, report)
-		msg.ParseMode = "Markdown"
-		if _, err := bot.Send(msg); err != nil {
+		if err := sendScheduledReport(bot, ctx.Config.AllowedUserID, report); err != nil {
 			slog.Error("Failed to send scheduled report", "err", err)
 		} else {
 			ctx.State.mu.Lock()
@@ -151,6 +149,19 @@ func periodicReport(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 			}()
 		}
 	}
+}
+
+func sendScheduledReport(bot BotAPI, chatID int64, report string) error {
+	msg := tgbotapi.NewMessage(chatID, report)
+	msg.ParseMode = "Markdown"
+	if _, err := bot.Send(msg); err != nil {
+		slog.Warn("Scheduled report Markdown failed, retrying plain text", "err", err)
+		msg.ParseMode = ""
+		if _, plainErr := bot.Send(msg); plainErr != nil {
+			return fmt.Errorf("markdown send failed: %w; plain text send failed: %v", err, plainErr)
+		}
+	}
+	return nil
 }
 
 func sleepWithContext(ctx context.Context, d time.Duration) bool {

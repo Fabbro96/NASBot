@@ -8,6 +8,8 @@ on:
 
 permissions:
   contents: write
+  attestations: write
+  id-token: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -38,12 +40,22 @@ jobs:
           scripts/ci_guard.sh release "${GITHUB_REF_NAME}"
 
       - name: Build release binaries
+        env:
+          VERSION: ${{ github.ref_name }}
         run: |
           chmod +x build_release.sh
           ./build_release.sh
 
       - name: Generate checksums
         run: sha256sum nasbot nasbot-arm64 > SHA256SUMS.txt
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            nasbot
+            nasbot-arm64
+            SHA256SUMS.txt
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2

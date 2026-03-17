@@ -3,7 +3,7 @@ set -u -o pipefail
 
 BOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 BOT_NAME="nasbot"
-UPDATE_FILE="nasbot-arm64"
+UPDATE_FILE="nasbot-update"
 LOG_FILE="$BOT_DIR/nasbot.log"
 PID_FILE="$BOT_DIR/nasbot.pid"
 MAX_LOG_SIZE=$((10 * 1024 * 1024))
@@ -180,11 +180,18 @@ status_bot() {
 }
 
 check_updates() {
-	if [[ ! -f "$UPDATE_FILE" ]]; then
-		return
+	local update_file="$UPDATE_FILE"
+	if [[ ! -f "$update_file" ]]; then
+		if [[ -f "nasbot-arm64" ]]; then
+			update_file="nasbot-arm64"
+		elif [[ -f "nasbot-amd64" ]]; then
+			update_file="nasbot-amd64"
+		else
+			return
+		fi
 	fi
 
-	echo -e "${YELLOW}🔄 Update detected: $UPDATE_FILE${NC}"
+	echo -e "${YELLOW}🔄 Update detected: $update_file${NC}"
 	if is_running; then
 		echo "   Stopping running instance for update..."
 		stop_bot
@@ -194,7 +201,7 @@ check_updates() {
 		mv "$BOT_NAME" "${BOT_NAME}.bak"
 	fi
 
-	mv "$UPDATE_FILE" "$BOT_NAME"
+	mv "$update_file" "$BOT_NAME"
 	chmod +x "$BOT_NAME"
 
 	if [[ ! -x "$BOT_NAME" ]]; then
@@ -202,7 +209,7 @@ check_updates() {
 		if [[ -f "${BOT_NAME}.bak" ]]; then
 			mv "${BOT_NAME}.bak" "$BOT_NAME"
 		fi
-		return 1
+		return
 	fi
 
 	rm -f "${BOT_NAME}.bak"

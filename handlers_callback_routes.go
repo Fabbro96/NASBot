@@ -119,6 +119,11 @@ func handleSettingsCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int
 }
 
 func handlePowerAndDockerCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int, data string) bool {
+	if data == "update_apply_latest" {
+		applyLatestRelease(ctx, bot, chatID, msgID)
+		return true
+	}
+
 	if data == "confirm_reboot" || data == "confirm_shutdown" {
 		handlePowerConfirm(ctx, bot, chatID, msgID, data)
 		return true

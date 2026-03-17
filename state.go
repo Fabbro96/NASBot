@@ -9,10 +9,12 @@ import (
 
 // BotState for persistence (DTO)
 type BotState struct {
-	LastReportTime time.Time              `json:"last_report_time"`
-	AutoRestarts   map[string][]time.Time `json:"auto_restarts"`
-	Language       string                 `json:"language"`
-	ReportMode     int                    `json:"report_mode"` // 0=disabled, 1=once, 2=twice
+	LastReportTime      time.Time              `json:"last_report_time"`
+	AutoRestarts        map[string][]time.Time `json:"auto_restarts"`
+	ReportEvents        []ReportEvent          `json:"report_events,omitempty"`
+	LastReleaseNotified string                 `json:"last_release_notified,omitempty"`
+	Language            string                 `json:"language"`
+	ReportMode          int                    `json:"report_mode"` // 0=disabled, 1=once, 2=twice
 
 	// User-configurable settings
 	ReportMorningHour   int `json:"report_morning_hour"`
@@ -70,6 +72,12 @@ func loadState(ctx *AppContext) {
 
 	ctx.State.mu.Lock()
 	ctx.State.LastReport = state.LastReportTime
+	ctx.State.LastReleaseNotified = state.LastReleaseNotified
+	if len(state.ReportEvents) > 100 {
+		ctx.State.ReportEvents = append([]ReportEvent{}, state.ReportEvents[len(state.ReportEvents)-100:]...)
+	} else if len(state.ReportEvents) > 0 {
+		ctx.State.ReportEvents = append([]ReportEvent{}, state.ReportEvents...)
+	}
 	ctx.State.mu.Unlock()
 
 	ctx.Docker.mu.Lock()
@@ -114,37 +122,56 @@ func loadState(ctx *AppContext) {
 func saveState(ctx *AppContext) {
 	ctx.State.mu.Lock()
 	lastReport := ctx.State.LastReport
+	lastReleaseNotified := ctx.State.LastReleaseNotified
 	ctx.State.mu.Unlock()
+	reportEvents := ctx.State.GetEvents()
 
 	ctx.Docker.mu.RLock()
-	autoRestarts := ctx.Docker.AutoRestarts
+	autoRestarts := make(map[string][]time.Time, len(ctx.Docker.AutoRestarts))
+	for k, v := range ctx.Docker.AutoRestarts {
+		vv := make([]time.Time, len(v))
+		copy(vv, v)
+		autoRestarts[k] = vv
+	}
 	ctx.Docker.mu.RUnlock()
 
 	ctx.Monitor.mu.Lock()
 	healthchecks := ctx.Monitor.Healthchecks
+	if len(ctx.Monitor.Healthchecks.DowntimeEvents) > 0 {
+		downtimeCopy := make([]DowntimeLog, len(ctx.Monitor.Healthchecks.DowntimeEvents))
+		copy(downtimeCopy, ctx.Monitor.Healthchecks.DowntimeEvents)
+		healthchecks.DowntimeEvents = downtimeCopy
+	}
 	ctx.Monitor.mu.Unlock()
 
 	ctx.Settings.mu.RLock()
-	settings := ctx.Settings
+	language := ctx.Settings.Language
+	reportMode := ctx.Settings.ReportMode
+	reportMorning := ctx.Settings.ReportMorning
+	reportEvening := ctx.Settings.ReportEvening
+	quietHours := ctx.Settings.QuietHours
+	dockerPrune := ctx.Settings.DockerPrune
 	ctx.Settings.mu.RUnlock()
 
 	state := BotState{
 		LastReportTime:      lastReport,
 		AutoRestarts:        autoRestarts,
-		Language:            settings.Language,
-		ReportMode:          settings.ReportMode,
-		ReportMorningHour:   settings.ReportMorning.Hour,
-		ReportMorningMinute: settings.ReportMorning.Minute,
-		ReportEveningHour:   settings.ReportEvening.Hour,
-		ReportEveningMinute: settings.ReportEvening.Minute,
-		QuietHoursEnabled:   settings.QuietHours.Enabled,
-		QuietStartHour:      settings.QuietHours.Start.Hour,
-		QuietStartMinute:    settings.QuietHours.Start.Minute,
-		QuietEndHour:        settings.QuietHours.End.Hour,
-		QuietEndMinute:      settings.QuietHours.End.Minute,
-		DockerPruneEnabled:  settings.DockerPrune.Enabled,
-		DockerPruneDay:      settings.DockerPrune.Day,
-		DockerPruneHour:     settings.DockerPrune.Hour,
+		ReportEvents:        reportEvents,
+		LastReleaseNotified: lastReleaseNotified,
+		Language:            language,
+		ReportMode:          reportMode,
+		ReportMorningHour:   reportMorning.Hour,
+		ReportMorningMinute: reportMorning.Minute,
+		ReportEveningHour:   reportEvening.Hour,
+		ReportEveningMinute: reportEvening.Minute,
+		QuietHoursEnabled:   quietHours.Enabled,
+		QuietStartHour:      quietHours.Start.Hour,
+		QuietStartMinute:    quietHours.Start.Minute,
+		QuietEndHour:        quietHours.End.Hour,
+		QuietEndMinute:      quietHours.End.Minute,
+		DockerPruneEnabled:  dockerPrune.Enabled,
+		DockerPruneDay:      dockerPrune.Day,
+		DockerPruneHour:     dockerPrune.Hour,
 		Healthchecks:        healthchecks,
 	}
 
