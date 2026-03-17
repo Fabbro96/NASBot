@@ -34,6 +34,30 @@ for f in "${legacy_root_docs[@]}"; do
   fi
 done
 
+required_scripts=(
+  "scripts/build_release.sh"
+  "scripts/start_bot.sh"
+)
+
+for f in "${required_scripts[@]}"; do
+  if [[ ! -f "$f" ]]; then
+    echo "quality_check: missing required script: $f"
+    exit 1
+  fi
+done
+
+legacy_root_scripts=(
+  "build_release.sh"
+  "start_bot.sh"
+)
+
+for f in "${legacy_root_scripts[@]}"; do
+  if [[ -f "$f" ]]; then
+    echo "quality_check: legacy root script still present: $f"
+    echo "Move it under scripts/."
+    exit 1
+  fi
+done
 # Ensure runtime artifacts are not tracked in git.
 for f in nasbot nasbot-arm64 nasbot_state.json config.json; do
   if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then

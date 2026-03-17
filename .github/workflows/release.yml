@@ -43,8 +43,8 @@ jobs:
         env:
           VERSION: ${{ github.ref_name }}
         run: |
-          chmod +x build_release.sh
-          ./build_release.sh
+          chmod +x scripts/build_release.sh
+          ./scripts/build_release.sh
 
       - name: Generate checksums
         run: sha256sum nasbot nasbot-arm64 > SHA256SUMS.txt

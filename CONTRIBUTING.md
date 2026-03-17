@@ -28,7 +28,7 @@ Feature requests are welcome! Please:
 2. Ensure local hooks are enabled (required): `git config core.hooksPath .githooks`
 3. Ensure the code compiles: `go build ./...`
 4. Run tests: `go test ./...`
-5. If relevant, validate release build: `./build_release.sh`
+5. If relevant, validate release build: `./scripts/build_release.sh`
 6. Update docs if you added new features/commands
 7. Submit your PR with a clear description
 
@@ -87,7 +87,7 @@ go build -o nasbot .
 ├── go.sum               # Dependency checksums
 ├── README.md            # Documentation
 ├── LICENSE              # MIT License
-└── build_release.sh     # Release build script
+└── scripts/             # Tooling and operational scripts
 ```
 
 ## Adding New Commands

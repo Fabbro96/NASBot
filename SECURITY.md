@@ -21,7 +21,7 @@ This policy applies to local development, pull requests, and releases.
 - Before merge/release, run:
   - `scripts/shellcheck_all.sh`
   - `scripts/ci_guard.sh`
-  - `./build_release.sh`
+  - `./scripts/build_release.sh`
 - Create annotated tags only from validated commits.
 - CI enforces: secret scan + format/vet/test/build gates.
 - Security workflow enforces: Dependency Review + CodeQL analysis.

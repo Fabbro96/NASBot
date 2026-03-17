@@ -8,14 +8,15 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-cd "$SCRIPT_DIR"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." >/dev/null 2>&1 && pwd)"
+cd "$REPO_ROOT"
 
 clean="true"
 VERSION="${VERSION:-dev}"
 
 usage() {
     cat <<'EOF'
-Usage: ./build_release.sh [--no-clean]
+Usage: ./scripts/build_release.sh [--no-clean]
 
 Options:
   --no-clean   Keep existing binaries before build
