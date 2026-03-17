@@ -179,11 +179,33 @@ func generateReport(ctx *AppContext, manual bool, onModelChange func(string)) st
 		b.WriteString(fmt.Sprintf(ctx.Tr("llm_error"), aiErr))
 	}
 
-	// ... (Rest of manual report construction similar to simple report) ...
-	// Resource summary
 	b.WriteString(fmt.Sprintf("*%s*\n", ctx.Tr("report_resources")))
-	b.WriteString(fmt.Sprintf("CPU %s %.1f%%\n", format.MakeProgressBar(s.CPU), s.CPU))
-	// Details truncated for brevity
+	b.WriteString(fmt.Sprintf("🧠 CPU %s %.1f%%\n", format.MakeProgressBar(s.CPU), s.CPU))
+	b.WriteString(fmt.Sprintf("💾 RAM %s %.1f%%\n", format.MakeProgressBar(s.RAM), s.RAM))
+	if s.Swap > 0 {
+		b.WriteString(fmt.Sprintf("🔄 Swap %s %.1f%%\n", format.MakeProgressBar(s.Swap), s.Swap))
+	}
+	b.WriteString(fmt.Sprintf("\n💿 SSD %.1f%% used · %s free\n", s.VolSSD.Used, format.FormatBytes(s.VolSSD.Free)))
+	b.WriteString(fmt.Sprintf("🗄 HDD %.1f%% used · %s free\n", s.VolHDD.Used, format.FormatBytes(s.VolHDD.Free)))
+
+	running, stopped := 0, 0
+	for _, c := range getCachedContainerList(ctx) {
+		if c.Running {
+			running++
+		} else {
+			stopped++
+		}
+	}
+	b.WriteString(fmt.Sprintf("\n🐳 %d running, %d stopped\n", running, stopped))
+
+	if len(filteredEvents) > 0 {
+		b.WriteString(fmt.Sprintf("\n*%s*\n", ctx.Tr("report_events")))
+		for _, e := range filteredEvents {
+			b.WriteString(fmt.Sprintf("- %s %s\n", e.Time.In(ctx.State.TimeLocation).Format("15:04"), format.Truncate(e.Message, 64)))
+		}
+	}
+
+	b.WriteString(fmt.Sprintf("\n_⏱ Up for %s_", format.FormatUptime(s.Uptime)))
 
 	return b.String()
 }
@@ -210,5 +232,3 @@ func filterEventsSince(events []ReportEvent, since time.Time) []ReportEvent {
 	}
 	return filtered
 }
-
-// maxInt removed

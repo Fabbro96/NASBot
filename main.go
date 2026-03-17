@@ -54,6 +54,8 @@ func main() {
 
 	// Load persistent state
 	loadState(app)
+	addPowerLifecycleEvent(app, "boot", false, "system", "startup", "process-start")
+	saveState(app)
 
 	// Start Bot
 	bot, err := tgbotapi.NewBotAPI(app.Config.BotToken)
@@ -91,8 +93,9 @@ func main() {
 	goSafe("stats-collector", func() { statsCollector(app, rootCtx) })
 	goSafe("monitor-alerts", func() { monitorAlerts(app, bot, rootCtx) })
 	goSafe("autonomous-manager", func() { autonomousManager(app, bot, rootCtx) })
-	goSafe("periodic-report", func() { periodicReport(app, bot, rootCtx) })
+	goSafeResilient("periodic-report", rootCtx, 5*time.Second, func() { periodicReport(app, bot, rootCtx) })
 	goSafe("healthchecks-pinger", func() { startHealthchecksPinger(app, bot, rootCtx) })
+	goSafe("release-update-notifier", func() { updaterLoop(app, bot, rootCtx) })
 
 	// Send /start signal to healthchecks.io
 	goSafe("healthchecks-start-ping", func() { pingHealthchecksStart(app) })
@@ -152,6 +155,39 @@ func goSafe(name string, fn func()) {
 			}
 		}()
 		fn()
+	}()
+}
+
+func goSafeResilient(name string, runCtx context.Context, restartDelay time.Duration, fn func()) {
+	go func() {
+		for {
+			panicked := false
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						panicked = true
+						slog.Error("Panic recovered in resilient goroutine", "goroutine", name, "err", r, "stack", string(debug.Stack()))
+					}
+				}()
+				fn()
+			}()
+
+			select {
+			case <-runCtx.Done():
+				return
+			default:
+			}
+
+			if panicked {
+				slog.Warn("Resilient goroutine restarting after panic", "goroutine", name)
+			} else {
+				slog.Warn("Resilient goroutine exited unexpectedly, restarting", "goroutine", name)
+			}
+
+			if !sleepWithContext(runCtx, restartDelay) {
+				return
+			}
+		}
 	}()
 }
 

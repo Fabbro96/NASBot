@@ -4,6 +4,10 @@
 
 ![Platform](https://img.shields.io/badge/Platform-Linux%20ARM64-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
+[![CI](https://github.com/Fabbro96/NASBot/actions/workflows/ci.yml/badge.svg)](https://github.com/Fabbro96/NASBot/actions/workflows/ci.yml)
+[![Security](https://github.com/Fabbro96/NASBot/actions/workflows/security.yml/badge.svg)](https://github.com/Fabbro96/NASBot/actions/workflows/security.yml)
+[![Release](https://github.com/Fabbro96/NASBot/actions/workflows/release.yml/badge.svg)](https://github.com/Fabbro96/NASBot/actions/workflows/release.yml)
+![Provenance](https://img.shields.io/badge/Release%20Provenance-Attested-blue)
 
 A self-hosted bot that gives you a **live dashboard** (CPU, RAM, Disks, Docker) directly in Telegram. No web UI, just a single binary.
 

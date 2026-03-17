@@ -36,6 +36,7 @@ func SetupCommandRegistry() *CommandRegistry {
 	r.Register("prediction", &DiskPredCmd{}) // Alias
 	r.Register("health", &HealthCmd{})
 	r.Register("healthchecks", &HealthCmd{}) // Alias
+	r.Register("update", &UpdateCmd{})
 
 	// Report
 	r.Register("report", &ReportCmd{})

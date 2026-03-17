@@ -29,14 +29,15 @@ type ThreadSafeStats struct {
 
 // RuntimeState holds runtime volatile state
 type RuntimeState struct {
-	mu             sync.Mutex
-	ResourceStress map[string]*StressTracker
-	DockerFailure  time.Time
-	LastReport     time.Time
-	ReportEvents   []ReportEvent
-	DiskHistory    []DiskUsagePoint
-	PIDFile        *os.File
-	TimeLocation   *time.Location
+	mu                  sync.Mutex
+	ResourceStress      map[string]*StressTracker
+	DockerFailure       time.Time
+	LastReport          time.Time
+	LastReleaseNotified string
+	ReportEvents        []ReportEvent
+	DiskHistory         []DiskUsagePoint
+	PIDFile             *os.File
+	TimeLocation        *time.Location
 }
 
 // BotContext holds bot-specific interaction state
