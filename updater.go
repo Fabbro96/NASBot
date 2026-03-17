@@ -332,8 +332,6 @@ func applyLatestRelease(ctx *AppContext, bot BotAPI, chatID int64, msgID int) {
 		}
 		return
 	}
-
-<<<<<<< HEAD
 	addPowerLifecycleEvent(ctx, "reboot", false, "command", "scripts/start_bot.sh restart", "post-update-"+rel.Tag)
 	saveState(ctx)
 
