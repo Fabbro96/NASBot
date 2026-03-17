@@ -72,5 +72,5 @@ scripts/apply_github_rulesets.sh --repo Fabbro96/NASBot --dry-run
 ## Notes
 - `CODEOWNERS` is already present in `.github/CODEOWNERS`.
 - Baseline policy reference: `BRANCH_PROTECTION.md`.
-- Security policy reference: `SECURITY.md`.
+- Security policy reference: `../SECURITY.md`.
 - Ruleset templates are versioned in `.github/rulesets/`.

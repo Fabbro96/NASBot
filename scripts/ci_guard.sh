@@ -114,8 +114,9 @@ ensure_test_config() {
 
 check_required_commands
 
-chmod +x scripts/secret_scan.sh
+chmod +x scripts/secret_scan.sh scripts/quality_check.sh
 scripts/secret_scan.sh --repo
+scripts/quality_check.sh
 check_config_not_tracked
 ensure_test_config
 check_gofmt
