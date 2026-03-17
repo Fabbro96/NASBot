@@ -116,3 +116,10 @@ func (c *HealthCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, 
 	handleHealthCommand(ctx, bot, msg.Chat.ID)
 }
 func (c *HealthCmd) Description() string { return "Show healthchecks.io integration status" }
+
+type UpdateCmd struct{}
+
+func (c *UpdateCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, args string) {
+	applyLatestRelease(ctx, bot, msg.Chat.ID, 0)
+}
+func (c *UpdateCmd) Description() string { return "Download latest GitHub release and restart NASBot" }

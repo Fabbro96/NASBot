@@ -11,6 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 cd "$SCRIPT_DIR"
 
 clean="true"
+VERSION="${VERSION:-dev}"
 
 usage() {
     cat <<'EOF'
@@ -54,11 +55,11 @@ if [[ "$clean" == "true" ]]; then
 fi
 
 echo -e "${YELLOW}Building for current architecture...${NC}"
-go build -o nasbot .
+go build -ldflags "-X main.Version=${VERSION}" -o nasbot .
 echo -e "${GREEN}✅ Success: nasbot${NC}"
 
 echo -e "${YELLOW}Building for generic ARM64 (Linux)...${NC}"
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o nasbot-arm64 .
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "-X main.Version=${VERSION}" -o nasbot-arm64 .
 echo -e "${GREEN}✅ Success: nasbot-arm64${NC}"
 
 echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"

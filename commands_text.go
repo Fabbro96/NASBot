@@ -169,6 +169,7 @@ func getHelpText(ctx *AppContext) string {
 	b.WriteString("/configset <json> — update config.json\n")
 	b.WriteString("/logs — recent system logs\n")
 	b.WriteString("/ask <question> — ask AI about recent logs\n")
+	b.WriteString("/update — install latest GitHub release\n")
 	b.WriteString("/reboot · /shutdown — power control\n")
 	b.WriteString("/reboot force · /forcereboot — forced reboot (no confirm)\n\n")
 
@@ -376,7 +377,7 @@ func getSysInfoText(ctx *AppContext) string {
 	}
 
 	// Go runtime info
-	b.WriteString("\n*NASBot Version:* 1.0.0\n")
+	b.WriteString(fmt.Sprintf("\n*NASBot Version:* %s\n", Version))
 	if buildInfo, ok := debug.ReadBuildInfo(); ok {
 		b.WriteString(fmt.Sprintf("*Go Version:* %s\n", buildInfo.GoVersion))
 	}
