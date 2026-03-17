@@ -84,13 +84,13 @@ check_tag_semver() {
 }
 
 check_changelog_entry() {
-  if [[ ! -f CHANGELOG.md ]]; then
-    echo "❌ CHANGELOG.md is missing."
+  if [[ ! -f docs/CHANGELOG.md ]]; then
+    echo "❌ docs/CHANGELOG.md is missing."
     exit 1
   fi
 
-  if ! grep -Eq "^##[[:space:]]+${tag//./\.}([[:space:]]|$|-)" CHANGELOG.md; then
-    echo "❌ CHANGELOG.md missing section for ${tag}."
+  if ! grep -Eq "^##[[:space:]]+${tag//./\.}([[:space:]]|$|-)" docs/CHANGELOG.md; then
+    echo "❌ docs/CHANGELOG.md missing section for ${tag}."
     echo "   Add a header like: ## ${tag} - YYYY-MM-DD"
     exit 1
   fi

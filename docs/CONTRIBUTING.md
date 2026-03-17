@@ -81,7 +81,7 @@ go build -o nasbot .
 ├── translations*.go     # i18n dictionaries/runtime helpers
 ├── config.json          # Your config (gitignored)
 ├── config.example.json  # Example config for new users
-├── SECURITY.md          # Hardening policy and leak response
+├── docs/SECURITY.md     # Hardening policy and leak response
 ├── .githooks/           # Local commit hooks (secret scanner)
 ├── go.mod               # Go module definition
 ├── go.sum               # Dependency checksums

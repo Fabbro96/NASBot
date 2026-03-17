@@ -6,10 +6,13 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." >/dev/null 2>&1 && pwd)"
 cd "$REPO_ROOT"
 
 required_docs=(
-  "docs/BRANCH_PROTECTION.md"
-  "docs/GITHUB_RULESET_SETUP.md"
-  "docs/CHANGELOG_SETTINGS.md"
-  "docs/BOTFATHER_COMMANDS.txt"
+  "docs/governance/BRANCH_PROTECTION.md"
+  "docs/governance/GITHUB_RULESET_SETUP.md"
+  "docs/governance/CHANGELOG_SETTINGS.md"
+  "docs/operations/BOTFATHER_COMMANDS.txt"
+  "docs/SECURITY.md"
+  "docs/CONTRIBUTING.md"
+  "docs/CHANGELOG.md"
 )
 
 for f in "${required_docs[@]}"; do
@@ -24,12 +27,30 @@ legacy_root_docs=(
   "GITHUB_RULESET_SETUP.md"
   "CHANGELOG_SETTINGS.md"
   "BOTFATHER_COMMANDS.txt"
+  "SECURITY.md"
+  "CONTRIBUTING.md"
+  "CHANGELOG.md"
 )
 
 for f in "${legacy_root_docs[@]}"; do
   if [[ -f "$f" ]]; then
     echo "quality_check: legacy root file still present: $f"
     echo "Move it under docs/."
+    exit 1
+  fi
+done
+
+legacy_docs_flat=(
+  "docs/BRANCH_PROTECTION.md"
+  "docs/GITHUB_RULESET_SETUP.md"
+  "docs/CHANGELOG_SETTINGS.md"
+  "docs/BOTFATHER_COMMANDS.txt"
+)
+
+for f in "${legacy_docs_flat[@]}"; do
+  if [[ -f "$f" ]]; then
+    echo "quality_check: legacy docs path still present: $f"
+    echo "Move it under docs/governance or docs/operations."
     exit 1
   fi
 done

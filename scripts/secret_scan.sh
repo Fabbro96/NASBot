@@ -46,7 +46,7 @@ patterns=(
 repo_exclusions=(
   ':!*_test.go'
   ':!config.example.json'
-  ':!docs/CHANGELOG_SETTINGS.md'
+  ':!docs/governance/CHANGELOG_SETTINGS.md'
   ':!README.md'
 )
 

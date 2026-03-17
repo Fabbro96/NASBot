@@ -3,9 +3,9 @@
 
 # Security and release critical paths
 /.github/workflows/ @Fabbro96
-/SECURITY.md @Fabbro96
-/docs/BRANCH_PROTECTION.md @Fabbro96
-/docs/GITHUB_RULESET_SETUP.md @Fabbro96
-/docs/CHANGELOG_SETTINGS.md @Fabbro96
+/docs/SECURITY.md @Fabbro96
+/docs/governance/BRANCH_PROTECTION.md @Fabbro96
+/docs/governance/GITHUB_RULESET_SETUP.md @Fabbro96
+/docs/governance/CHANGELOG_SETTINGS.md @Fabbro96
 /scripts/ @Fabbro96
 /.githooks/ @Fabbro96
