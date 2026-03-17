@@ -25,8 +25,8 @@ This policy applies to local development, pull requests, and releases.
 - Create annotated tags only from validated commits.
 - CI enforces: secret scan + format/vet/test/build gates.
 - Security workflow enforces: Dependency Review + CodeQL analysis.
-- Branch protection baseline: see [BRANCH_PROTECTION.md](BRANCH_PROTECTION.md).
-- GitHub UI rollout guide: see [GITHUB_RULESET_SETUP.md](GITHUB_RULESET_SETUP.md).
+- Branch protection baseline: see [docs/BRANCH_PROTECTION.md](docs/BRANCH_PROTECTION.md).
+- GitHub UI rollout guide: see [docs/GITHUB_RULESET_SETUP.md](docs/GITHUB_RULESET_SETUP.md).
 - Ruleset automation: run `scripts/apply_github_rulesets.sh`.
 
 ## Incident Response (Leak)
