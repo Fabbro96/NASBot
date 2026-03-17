@@ -277,9 +277,20 @@ func restartWithStartScript() error {
 	if err != nil {
 		return err
 	}
-	script := filepath.Join(filepath.Dir(exe), "start_bot.sh")
-	if _, err := os.Stat(script); err != nil {
-		return fmt.Errorf("start script not found: %w", err)
+	base := filepath.Dir(exe)
+	candidates := []string{
+		filepath.Join(base, "scripts", "start_bot.sh"),
+		filepath.Join(base, "start_bot.sh"),
+	}
+	var script string
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			script = c
+			break
+		}
+	}
+	if script == "" {
+		return fmt.Errorf("start script not found in expected paths")
 	}
 	return runCommand(context.Background(), script, "restart")
 }
@@ -322,7 +333,7 @@ func applyLatestRelease(ctx *AppContext, bot BotAPI, chatID int64, msgID int) {
 		return
 	}
 
-	addPowerLifecycleEvent(ctx, "reboot", false, "command", "start_bot.sh restart", "post-update-"+rel.Tag)
+	addPowerLifecycleEvent(ctx, "reboot", false, "command", "scripts/start_bot.sh restart", "post-update-"+rel.Tag)
 	saveState(ctx)
 
 	okText := fmt.Sprintf("✅ Update %s scaricato. Riavvio NASBot in corso...", rel.Tag)

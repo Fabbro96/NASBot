@@ -88,8 +88,8 @@ jobs:
 
       - name: Release script smoke
         run: |
-          chmod +x build_release.sh
-          ./build_release.sh
+          chmod +x scripts/build_release.sh
+          ./scripts/build_release.sh
 
       - name: Coverage (primary toolchain)
         if: matrix.go-version == '1.22.x'

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -u -o pipefail
 
-BOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+BOT_DIR="$(cd "$SCRIPT_DIR/.." >/dev/null 2>&1 && pwd)"
 BOT_NAME="nasbot"
 UPDATE_FILE="nasbot-update"
 LOG_FILE="$BOT_DIR/nasbot.log"
@@ -248,7 +249,7 @@ install_persistence() {
 	fi
 
 	local script_path cron_job
-	script_path="$BOT_DIR/start_bot.sh"
+	script_path="$BOT_DIR/scripts/start_bot.sh"
 	cron_job="*/5 * * * * $script_path watchdog"
 
 	if crontab -l 2>/dev/null | grep -Fq "$script_path watchdog"; then

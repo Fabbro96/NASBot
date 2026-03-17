@@ -20,7 +20,7 @@ All notable changes to this project are documented in this file.
 - Quality gate passing (`scripts/ci_guard.sh`).
 - Tests passing (`go test ./...`).
 - Build passing (`go build ./...`).
-- Release binaries built successfully (`./build_release.sh`).
+- Release binaries built successfully (`./scripts/build_release.sh`).
 
 ## v0.1.0 - 2026-02-14
 
@@ -42,4 +42,4 @@ All notable changes to this project are documented in this file.
 ### Validation
 - Test suite passing (`go test ./...`).
 - Build passing (`go build ./...`).
-- Release binaries built successfully (`./build_release.sh`).
+- Release binaries built successfully (`./scripts/build_release.sh`).
