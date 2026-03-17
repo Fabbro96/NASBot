@@ -106,24 +106,9 @@ jobs:
           name: go-coverage
           path: coverage.out
 
-      - name: Coverage (primary toolchain)
-        if: matrix.go-version == '1.22.x'
-        run: |
-          if [ ! -f config.json ]; then
-            cp config.example.json config.json
-          fi
-          go test -coverprofile=coverage.out ./...
-
-      - name: Upload coverage artifact
-        if: matrix.go-version == '1.22.x'
-        uses: actions/upload-artifact@v4
-        with:
-          name: go-coverage
-          path: coverage.out
-
       - name: Upload build artifacts
         if: matrix.go-version == '1.22.x'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: nasbot-binaries
           path: |
