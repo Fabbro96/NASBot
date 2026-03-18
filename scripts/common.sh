@@ -43,8 +43,6 @@ declare -A DEFAULTS=(
 # LOGGING & OUTPUT
 # ============================================================================
 
-log_level=""
-
 log_debug() {
     [[ "${VERBOSE:-false}" == "true" ]] && echo "[DEBUG] $*" >&2 || true
 }
@@ -91,6 +89,7 @@ load_config() {
         log_debug "Loading template from ${REPO_ROOT}/nasbot.config.template"
         # Source template but only extract variables (skip functions/comments)
         set +u
+        # shellcheck disable=SC1090
         source <(grep -E '^\s*[A-Z_]+=' "${REPO_ROOT}/nasbot.config.template" | grep -v '^#')
         set -u
     fi
@@ -99,6 +98,7 @@ load_config() {
     if [[ -f "${config_file}" ]]; then
         log_debug "Loading local config from ${config_file}"
         set +u
+        # shellcheck disable=SC1090
         source "${config_file}"
         set -u
     fi
@@ -268,7 +268,8 @@ safe_copy() {
     require_file "${src}" "Source file"
     
     if [[ -f "${dest}" ]]; then
-        local backup="${dest}.backup.$(date +%s)"
+        local backup
+        backup="${dest}.backup.$(date +%s)"
         log_info "Backing up existing file: ${backup}"
         cp "${dest}" "${backup}"
     fi
@@ -344,16 +345,17 @@ format_bytes() {
 # Get script size in readable format
 get_script_size() {
     local script="$1"
-    local size=$(wc -c < "${script}")
+    local size
+    size=$(wc -c < "${script}")
     format_bytes "${size}"
 }
 
 # Export common variables for subshells
 export_config() {
     # Export all variables that start with uppercase letters
-    for var in ${!DEFAULTS[@]}; do
+    for var in "${!DEFAULTS[@]}"; do
         if [[ -v "${var}" ]]; then
-            export "${var}"
+            export "${var?}"
         fi
     done
 }

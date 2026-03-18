@@ -3,6 +3,7 @@ set -euo pipefail
 
 # Source common utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+# shellcheck disable=SC1091
 source "${SCRIPT_DIR}/common.sh"
 
 # Configuration variables
@@ -107,7 +108,7 @@ while [[ $# -gt 0 ]]; do
 		shift 2
 		;;
 	--verbose)
-		VERBOSE="true"
+		export VERBOSE="true"
 		shift
 		;;
 	--help|-h)
@@ -152,7 +153,8 @@ rsync_args=(
 
 # Add custom rsync options if provided
 if [[ -n "${RSYNC_OPTS}" ]]; then
-	rsync_args+=(${RSYNC_OPTS})
+	read -r -a rsync_opts_arr <<< "${RSYNC_OPTS}"
+	rsync_args+=("${rsync_opts_arr[@]}")
 fi
 
 # Add compression for remote targets

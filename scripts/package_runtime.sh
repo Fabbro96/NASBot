@@ -3,6 +3,7 @@ set -euo pipefail
 
 # Source common utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+# shellcheck disable=SC1091
 source "${SCRIPT_DIR}/common.sh"
 
 # Override defaults for this script
@@ -86,7 +87,7 @@ while [[ $# -gt 0 ]]; do
 		shift 2
 		;;
 	--verbose)
-		VERBOSE="true"
+		export VERBOSE="true"
 		shift
 		;;
 	--help|-h)

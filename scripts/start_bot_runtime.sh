@@ -5,6 +5,7 @@ set -u -o pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 BOT_DIR="${SCRIPT_DIR}"
 if [[ -f "${SCRIPT_DIR}/common.sh" ]]; then
+	# shellcheck disable=SC1091
 	NASBOT_NO_AUTO_LOAD=1 source "${SCRIPT_DIR}/common.sh"
 fi
 
@@ -98,10 +99,13 @@ start_bot() {
 
 	rotate_logs
 	echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting NASBot..." >>"$LOG_FILE"
-	NASBOT_LOG_FILE="$LOG_FILE" \
-		NASBOT_PID_FILE="$PID_FILE" \
-		NASBOT_STATE_FILE="$STATE_FILE" \
-		nohup "$BOT_BINARY" >>"$LOG_FILE" 2>&1 &
+	export NASBOT_LOG_FILE="$LOG_FILE"
+	export NASBOT_PID_FILE="$PID_FILE"
+	export NASBOT_STATE_FILE="$STATE_FILE"
+	if [[ -n "$ULIMIT_N" ]]; then
+		ulimit -n "$ULIMIT_N" 2>/dev/null || true
+	fi
+	nohup "$BOT_BINARY" >>"$LOG_FILE" 2>&1 &
 	echo $! >"$PID_FILE"
 
 	sleep 2
@@ -192,7 +196,7 @@ status_bot() {
 	echo "⚙️  Binary: $BOT_BINARY"
 	echo "📝 Log: $LOG_FILE"
 	if [[ -f "$LOG_FILE" ]]; then
-		echo "📊 Log size: $(ls -lh "$LOG_FILE" | awk '{print $5}')"
+		echo "📊 Log size: $(format_bytes "$(get_file_size "$LOG_FILE")")"
 	fi
 	echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
 }
@@ -200,7 +204,9 @@ status_bot() {
 check_updates() {
 	local update_file=""
 	# Search for update files matching the pattern
-	for candidate in ${BOT_DIR}/${UPDATE_FILE_PATTERN}; do
+	local candidates=()
+	mapfile -t candidates < <(compgen -G "${BOT_DIR}/${UPDATE_FILE_PATTERN}" || true)
+	for candidate in "${candidates[@]}"; do
 		if [[ -f "${candidate}" ]]; then
 			update_file="${candidate}"
 			break
@@ -351,7 +357,9 @@ show_config() {
 }
 
 ensure_binary_permissions
-check_updates
+if [[ "${AUTO_RESTART_ON_UPDATE}" == "true" ]]; then
+	check_updates
+fi
 
 # Parse global options
 while [[ $# -gt 0 ]]; do
@@ -409,8 +417,5 @@ install)
 *)
 	usage
 	exit 1
-	;;
-*)
-	usage
 	;;
 esac
