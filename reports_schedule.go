@@ -12,11 +12,11 @@ import (
 
 // getNextReportTime calculates the next report time based on reportMode
 func getNextReportTime(ctx *AppContext) (time.Time, bool) {
-	ctx.Settings.mu.RLock()
+	ctx.Settings.Mu.RLock()
 	mode := ctx.Settings.ReportMode
 	morning := ctx.Settings.ReportMorning
 	evening := ctx.Settings.ReportEvening
-	ctx.Settings.mu.RUnlock()
+	ctx.Settings.Mu.RUnlock()
 
 	loc := ctx.State.TimeLocation
 	now := time.Now().In(loc)
@@ -32,9 +32,9 @@ func getNextReportTime(ctx *AppContext) (time.Time, bool) {
 
 	const gracePeriod = 5 * time.Minute
 
-	ctx.State.mu.Lock()
+	ctx.State.Mu.Lock()
 	lastReportToday := ctx.State.LastReport.In(loc)
-	ctx.State.mu.Unlock()
+	ctx.State.Mu.Unlock()
 
 	sameDay := lastReportToday.Year() == now.Year() &&
 		lastReportToday.Month() == now.Month() &&
@@ -73,11 +73,11 @@ func getNextReportTime(ctx *AppContext) (time.Time, bool) {
 }
 
 func getNextReportDescription(ctx *AppContext) string {
-	ctx.Settings.mu.RLock()
+	ctx.Settings.Mu.RLock()
 	mode := ctx.Settings.ReportMode
 	morning := ctx.Settings.ReportMorning
 	evening := ctx.Settings.ReportEvening
-	ctx.Settings.mu.RUnlock()
+	ctx.Settings.Mu.RUnlock()
 
 	loc := ctx.State.TimeLocation
 	now := time.Now().In(loc)
@@ -107,9 +107,9 @@ func periodicReport(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 	}
 
 	for {
-		ctx.Settings.mu.RLock()
+		ctx.Settings.Mu.RLock()
 		mode := ctx.Settings.ReportMode
-		ctx.Settings.mu.RUnlock()
+		ctx.Settings.Mu.RUnlock()
 
 		if mode == 0 {
 			if !sleepWithContext(runCtx, 1*time.Hour) {
@@ -135,9 +135,9 @@ func periodicReport(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 		if err := sendScheduledReport(bot, ctx.Config.AllowedUserID, report); err != nil {
 			slog.Error("Failed to send scheduled report", "err", err)
 		} else {
-			ctx.State.mu.Lock()
+			ctx.State.Mu.Lock()
 			ctx.State.LastReport = time.Now()
-			ctx.State.mu.Unlock()
+			ctx.State.Mu.Unlock()
 			go saveState(ctx)
 			go func() {
 				defer func() {

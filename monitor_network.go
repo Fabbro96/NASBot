@@ -20,9 +20,9 @@ func checkNetworkHealth(ctx *AppContext, bot BotAPI) {
 	cfg := ctx.Config
 	forceRebootAfter := networkForceRebootAfter(cfg)
 
-	ctx.Monitor.mu.Lock()
+	ctx.Monitor.Mu.Lock()
 	ctx.Monitor.NetLastCheckTime = time.Now()
-	ctx.Monitor.mu.Unlock()
+	ctx.Monitor.Mu.Unlock()
 
 	targets := cfg.NetworkWatchdog.Targets
 	if len(targets) == 0 {
@@ -71,7 +71,7 @@ func checkNetworkHealth(ctx *AppContext, bot BotAPI) {
 	if pingOk && dnsOk {
 		var shouldNotify bool
 		var downSince time.Time
-		ctx.Monitor.mu.Lock()
+		ctx.Monitor.Mu.Lock()
 		ctx.Monitor.NetFailCount = 0
 		ctx.Monitor.NetConsecutiveDegraded = 0
 		if !ctx.Monitor.NetDownSince.IsZero() {
@@ -80,7 +80,7 @@ func checkNetworkHealth(ctx *AppContext, bot BotAPI) {
 			ctx.Monitor.NetDownSince = time.Time{}
 			ctx.Monitor.NetForceRebootTriggered = false
 		}
-		ctx.Monitor.mu.Unlock()
+		ctx.Monitor.Mu.Unlock()
 
 		if shouldNotify && !ctx.IsQuietHours() {
 			msg := fmt.Sprintf(ctx.Tr("net_recovered"), format.FormatDuration(time.Since(downSince)))
@@ -94,13 +94,13 @@ func checkNetworkHealth(ctx *AppContext, bot BotAPI) {
 	// DNS-only issue
 	if pingOk && !dnsOk {
 		shouldNotify := false
-		ctx.Monitor.mu.Lock()
+		ctx.Monitor.Mu.Lock()
 		ctx.Monitor.NetConsecutiveDegraded++
 		if time.Since(ctx.Monitor.NetDNSAlertTime) >= cooldown {
 			ctx.Monitor.NetDNSAlertTime = time.Now()
 			shouldNotify = true
 		}
-		ctx.Monitor.mu.Unlock()
+		ctx.Monitor.Mu.Unlock()
 
 		if shouldNotify {
 			msg := fmt.Sprintf(ctx.Tr("net_dns_fail"), dnsHost)
@@ -118,7 +118,7 @@ func checkNetworkHealth(ctx *AppContext, bot BotAPI) {
 	var shouldAlert bool
 	var shouldForceReboot bool
 	var downFor time.Duration
-	ctx.Monitor.mu.Lock()
+	ctx.Monitor.Mu.Lock()
 	ctx.Monitor.NetFailCount++
 	ctx.Monitor.NetConsecutiveDegraded++
 	if ctx.Monitor.NetFailCount >= threshold {
@@ -135,7 +135,7 @@ func checkNetworkHealth(ctx *AppContext, bot BotAPI) {
 			shouldForceReboot = true
 		}
 	}
-	ctx.Monitor.mu.Unlock()
+	ctx.Monitor.Mu.Unlock()
 
 	if shouldAlert {
 		msg := fmt.Sprintf(ctx.Tr("net_down"), strings.Join(reasons, "\n- "))

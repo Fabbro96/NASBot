@@ -103,9 +103,9 @@ func reportLogRetentionDuration(ctx *AppContext) time.Duration {
 		return 48 * time.Hour
 	}
 
-	ctx.Settings.mu.RLock()
+	ctx.Settings.Mu.RLock()
 	mode := ctx.Settings.ReportMode
-	ctx.Settings.mu.RUnlock()
+	ctx.Settings.Mu.RUnlock()
 
 	switch mode {
 	case 2:

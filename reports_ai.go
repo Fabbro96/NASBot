@@ -54,9 +54,9 @@ func generateAIReportWithPeriod(ctx *AppContext, s Stats, events []ReportEvent, 
 		sysContext.WriteString(fmt.Sprintf("- Healthchecks.io: %s (%.1f%% success rate)\n", status, float64(hc.SuccessfulPings)/float64(maxInt(hc.TotalPings, 1))*100))
 		if len(hc.DowntimeEvents) > 0 {
 			sysContext.WriteString("  Recent Healthchecks downtimes:\n")
-			ctx.State.mu.Lock()
+			ctx.State.Mu.Lock()
 			lastReportTime := ctx.State.LastReport
-			ctx.State.mu.Unlock()
+			ctx.State.Mu.Unlock()
 			for _, e := range hc.DowntimeEvents {
 				if e.StartTime.After(lastReportTime) {
 					sysContext.WriteString(fmt.Sprintf("  - %s: %s (%s)\n", e.StartTime.Format("15:04"), e.Reason, e.Duration))

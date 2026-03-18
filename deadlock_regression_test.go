@@ -72,13 +72,13 @@ func TestNoDeadlock_HealthStatsWhileMonitorMutates(t *testing.T) {
 			wg.Add(2)
 			go func(i int) {
 				defer wg.Done()
-				ctx.Monitor.mu.Lock()
+				ctx.Monitor.Mu.Lock()
 				ctx.Monitor.NetConsecutiveDegraded = i % 3
 				ctx.Monitor.NetFailCount = i % 2
 				ctx.Monitor.KwConsecutiveCheckErrors = i % 4
 				ctx.Monitor.KwLastCheckError = "e"
 				ctx.Monitor.Healthchecks.LastPingSuccess = i%2 == 0
-				ctx.Monitor.mu.Unlock()
+				ctx.Monitor.Mu.Unlock()
 			}(i)
 			go func() {
 				defer wg.Done()

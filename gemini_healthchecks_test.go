@@ -201,7 +201,7 @@ func TestGetHealthchecksAISummary_WithEvents(t *testing.T) {
 	start := time.Date(2026, 2, 6, 10, 0, 0, 0, time.UTC)
 	end := start.Add(5 * time.Minute)
 
-	ctx.Monitor.mu.Lock()
+	ctx.Monitor.Mu.Lock()
 	ctx.Monitor.Healthchecks = HealthchecksState{
 		TotalPings:      4,
 		SuccessfulPings: 3,
@@ -215,7 +215,7 @@ func TestGetHealthchecksAISummary_WithEvents(t *testing.T) {
 			},
 		},
 	}
-	ctx.Monitor.mu.Unlock()
+	ctx.Monitor.Mu.Unlock()
 
 	got := getHealthchecksAISummary(ctx)
 	if !strings.Contains(got, "Healthchecks.io monitoring data") {

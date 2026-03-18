@@ -21,8 +21,8 @@ func checkContainerStates(ctx *AppContext, bot BotAPI) {
 		return
 	}
 
-	ctx.Docker.mu.Lock()
-	defer ctx.Docker.mu.Unlock()
+	ctx.Docker.Mu.Lock()
+	defer ctx.Docker.Mu.Unlock()
 
 	if ctx.Docker.LastStates == nil {
 		ctx.Docker.LastStates = make(map[string]bool)
@@ -136,8 +136,8 @@ func handleCriticalRAM(ctx *AppContext, bot BotAPI, s Stats) {
 
 // canAutoRestart checks if container can be auto-restarted
 func canAutoRestart(ctx *AppContext, containerName string) bool {
-	ctx.Docker.mu.Lock()
-	defer ctx.Docker.mu.Unlock()
+	ctx.Docker.Mu.Lock()
+	defer ctx.Docker.Mu.Unlock()
 
 	if ctx.Docker.AutoRestarts == nil {
 		ctx.Docker.AutoRestarts = make(map[string][]time.Time)
@@ -163,8 +163,8 @@ func canAutoRestart(ctx *AppContext, containerName string) bool {
 
 // recordAutoRestart records an auto-restart
 func recordAutoRestart(ctx *AppContext, containerName string) {
-	ctx.Docker.mu.Lock()
-	defer ctx.Docker.mu.Unlock()
+	ctx.Docker.Mu.Lock()
+	defer ctx.Docker.Mu.Unlock()
 
 	if ctx.Docker.AutoRestarts == nil {
 		ctx.Docker.AutoRestarts = make(map[string][]time.Time)
@@ -176,8 +176,8 @@ func recordAutoRestart(ctx *AppContext, containerName string) {
 
 // cleanRestartCounter cleans old restart records
 func cleanRestartCounter(ctx *AppContext) {
-	ctx.Docker.mu.Lock()
-	defer ctx.Docker.mu.Unlock()
+	ctx.Docker.Mu.Lock()
+	defer ctx.Docker.Mu.Unlock()
 
 	if ctx.Docker.AutoRestarts == nil {
 		return

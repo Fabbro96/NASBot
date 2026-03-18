@@ -1,4 +1,4 @@
-package main
+package commands
 
 import (
 	"fmt"
@@ -71,10 +71,10 @@ func getQuickText(ctx *AppContext) string {
 	b.WriteString(fmt.Sprintf(" · 🐳%d", running))
 
 	// Watchdog semaphores
-	ctx.Monitor.mu.Lock()
+	ctx.Monitor.Mu.Lock()
 	netDegraded := ctx.Monitor.NetConsecutiveDegraded > 0 || ctx.Monitor.NetFailCount > 0
 	kwErrors := ctx.Monitor.KwConsecutiveCheckErrors > 0
-	ctx.Monitor.mu.Unlock()
+	ctx.Monitor.Mu.Unlock()
 
 	netSem := "🟢"
 	if netDegraded {
@@ -91,3 +91,5 @@ func getQuickText(ctx *AppContext) string {
 
 	return b.String()
 }
+
+func GetQuickText(ctx *AppContext) string { return getQuickText(ctx) }

@@ -19,14 +19,14 @@ func checkRaidHealth(ctx *AppContext, bot BotAPI) {
 	if len(issues) == 0 {
 		var shouldNotify bool
 		var downSince time.Time
-		ctx.Monitor.mu.Lock()
+		ctx.Monitor.Mu.Lock()
 		if !ctx.Monitor.RaidDownSince.IsZero() {
 			shouldNotify = cfg.RaidWatchdog.RecoveryNotify
 			downSince = ctx.Monitor.RaidDownSince
 			ctx.Monitor.RaidDownSince = time.Time{}
 			ctx.Monitor.RaidLastSignature = ""
 		}
-		ctx.Monitor.mu.Unlock()
+		ctx.Monitor.Mu.Unlock()
 
 		if shouldNotify && !ctx.IsQuietHours() {
 			msg := fmt.Sprintf(ctx.Tr("raid_recovered"), format.FormatDuration(time.Since(downSince)))
@@ -44,7 +44,7 @@ func checkRaidHealth(ctx *AppContext, bot BotAPI) {
 	}
 
 	shouldAlert := false
-	ctx.Monitor.mu.Lock()
+	ctx.Monitor.Mu.Lock()
 	if ctx.Monitor.RaidDownSince.IsZero() {
 		ctx.Monitor.RaidDownSince = time.Now()
 	}
@@ -53,7 +53,7 @@ func checkRaidHealth(ctx *AppContext, bot BotAPI) {
 		ctx.Monitor.RaidLastSignature = signature
 		ctx.Monitor.RaidAlertTime = time.Now()
 	}
-	ctx.Monitor.mu.Unlock()
+	ctx.Monitor.Mu.Unlock()
 
 	if shouldAlert {
 		msg := fmt.Sprintf(ctx.Tr("raid_alert"), strings.Join(issues, "\n"))

@@ -90,7 +90,7 @@ func recordHealthcheckSuccess(ctx *AppContext, bot BotAPI) {
 		totalPings   int
 	)
 
-	ctx.Monitor.mu.Lock()
+	ctx.Monitor.Mu.Lock()
 	ctx.Monitor.Healthchecks.TotalPings++
 	ctx.Monitor.Healthchecks.SuccessfulPings++
 	ctx.Monitor.Healthchecks.LastPingTime = time.Now()
@@ -111,7 +111,7 @@ func recordHealthcheckSuccess(ctx *AppContext, bot BotAPI) {
 	}
 
 	totalPings = ctx.Monitor.Healthchecks.TotalPings
-	ctx.Monitor.mu.Unlock()
+	ctx.Monitor.Mu.Unlock()
 
 	// Send recovery notification
 	if shouldNotify {
@@ -145,7 +145,7 @@ func recordHealthcheckSuccess(ctx *AppContext, bot BotAPI) {
 
 // recordHealthcheckFailure records a failed ping
 func recordHealthcheckFailure(ctx *AppContext, bot BotAPI, reason string) {
-	ctx.Monitor.mu.Lock()
+	ctx.Monitor.Mu.Lock()
 
 	ctx.Monitor.Healthchecks.TotalPings++
 	ctx.Monitor.Healthchecks.FailedPings++
@@ -172,7 +172,7 @@ func recordHealthcheckFailure(ctx *AppContext, bot BotAPI, reason string) {
 		lastPingTime := ctx.Monitor.Healthchecks.LastPingTime
 		totalPings := ctx.Monitor.Healthchecks.TotalPings
 
-		ctx.Monitor.mu.Unlock() // Unlock before sending message to avoid deadlock if network is slow (though Send is usually fastish, but best practice)
+		ctx.Monitor.Mu.Unlock() // Unlock before sending message to avoid deadlock if network is slow (though Send is usually fastish, but best practice)
 
 		// Notify user (respecting quiet hours)
 		if bot != nil && !ctx.IsQuietHours() {
@@ -204,7 +204,7 @@ func recordHealthcheckFailure(ctx *AppContext, bot BotAPI, reason string) {
 		}
 		ctx.State.AddReportEvent("warning", fmt.Sprintf("🔴 Healthchecks down: %s", reason))
 	} else {
-		ctx.Monitor.mu.Unlock()
+		ctx.Monitor.Mu.Unlock()
 	}
 
 	go saveState(ctx)
@@ -212,8 +212,8 @@ func recordHealthcheckFailure(ctx *AppContext, bot BotAPI, reason string) {
 
 // getHealthchecksStats returns formatted stats for the /health command
 func getHealthchecksStats(ctx *AppContext) string {
-	ctx.Monitor.mu.Lock()
-	defer ctx.Monitor.mu.Unlock()
+	ctx.Monitor.Mu.Lock()
+	defer ctx.Monitor.Mu.Unlock()
 
 	if !ctx.Config.Healthchecks.Enabled {
 		return ctx.Tr("health_disabled") + buildWatchdogStatusLocked(ctx)
@@ -324,8 +324,8 @@ func buildWatchdogStatusLocked(ctx *AppContext) string {
 
 // getHealthchecksAISummary generates an AI summary of downtime patterns
 func getHealthchecksAISummary(ctx *AppContext) string {
-	ctx.Monitor.mu.Lock()
-	defer ctx.Monitor.mu.Unlock()
+	ctx.Monitor.Mu.Lock()
+	defer ctx.Monitor.Mu.Unlock()
 
 	if len(ctx.Monitor.Healthchecks.DowntimeEvents) == 0 {
 		return ctx.Tr("health_ai_no_data")
@@ -359,9 +359,9 @@ func handleHealthCommand(ctx *AppContext, bot BotAPI, chatID int64) {
 	// Create inline keyboard
 	var keyboard tgbotapi.InlineKeyboardMarkup
 
-	ctx.Monitor.mu.Lock()
+	ctx.Monitor.Mu.Lock()
 	hasEvents := len(ctx.Monitor.Healthchecks.DowntimeEvents) > 0
-	ctx.Monitor.mu.Unlock()
+	ctx.Monitor.Mu.Unlock()
 
 	if ctx.Config.Healthchecks.Enabled && ctx.Config.GeminiAPIKey != "" && hasEvents {
 		keyboard = tgbotapi.NewInlineKeyboardMarkup(
@@ -400,9 +400,9 @@ func handleHealthCallback(ctx *AppContext, bot BotAPI, query *tgbotapi.CallbackQ
 		edit := tgbotapi.NewEditMessageText(chatID, msgID, stats)
 		edit.ParseMode = "Markdown"
 
-		ctx.Monitor.mu.Lock()
+		ctx.Monitor.Mu.Lock()
 		hasEvents := len(ctx.Monitor.Healthchecks.DowntimeEvents) > 0
-		ctx.Monitor.mu.Unlock()
+		ctx.Monitor.Mu.Unlock()
 
 		var keyboard tgbotapi.InlineKeyboardMarkup
 		if ctx.Config.GeminiAPIKey != "" && hasEvents {
@@ -486,12 +486,12 @@ func handleHealthCallback(ctx *AppContext, bot BotAPI, query *tgbotapi.CallbackQ
 		}
 
 	case "health_clear":
-		ctx.Monitor.mu.Lock()
+		ctx.Monitor.Mu.Lock()
 		ctx.Monitor.Healthchecks.DowntimeEvents = []DowntimeLog{}
 		ctx.Monitor.Healthchecks.TotalPings = 0
 		ctx.Monitor.Healthchecks.SuccessfulPings = 0
 		ctx.Monitor.Healthchecks.FailedPings = 0
-		ctx.Monitor.mu.Unlock()
+		ctx.Monitor.Mu.Unlock()
 		saveState(ctx)
 
 		stats := getHealthchecksStats(ctx)
