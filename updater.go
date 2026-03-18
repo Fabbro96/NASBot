@@ -165,12 +165,12 @@ func checkForUpdate(ctx *AppContext) (releaseCandidate, bool, error) {
 }
 
 func notifyUpdateAvailable(ctx *AppContext, bot BotAPI, rel releaseCandidate) {
-	ctx.State.mu.Lock()
+	ctx.State.Mu.Lock()
 	if ctx.State.LastReleaseNotified == rel.Tag {
-		ctx.State.mu.Unlock()
+		ctx.State.Mu.Unlock()
 		return
 	}
-	ctx.State.mu.Unlock()
+	ctx.State.Mu.Unlock()
 
 	text := fmt.Sprintf("🆕 Nuova versione disponibile: *%s*\nVersione attuale: *%s*\nAsset per questa architettura: `%s`", rel.Tag, Version, rel.AssetName)
 	kb := tgbotapi.NewInlineKeyboardMarkup(
@@ -189,9 +189,9 @@ func notifyUpdateAvailable(ctx *AppContext, bot BotAPI, rel releaseCandidate) {
 		return
 	}
 
-	ctx.State.mu.Lock()
+	ctx.State.Mu.Lock()
 	ctx.State.LastReleaseNotified = rel.Tag
-	ctx.State.mu.Unlock()
+	ctx.State.Mu.Unlock()
 	saveState(ctx)
 }
 

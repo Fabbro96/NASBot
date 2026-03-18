@@ -40,9 +40,9 @@ func handleSettingsCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int
 		} else if data == "set_reports_2" {
 			mode = 2
 		}
-		ctx.Settings.mu.Lock()
+		ctx.Settings.Mu.Lock()
 		ctx.Settings.ReportMode = mode
-		ctx.Settings.mu.Unlock()
+		ctx.Settings.Mu.Unlock()
 		saveState(ctx)
 		text, kb := getSettingsMenuText(ctx)
 		editMessage(bot, chatID, msgID, text, &kb)
@@ -59,18 +59,18 @@ func handleSettingsCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int
 		return true
 	}
 	if data == "quiet_enable" {
-		ctx.Settings.mu.Lock()
+		ctx.Settings.Mu.Lock()
 		ctx.Settings.QuietHours.Enabled = true
-		ctx.Settings.mu.Unlock()
+		ctx.Settings.Mu.Unlock()
 		saveState(ctx)
 		text, kb := getQuietHoursSettingsText(ctx)
 		editMessage(bot, chatID, msgID, text, &kb)
 		return true
 	}
 	if data == "quiet_disable" {
-		ctx.Settings.mu.Lock()
+		ctx.Settings.Mu.Lock()
 		ctx.Settings.QuietHours.Enabled = false
-		ctx.Settings.mu.Unlock()
+		ctx.Settings.Mu.Unlock()
 		saveState(ctx)
 		text, kb := getQuietHoursSettingsText(ctx)
 		editMessage(bot, chatID, msgID, text, &kb)
@@ -82,18 +82,18 @@ func handleSettingsCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int
 		return true
 	}
 	if data == "prune_enable" {
-		ctx.Settings.mu.Lock()
+		ctx.Settings.Mu.Lock()
 		ctx.Settings.DockerPrune.Enabled = true
-		ctx.Settings.mu.Unlock()
+		ctx.Settings.Mu.Unlock()
 		saveState(ctx)
 		text, kb := getDockerPruneSettingsText(ctx)
 		editMessage(bot, chatID, msgID, text, &kb)
 		return true
 	}
 	if data == "prune_disable" {
-		ctx.Settings.mu.Lock()
+		ctx.Settings.Mu.Lock()
 		ctx.Settings.DockerPrune.Enabled = false
-		ctx.Settings.mu.Unlock()
+		ctx.Settings.Mu.Unlock()
 		saveState(ctx)
 		text, kb := getDockerPruneSettingsText(ctx)
 		editMessage(bot, chatID, msgID, text, &kb)
@@ -106,9 +106,9 @@ func handleSettingsCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int
 	}
 	if strings.HasPrefix(data, "prune_day_") {
 		day := strings.TrimPrefix(data, "prune_day_")
-		ctx.Settings.mu.Lock()
+		ctx.Settings.Mu.Lock()
 		ctx.Settings.DockerPrune.Day = day
-		ctx.Settings.mu.Unlock()
+		ctx.Settings.Mu.Unlock()
 		saveState(ctx)
 		text, kb := getDockerPruneSettingsText(ctx)
 		editMessage(bot, chatID, msgID, text, &kb)

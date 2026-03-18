@@ -1,4 +1,4 @@
-package main
+package model
 
 import (
 	"log/slog"
@@ -22,14 +22,14 @@ type AppContext struct {
 
 // ThreadSafeStats wraps stats with a mutex
 type ThreadSafeStats struct {
-	mu    sync.RWMutex
+	Mu    sync.RWMutex
 	Data  Stats
 	Ready bool
 }
 
 // RuntimeState holds runtime volatile state
 type RuntimeState struct {
-	mu                  sync.Mutex
+	Mu                  sync.Mutex
 	ResourceStress      map[string]*StressTracker
 	DockerFailure       time.Time
 	LastReport          time.Time
@@ -42,7 +42,7 @@ type RuntimeState struct {
 
 // BotContext holds bot-specific interaction state
 type BotContext struct {
-	mu                     sync.Mutex
+	Mu                     sync.Mutex
 	StartTime              time.Time
 	PendingAction          string
 	PendingContainerAction string
@@ -51,7 +51,7 @@ type BotContext struct {
 
 // DockerManager holds Docker monitoring state
 type DockerManager struct {
-	mu                sync.RWMutex
+	Mu                sync.RWMutex
 	Cache             DockerCache
 	AutoRestarts      map[string][]time.Time
 	LastStates        map[string]bool      // true = running
@@ -61,7 +61,7 @@ type DockerManager struct {
 
 // MonitorState holds historical trends and alert states
 type MonitorState struct {
-	mu                         sync.Mutex
+	Mu                         sync.Mutex
 	CPUTrend                   []TrendPoint
 	RAMTrend                   []TrendPoint
 	LastTempAlert              time.Time
@@ -89,7 +89,7 @@ type MonitorState struct {
 
 // UserSettings holds persistent user preferences (loaded from JSON)
 type UserSettings struct {
-	mu            sync.RWMutex
+	Mu            sync.RWMutex
 	Language      string
 	ReportMode    int
 	ReportMorning TimePoint
@@ -213,22 +213,22 @@ func InitApp(cfg *Config) *AppContext {
 
 // ThreadSafeStats Methods
 func (ts *ThreadSafeStats) Get() (Stats, bool) {
-	ts.mu.RLock()
-	defer ts.mu.RUnlock()
+	ts.Mu.RLock()
+	defer ts.Mu.RUnlock()
 	return ts.Data, ts.Ready
 }
 
 func (ts *ThreadSafeStats) Set(s Stats) {
-	ts.mu.Lock()
-	defer ts.mu.Unlock()
+	ts.Mu.Lock()
+	defer ts.Mu.Unlock()
 	ts.Data = s
 	ts.Ready = true
 }
 
 // RuntimeState Methods
 func (rs *RuntimeState) AddEvent(eventType, message string) {
-	rs.mu.Lock()
-	defer rs.mu.Unlock()
+	rs.Mu.Lock()
+	defer rs.Mu.Unlock()
 	rs.ReportEvents = append(rs.ReportEvents, ReportEvent{
 		Time:    time.Now(),
 		Type:    eventType,
@@ -241,8 +241,8 @@ func (rs *RuntimeState) AddEvent(eventType, message string) {
 }
 
 func (rs *RuntimeState) GetEvents() []ReportEvent {
-	rs.mu.Lock()
-	defer rs.mu.Unlock()
+	rs.Mu.Lock()
+	defer rs.Mu.Unlock()
 	// Return copy
 	events := make([]ReportEvent, len(rs.ReportEvents))
 	copy(events, rs.ReportEvents)
@@ -250,46 +250,51 @@ func (rs *RuntimeState) GetEvents() []ReportEvent {
 }
 
 func (rs *RuntimeState) ClearEvents() {
-	rs.mu.Lock()
-	defer rs.mu.Unlock()
+	rs.Mu.Lock()
+	defer rs.Mu.Unlock()
 	rs.ReportEvents = []ReportEvent{}
+}
+
+// AddReportEvent preserves the legacy API used by older call sites.
+func (rs *RuntimeState) AddReportEvent(eventType, message string) {
+	rs.AddEvent(eventType, message)
 }
 
 // BotContext Methods
 func (b *BotContext) SetPendingAction(action string) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	b.Mu.Lock()
+	defer b.Mu.Unlock()
 	b.PendingAction = action
 }
 
 func (b *BotContext) GetPendingAction() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	b.Mu.Lock()
+	defer b.Mu.Unlock()
 	return b.PendingAction
 }
 
 func (b *BotContext) ClearPendingAction() {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	b.Mu.Lock()
+	defer b.Mu.Unlock()
 	b.PendingAction = ""
 }
 
 // Settings methods (Thread-safe accessors)
 func (s *UserSettings) GetLanguage() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.Mu.RLock()
+	defer s.Mu.RUnlock()
 	return s.Language
 }
 
 func (s *UserSettings) SetLanguage(lang string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
 	s.Language = lang
 }
 
 func (s *UserSettings) GetReportMode() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.Mu.RLock()
+	defer s.Mu.RUnlock()
 	return s.ReportMode
 }
 
@@ -300,8 +305,8 @@ func (ctx *AppContext) GetStats() (Stats, bool) {
 
 // IsQuietHours returns true if we are currently in quiet hours
 func (ctx *AppContext) IsQuietHours() bool {
-	ctx.Settings.mu.RLock()
-	defer ctx.Settings.mu.RUnlock()
+	ctx.Settings.Mu.RLock()
+	defer ctx.Settings.Mu.RUnlock()
 
 	q := ctx.Settings.QuietHours
 	if !q.Enabled {
@@ -340,18 +345,5 @@ func (ctx *AppContext) Tr(key string) string {
 	if lang == "" {
 		lang = "en"
 	}
-	t, ok := translations[lang]
-	if !ok {
-		t = translations["en"]
-	}
-	if v, ok := t[key]; ok {
-		return v
-	}
-	// Fallback to English
-	if tEn, ok := translations["en"]; ok {
-		if v, ok := tEn[key]; ok {
-			return v
-		}
-	}
-	return key
+	return Translate(lang, key)
 }

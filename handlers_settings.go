@@ -123,7 +123,7 @@ func getSettingsMenuText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup
 		reportText = ctx.Tr("report_twice")
 	}
 
-	ctx.Settings.mu.RLock()
+	ctx.Settings.Mu.RLock()
 	quietEnabled := ctx.Settings.QuietHours.Enabled
 	qStartH := ctx.Settings.QuietHours.Start.Hour
 	qStartM := ctx.Settings.QuietHours.Start.Minute
@@ -132,7 +132,7 @@ func getSettingsMenuText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup
 	pruneEnabled := ctx.Settings.DockerPrune.Enabled
 	pruneDay := ctx.Settings.DockerPrune.Day
 	pruneHour := ctx.Settings.DockerPrune.Hour
-	ctx.Settings.mu.RUnlock()
+	ctx.Settings.Mu.RUnlock()
 
 	quietText := ctx.Tr("quiet_disabled")
 	if quietEnabled {
@@ -199,13 +199,13 @@ func getReportSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMark
 
 func getQuietHoursSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
 	text := ctx.Tr("quiet_settings_title")
-	ctx.Settings.mu.RLock()
+	ctx.Settings.Mu.RLock()
 	enabled := ctx.Settings.QuietHours.Enabled
 	startH := ctx.Settings.QuietHours.Start.Hour
 	startM := ctx.Settings.QuietHours.Start.Minute
 	endH := ctx.Settings.QuietHours.End.Hour
 	endM := ctx.Settings.QuietHours.End.Minute
-	ctx.Settings.mu.RUnlock()
+	ctx.Settings.Mu.RUnlock()
 	if enabled {
 		text += fmt.Sprintf(ctx.Tr("quiet_currently"), startH, startM, endH, endM)
 	} else {
@@ -230,11 +230,11 @@ func getQuietHoursSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboard
 
 func getDockerPruneSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
 	text := ctx.Tr("prune_settings_title")
-	ctx.Settings.mu.RLock()
+	ctx.Settings.Mu.RLock()
 	enabled := ctx.Settings.DockerPrune.Enabled
 	day := ctx.Settings.DockerPrune.Day
 	hour := ctx.Settings.DockerPrune.Hour
-	ctx.Settings.mu.RUnlock()
+	ctx.Settings.Mu.RUnlock()
 	if enabled {
 		dayName := ctx.Tr(day)
 		text += fmt.Sprintf("%s: %s %02d:00\n", ctx.Tr("schedule"), dayName, hour)
@@ -259,9 +259,9 @@ func getDockerPruneSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboar
 func getPruneScheduleText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
 	text := ctx.Tr("prune_schedule_title")
 	days := []string{"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
-	ctx.Settings.mu.RLock()
+	ctx.Settings.Mu.RLock()
 	currentDay := ctx.Settings.DockerPrune.Day
-	ctx.Settings.mu.RUnlock()
+	ctx.Settings.Mu.RUnlock()
 	var rows [][]tgbotapi.InlineKeyboardButton
 	for _, day := range days {
 		check := " "

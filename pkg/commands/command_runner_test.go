@@ -1,4 +1,4 @@
-package main
+package commands
 
 import (
 	"context"
@@ -26,12 +26,19 @@ func (m mockRunner) Run(ctx context.Context, name string, args ...string) error 
 }
 
 func TestCommandRunnerHelpers(t *testing.T) {
-	restore := setCommandRunner(mockRunner{exists: true, out: []byte("ok"), err: nil})
-	t.Cleanup(restore)
+	BindRuntime(RuntimeDeps{
+		RunCommandOutput: func(ctx context.Context, name string, args ...string) ([]byte, error) {
+			return []byte("ok"), nil
+		},
+		RunCommandStdout: func(ctx context.Context, name string, args ...string) ([]byte, error) {
+			return []byte("ok"), nil
+		},
+		RunCommand: func(ctx context.Context, name string, args ...string) error {
+			return nil
+		},
+	})
+	t.Cleanup(func() { BindRuntime(RuntimeDeps{}) })
 
-	if !commandExists("anything") {
-		t.Fatalf("commandExists expected true")
-	}
 	out, err := runCommandOutput(context.Background(), "cmd", "arg")
 	if err != nil || string(out) != "ok" {
 		t.Fatalf("runCommandOutput = %q, %v", string(out), err)

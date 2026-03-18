@@ -197,13 +197,13 @@ func sendStartupNotification(ctx *AppContext, bot BotAPI) {
 	nextReportStr := getNextReportDescription(ctx)
 
 	var quietInfo string
-	ctx.Settings.mu.RLock()
+	ctx.Settings.Mu.RLock()
 	quietEnabled := ctx.Settings.QuietHours.Enabled
 	qStartH := ctx.Settings.QuietHours.Start.Hour
 	qStartM := ctx.Settings.QuietHours.Start.Minute
 	qEndH := ctx.Settings.QuietHours.End.Hour
 	qEndM := ctx.Settings.QuietHours.End.Minute
-	ctx.Settings.mu.RUnlock()
+	ctx.Settings.Mu.RUnlock()
 
 	if quietEnabled {
 		quietInfo = fmt.Sprintf(ctx.Tr("boot_quiet_fmt"), qStartH, qStartM, qEndH, qEndM)

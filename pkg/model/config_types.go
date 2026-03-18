@@ -1,4 +1,4 @@
-package main
+package model
 
 type Config struct {
 	BotToken           string                `json:"bot_token"`

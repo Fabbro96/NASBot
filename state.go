@@ -36,26 +36,6 @@ type BotState struct {
 	Healthchecks HealthchecksState `json:"healthchecks"`
 }
 
-// Ensure HealthchecksState and DowntimeLog are defined here or in types.go
-// If they are in types.go, I shouldn't redefine them unless they were only in state.go.
-// They were in state.go in the original file, so I need them here.
-type HealthchecksState struct {
-	TotalPings      int           `json:"total_pings"`
-	SuccessfulPings int           `json:"successful_pings"`
-	FailedPings     int           `json:"failed_pings"`
-	LastPingTime    time.Time     `json:"last_ping_time"`
-	LastPingSuccess bool          `json:"last_ping_success"`
-	LastFailure     time.Time     `json:"last_failure"`
-	DowntimeEvents  []DowntimeLog `json:"downtime_events"`
-}
-
-type DowntimeLog struct {
-	StartTime time.Time `json:"start_time"`
-	EndTime   time.Time `json:"end_time"`
-	Duration  string    `json:"duration"`
-	Reason    string    `json:"reason"`
-}
-
 const StateFile = "nasbot_state.json"
 
 func loadState(ctx *AppContext) {
@@ -70,7 +50,7 @@ func loadState(ctx *AppContext) {
 		return
 	}
 
-	ctx.State.mu.Lock()
+	ctx.State.Mu.Lock()
 	ctx.State.LastReport = state.LastReportTime
 	ctx.State.LastReleaseNotified = state.LastReleaseNotified
 	if len(state.ReportEvents) > 100 {
@@ -78,19 +58,19 @@ func loadState(ctx *AppContext) {
 	} else if len(state.ReportEvents) > 0 {
 		ctx.State.ReportEvents = append([]ReportEvent{}, state.ReportEvents...)
 	}
-	ctx.State.mu.Unlock()
+	ctx.State.Mu.Unlock()
 
-	ctx.Docker.mu.Lock()
+	ctx.Docker.Mu.Lock()
 	if state.AutoRestarts != nil {
 		ctx.Docker.AutoRestarts = state.AutoRestarts
 	}
-	ctx.Docker.mu.Unlock()
+	ctx.Docker.Mu.Unlock()
 
-	ctx.Monitor.mu.Lock()
+	ctx.Monitor.Mu.Lock()
 	ctx.Monitor.Healthchecks = state.Healthchecks
-	ctx.Monitor.mu.Unlock()
+	ctx.Monitor.Mu.Unlock()
 
-	ctx.Settings.mu.Lock()
+	ctx.Settings.Mu.Lock()
 	if state.Language != "" {
 		ctx.Settings.Language = state.Language
 	}
@@ -116,42 +96,42 @@ func loadState(ctx *AppContext) {
 		ctx.Settings.DockerPrune.Day = state.DockerPruneDay
 		ctx.Settings.DockerPrune.Hour = state.DockerPruneHour
 	}
-	ctx.Settings.mu.Unlock()
+	ctx.Settings.Mu.Unlock()
 }
 
 func saveState(ctx *AppContext) {
-	ctx.State.mu.Lock()
+	ctx.State.Mu.Lock()
 	lastReport := ctx.State.LastReport
 	lastReleaseNotified := ctx.State.LastReleaseNotified
-	ctx.State.mu.Unlock()
+	ctx.State.Mu.Unlock()
 	reportEvents := ctx.State.GetEvents()
 
-	ctx.Docker.mu.RLock()
+	ctx.Docker.Mu.RLock()
 	autoRestarts := make(map[string][]time.Time, len(ctx.Docker.AutoRestarts))
 	for k, v := range ctx.Docker.AutoRestarts {
 		vv := make([]time.Time, len(v))
 		copy(vv, v)
 		autoRestarts[k] = vv
 	}
-	ctx.Docker.mu.RUnlock()
+	ctx.Docker.Mu.RUnlock()
 
-	ctx.Monitor.mu.Lock()
+	ctx.Monitor.Mu.Lock()
 	healthchecks := ctx.Monitor.Healthchecks
 	if len(ctx.Monitor.Healthchecks.DowntimeEvents) > 0 {
 		downtimeCopy := make([]DowntimeLog, len(ctx.Monitor.Healthchecks.DowntimeEvents))
 		copy(downtimeCopy, ctx.Monitor.Healthchecks.DowntimeEvents)
 		healthchecks.DowntimeEvents = downtimeCopy
 	}
-	ctx.Monitor.mu.Unlock()
+	ctx.Monitor.Mu.Unlock()
 
-	ctx.Settings.mu.RLock()
+	ctx.Settings.Mu.RLock()
 	language := ctx.Settings.Language
 	reportMode := ctx.Settings.ReportMode
 	reportMorning := ctx.Settings.ReportMorning
 	reportEvening := ctx.Settings.ReportEvening
 	quietHours := ctx.Settings.QuietHours
 	dockerPrune := ctx.Settings.DockerPrune
-	ctx.Settings.mu.RUnlock()
+	ctx.Settings.Mu.RUnlock()
 
 	state := BotState{
 		LastReportTime:      lastReport,

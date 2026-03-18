@@ -21,15 +21,15 @@ func checkDockerHealth(ctx *AppContext, bot BotAPI) {
 
 	isHealthy := len(containers) > 0
 
-	ctx.State.mu.Lock()
+	ctx.State.Mu.Lock()
 	failureStart := ctx.State.DockerFailure
-	ctx.State.mu.Unlock()
+	ctx.State.Mu.Unlock()
 
 	if isHealthy {
 		if !failureStart.IsZero() {
-			ctx.State.mu.Lock()
+			ctx.State.Mu.Lock()
 			ctx.State.DockerFailure = time.Time{}
-			ctx.State.mu.Unlock()
+			ctx.State.Mu.Unlock()
 			slog.Info("Docker recovered/populated.")
 		}
 		return
@@ -38,9 +38,9 @@ func checkDockerHealth(ctx *AppContext, bot BotAPI) {
 	cfg := ctx.Config
 
 	if failureStart.IsZero() {
-		ctx.State.mu.Lock()
+		ctx.State.Mu.Lock()
 		ctx.State.DockerFailure = time.Now()
-		ctx.State.mu.Unlock()
+		ctx.State.Mu.Unlock()
 		slog.Warn("Docker: 0 containers or service down. Timer started.", "timeout_mins", cfg.Docker.Watchdog.TimeoutMinutes)
 		return
 	}
@@ -50,9 +50,9 @@ func checkDockerHealth(ctx *AppContext, bot BotAPI) {
 	if time.Since(failureStart) > timeout {
 		slog.Error("Docker down longer than timeout", "timeout_mins", cfg.Docker.Watchdog.TimeoutMinutes)
 
-		ctx.State.mu.Lock()
+		ctx.State.Mu.Lock()
 		ctx.State.DockerFailure = time.Now()
-		ctx.State.mu.Unlock()
+		ctx.State.Mu.Unlock()
 
 		if !cfg.Docker.Watchdog.AutoRestartService {
 			if !ctx.IsQuietHours() {
@@ -100,11 +100,11 @@ func checkDockerHealth(ctx *AppContext, bot BotAPI) {
 func checkWeeklyPrune(ctx *AppContext, bot BotAPI) {
 	// Use ctx.Settings.DockerPrune from settings if available, or config fallback
 	// For now using user settings as per app_context
-	ctx.Settings.mu.RLock()
+	ctx.Settings.Mu.RLock()
 	enabled := ctx.Settings.DockerPrune.Enabled
 	day := ctx.Settings.DockerPrune.Day
 	hour := ctx.Settings.DockerPrune.Hour
-	ctx.Settings.mu.RUnlock()
+	ctx.Settings.Mu.RUnlock()
 
 	if !enabled {
 		return
@@ -132,17 +132,17 @@ func checkWeeklyPrune(ctx *AppContext, bot BotAPI) {
 
 	isTime := now.Weekday() == targetDay && now.Hour() == hour
 
-	ctx.Docker.mu.Lock()
+	ctx.Docker.Mu.Lock()
 	pruneDone := ctx.Docker.PruneDoneToday
-	ctx.Docker.mu.Unlock()
+	ctx.Docker.Mu.Unlock()
 
 	if isTime {
 		if !pruneDone {
 			slog.Info("Docker: Running Weekly Prune...")
 
-			ctx.Docker.mu.Lock()
+			ctx.Docker.Mu.Lock()
 			ctx.Docker.PruneDoneToday = true
-			ctx.Docker.mu.Unlock()
+			ctx.Docker.Mu.Unlock()
 
 			go func() {
 				c, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -181,9 +181,9 @@ func checkWeeklyPrune(ctx *AppContext, bot BotAPI) {
 	} else {
 		// Reset flag if hour passed
 		if now.Hour() != hour {
-			ctx.Docker.mu.Lock()
+			ctx.Docker.Mu.Lock()
 			ctx.Docker.PruneDoneToday = false
-			ctx.Docker.mu.Unlock()
+			ctx.Docker.Mu.Unlock()
 		}
 	}
 }

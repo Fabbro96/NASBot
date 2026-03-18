@@ -1,8 +1,12 @@
-package main
+package commands
 
 import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
+
+// Import types from root package
+// Note: We avoid direct imports to prevent circular dependencies at init time
+// Instead, we relyon type forwarding at runtime
 
 // Command is the interface that all bot commands must implement
 type Command interface {

@@ -1,4 +1,4 @@
-package main
+package commands
 
 import (
 	"strings"
@@ -8,10 +8,10 @@ import (
 func TestGetQuickTextIncludesWatchdogSemaphores(t *testing.T) {
 	ctx := newTestAppContext()
 
-	ctx.Monitor.mu.Lock()
+	ctx.Monitor.Mu.Lock()
 	ctx.Monitor.KwConsecutiveCheckErrors = 1
 	ctx.Monitor.NetConsecutiveDegraded = 1
-	ctx.Monitor.mu.Unlock()
+	ctx.Monitor.Mu.Unlock()
 
 	out := getQuickText(ctx)
 	if !strings.Contains(out, "WD K🔴 N🟡") {

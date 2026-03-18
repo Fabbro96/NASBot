@@ -1,4 +1,4 @@
-package main
+package commands
 
 import (
 	"fmt"
@@ -10,10 +10,10 @@ import (
 
 // getDiskPredictionText estimates when disks will be full
 func getDiskPredictionText(ctx *AppContext) string {
-	ctx.State.mu.Lock()
+	ctx.State.Mu.Lock()
 	history := make([]DiskUsagePoint, len(ctx.State.DiskHistory))
 	copy(history, ctx.State.DiskHistory)
-	ctx.State.mu.Unlock()
+	ctx.State.Mu.Unlock()
 
 	var b strings.Builder
 	b.WriteString("📊 *Disk Space Prediction*\n\n")
@@ -57,6 +57,8 @@ func getDiskPredictionText(ctx *AppContext) string {
 
 	return b.String()
 }
+
+func GetDiskPredictionText(ctx *AppContext) string { return getDiskPredictionText(ctx) }
 
 // predictDiskFull calculates days until disk is full using linear regression
 func predictDiskFull(history []DiskUsagePoint, isSSD bool) DiskPrediction {
@@ -108,8 +110,8 @@ func recordDiskUsage(ctx *AppContext) {
 		return
 	}
 
-	ctx.State.mu.Lock()
-	defer ctx.State.mu.Unlock()
+	ctx.State.Mu.Lock()
+	defer ctx.State.Mu.Unlock()
 
 	point := DiskUsagePoint{
 		Time:    time.Now(),
@@ -125,4 +127,8 @@ func recordDiskUsage(ctx *AppContext) {
 	if len(ctx.State.DiskHistory) > 2016 {
 		ctx.State.DiskHistory = ctx.State.DiskHistory[1:]
 	}
+}
+
+func RecordDiskUsage(ctx *AppContext) {
+	recordDiskUsage(ctx)
 }

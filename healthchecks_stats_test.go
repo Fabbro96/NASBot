@@ -12,7 +12,7 @@ func TestGetHealthchecksStatsIncludesWatchdogs(t *testing.T) {
 	ctx.Config.Healthchecks.Enabled = true
 	ctx.Config.Healthchecks.PingURL = "https://hc-ping.com/test"
 
-	ctx.Monitor.mu.Lock()
+	ctx.Monitor.Mu.Lock()
 	ctx.Monitor.Healthchecks = HealthchecksState{LastPingSuccess: true}
 	ctx.Monitor.NetLastCheckTime = time.Now().Add(-30 * time.Second)
 	ctx.Monitor.NetConsecutiveDegraded = 2
@@ -20,7 +20,7 @@ func TestGetHealthchecksStatsIncludesWatchdogs(t *testing.T) {
 	ctx.Monitor.KwLastCheckTime = time.Now().Add(-45 * time.Second)
 	ctx.Monitor.KwConsecutiveCheckErrors = 1
 	ctx.Monitor.KwLastCheckError = "journalctl not found"
-	ctx.Monitor.mu.Unlock()
+	ctx.Monitor.Mu.Unlock()
 
 	out := getHealthchecksStats(ctx)
 	for _, want := range []string{"*Watchdogs*", "Network:", "Kernel:", "Last error:"} {

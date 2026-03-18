@@ -1,4 +1,4 @@
-package main
+package commands
 
 import (
 	"context"
@@ -54,6 +54,8 @@ func getStatusText(ctx *AppContext) string {
 	return b.String()
 }
 
+func GetStatusText(ctx *AppContext) string { return getStatusText(ctx) }
+
 func getTempText(ctx *AppContext) string {
 	tr := ctx.Tr
 	var b strings.Builder
@@ -72,6 +74,8 @@ func getTempText(ctx *AppContext) string {
 	return b.String()
 }
 
+func GetTempText(ctx *AppContext) string { return getTempText(ctx) }
+
 func getNetworkText(ctx *AppContext) string {
 	tr := ctx.Tr
 	var b strings.Builder
@@ -87,6 +91,8 @@ func getNetworkText(ctx *AppContext) string {
 
 	return b.String()
 }
+
+func GetNetworkText(ctx *AppContext) string { return getNetworkText(ctx) }
 
 func getTopProcText(ctx *AppContext) string {
 	tr := ctx.Tr
@@ -136,6 +142,8 @@ func getTopProcText(ctx *AppContext) string {
 	return b.String()
 }
 
+func GetTopProcText(ctx *AppContext) string { return getTopProcText(ctx) }
+
 func getHelpText(ctx *AppContext) string {
 	tr := ctx.Tr
 	var b strings.Builder
@@ -173,12 +181,12 @@ func getHelpText(ctx *AppContext) string {
 	b.WriteString("/reboot · /shutdown — power control\n")
 	b.WriteString("/reboot force · /forcereboot — forced reboot (no confirm)\n\n")
 
-	ctx.Settings.mu.RLock()
+	ctx.Settings.Mu.RLock()
 	reportMode := ctx.Settings.ReportMode
 	reportMorning := ctx.Settings.ReportMorning
 	reportEvening := ctx.Settings.ReportEvening
 	quiet := ctx.Settings.QuietHours
-	ctx.Settings.mu.RUnlock()
+	ctx.Settings.Mu.RUnlock()
 
 	if reportMode > 0 {
 		b.WriteString(tr("help_reports"))
@@ -200,11 +208,13 @@ func getHelpText(ctx *AppContext) string {
 	return b.String()
 }
 
+func GetHelpText(ctx *AppContext) string { return getHelpText(ctx) }
+
 func getPingText(ctx *AppContext) string {
 	tr := ctx.Tr
-	ctx.Bot.mu.Lock()
+	ctx.Bot.Mu.Lock()
 	startTime := ctx.Bot.StartTime
-	ctx.Bot.mu.Unlock()
+	ctx.Bot.Mu.Unlock()
 
 	uptime := time.Since(startTime)
 
@@ -230,6 +240,8 @@ func getPingText(ctx *AppContext) string {
 		ready,
 		now.Format("15:04:05"))
 }
+
+func GetPingText(ctx *AppContext) string { return getPingText(ctx) }
 
 func getConfigText(ctx *AppContext) string {
 	tr := ctx.Tr
@@ -326,6 +338,8 @@ func getConfigText(ctx *AppContext) string {
 	return b.String()
 }
 
+func GetConfigText(ctx *AppContext) string { return getConfigText(ctx) }
+
 // getSysInfoText returns detailed system information
 func getSysInfoText(ctx *AppContext) string {
 	var b strings.Builder
@@ -377,7 +391,7 @@ func getSysInfoText(ctx *AppContext) string {
 	}
 
 	// Go runtime info
-	b.WriteString(fmt.Sprintf("\n*NASBot Version:* %s\n", Version))
+	b.WriteString(fmt.Sprintf("\n*NASBot Version:* %s\n", getVersion()))
 	if buildInfo, ok := debug.ReadBuildInfo(); ok {
 		b.WriteString(fmt.Sprintf("*Go Version:* %s\n", buildInfo.GoVersion))
 	}

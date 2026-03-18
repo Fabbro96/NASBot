@@ -93,24 +93,24 @@ var kernelEventTypes = []kernelEventType{
 // ═══════════════════════════════════════════════════════════════════
 
 func checkKernelEvents(ctx *AppContext, bot BotAPI) {
-	ctx.Monitor.mu.Lock()
+	ctx.Monitor.Mu.Lock()
 	ctx.Monitor.KwLastCheckTime = time.Now()
-	ctx.Monitor.mu.Unlock()
+	ctx.Monitor.Mu.Unlock()
 
 	lines, err := getKernelLogLines()
 	if err != nil {
-		ctx.Monitor.mu.Lock()
+		ctx.Monitor.Mu.Lock()
 		ctx.Monitor.KwConsecutiveCheckErrors++
 		ctx.Monitor.KwLastCheckError = err.Error()
-		ctx.Monitor.mu.Unlock()
+		ctx.Monitor.Mu.Unlock()
 		slog.Warn("KernelWatchdog log collection failed", "err", err)
 		return
 	}
 
-	ctx.Monitor.mu.Lock()
+	ctx.Monitor.Mu.Lock()
 	ctx.Monitor.KwConsecutiveCheckErrors = 0
 	ctx.Monitor.KwLastCheckError = ""
-	ctx.Monitor.mu.Unlock()
+	ctx.Monitor.Mu.Unlock()
 
 	if len(lines) == 0 {
 		return
@@ -120,11 +120,11 @@ func checkKernelEvents(ctx *AppContext, bot BotAPI) {
 }
 
 func processKernelLines(ctx *AppContext, bot BotAPI, lines []string) {
-	ctx.Monitor.mu.Lock()
+	ctx.Monitor.Mu.Lock()
 	if ctx.Monitor.KwLastSignatures == nil {
 		ctx.Monitor.KwLastSignatures = make(map[string]string)
 	}
-	ctx.Monitor.mu.Unlock()
+	ctx.Monitor.Mu.Unlock()
 
 	for _, evt := range kernelEventTypes {
 		lastIdx := -1
@@ -147,21 +147,21 @@ func processKernelLines(ctx *AppContext, bot BotAPI, lines []string) {
 			continue
 		}
 
-		ctx.Monitor.mu.Lock()
+		ctx.Monitor.Mu.Lock()
 		// On first run, record the baseline without alerting
 		if !ctx.Monitor.KwInitialized {
 			ctx.Monitor.KwLastSignatures[evt.Name] = lastLine
-			ctx.Monitor.mu.Unlock()
+			ctx.Monitor.Mu.Unlock()
 			continue
 		}
 
 		// Skip if we already alerted for this exact line
 		if prev, ok := ctx.Monitor.KwLastSignatures[evt.Name]; ok && prev == lastLine {
-			ctx.Monitor.mu.Unlock()
+			ctx.Monitor.Mu.Unlock()
 			continue
 		}
 		ctx.Monitor.KwLastSignatures[evt.Name] = lastLine
-		ctx.Monitor.mu.Unlock()
+		ctx.Monitor.Mu.Unlock()
 
 		// Build context (±3 lines around the event)
 		start := lastIdx - 3
@@ -208,16 +208,16 @@ func processKernelLines(ctx *AppContext, bot BotAPI, lines []string) {
 		safeSend(bot, m)
 	}
 
-	ctx.Monitor.mu.Lock()
+	ctx.Monitor.Mu.Lock()
 	if !ctx.Monitor.KwInitialized {
 		ctx.Monitor.KwInitialized = true
 	}
-	ctx.Monitor.mu.Unlock()
+	ctx.Monitor.Mu.Unlock()
 }
 
 func handleOOMLoop(ctx *AppContext, bot BotAPI) {
-	ctx.Monitor.mu.Lock()
-	defer ctx.Monitor.mu.Unlock()
+	ctx.Monitor.Mu.Lock()
+	defer ctx.Monitor.Mu.Unlock()
 
 	now := time.Now()
 	// Append current event

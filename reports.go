@@ -19,9 +19,9 @@ func generateDailyReport(ctx *AppContext, greeting string, isMorning bool, onMod
 
 	events := ctx.State.GetEvents()
 
-	ctx.State.mu.Lock()
+	ctx.State.Mu.Lock()
 	lastReportTime := ctx.State.LastReport
-	ctx.State.mu.Unlock()
+	ctx.State.Mu.Unlock()
 
 	events = filterEventsSince(events, lastReportTime)
 	events = filterSignificantEvents(events)
@@ -94,9 +94,9 @@ func generateDailyReport(ctx *AppContext, greeting string, isMorning bool, onMod
 	}
 
 	if ctx.Config.Healthchecks.Enabled {
-		ctx.Monitor.mu.Lock()
+		ctx.Monitor.Mu.Lock()
 		hc := ctx.Monitor.Healthchecks
-		ctx.Monitor.mu.Unlock()
+		ctx.Monitor.Mu.Unlock()
 		status := "❌"
 		if hc.LastPingSuccess {
 			status = "✅"

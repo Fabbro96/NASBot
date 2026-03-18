@@ -11,8 +11,8 @@ import (
 )
 
 func checkResourceStress(ctx *AppContext, bot BotAPI, resource string, currentValue, threshold float64) {
-	ctx.State.mu.Lock()
-	defer ctx.State.mu.Unlock()
+	ctx.State.Mu.Lock()
+	defer ctx.State.Mu.Unlock()
 
 	tracker := ctx.State.ResourceStress[resource]
 	if tracker == nil {
@@ -82,8 +82,8 @@ func checkResourceStress(ctx *AppContext, bot BotAPI, resource string, currentVa
 }
 
 func getStressSummary(ctx *AppContext) string {
-	ctx.State.mu.Lock()
-	defer ctx.State.mu.Unlock()
+	ctx.State.Mu.Lock()
+	defer ctx.State.Mu.Unlock()
 
 	var parts []string
 	for _, res := range []string{"CPU", "RAM", "Swap", "SSD", "HDD"} {
@@ -109,8 +109,8 @@ func getStressSummary(ctx *AppContext) string {
 }
 
 func resetStressCounters(ctx *AppContext) {
-	ctx.State.mu.Lock()
-	defer ctx.State.mu.Unlock()
+	ctx.State.Mu.Lock()
+	defer ctx.State.Mu.Unlock()
 
 	for _, tracker := range ctx.State.ResourceStress {
 		tracker.StressCount = 0

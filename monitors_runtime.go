@@ -57,18 +57,18 @@ func monitorAlerts(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 			}
 
 			cooldown := time.Duration(cfg.Intervals.CriticalAlertCooldownMins) * time.Minute
-			ctx.Monitor.mu.Lock()
+			ctx.Monitor.Mu.Lock()
 			lastAlert := ctx.Monitor.LastCriticalAlert
-			ctx.Monitor.mu.Unlock()
+			ctx.Monitor.Mu.Unlock()
 
 			if len(criticalAlerts) > 0 && time.Since(lastAlert) >= cooldown && !ctx.IsQuietHours() {
 				msg := "🚨 *Critical*\n\n" + strings.Join(criticalAlerts, "\n")
 				m := tgbotapi.NewMessage(cfg.AllowedUserID, msg)
 				m.ParseMode = "Markdown"
 				safeSend(bot, m)
-				ctx.Monitor.mu.Lock()
+				ctx.Monitor.Mu.Lock()
 				ctx.Monitor.LastCriticalAlert = time.Now()
-				ctx.Monitor.mu.Unlock()
+				ctx.Monitor.Mu.Unlock()
 			}
 
 			if len(criticalAlerts) > 0 {
@@ -229,8 +229,8 @@ func checkTemperatureAlert(ctx *AppContext, bot BotAPI) {
 		return
 	}
 
-	ctx.Monitor.mu.Lock()
-	defer ctx.Monitor.mu.Unlock()
+	ctx.Monitor.Mu.Lock()
+	defer ctx.Monitor.Mu.Unlock()
 
 	if time.Since(ctx.Monitor.LastTempAlert) < 30*time.Minute {
 		return
@@ -265,8 +265,8 @@ func recordTrendPoint(ctx *AppContext) {
 	}
 
 	now := time.Now()
-	ctx.Monitor.mu.Lock()
-	defer ctx.Monitor.mu.Unlock()
+	ctx.Monitor.Mu.Lock()
+	defer ctx.Monitor.Mu.Unlock()
 
 	ctx.Monitor.CPUTrend = append(ctx.Monitor.CPUTrend, TrendPoint{Time: now, Value: s.CPU})
 	ctx.Monitor.RAMTrend = append(ctx.Monitor.RAMTrend, TrendPoint{Time: now, Value: s.RAM})
@@ -281,8 +281,8 @@ func recordTrendPoint(ctx *AppContext) {
 }
 
 func getTrendSummary(ctx *AppContext) (cpuGraph, ramGraph string) {
-	ctx.Monitor.mu.Lock()
-	defer ctx.Monitor.mu.Unlock()
+	ctx.Monitor.Mu.Lock()
+	defer ctx.Monitor.Mu.Unlock()
 
 	cpuGraph = getMiniGraph(ctx.Monitor.CPUTrend, 12)
 	ramGraph = getMiniGraph(ctx.Monitor.RAMTrend, 12)
@@ -325,8 +325,8 @@ func checkCriticalContainers(ctx *AppContext, bot BotAPI) {
 		containerMap[c.Name] = c.Running
 	}
 
-	ctx.Monitor.mu.Lock()
-	defer ctx.Monitor.mu.Unlock()
+	ctx.Monitor.Mu.Lock()
+	defer ctx.Monitor.Mu.Unlock()
 
 	for _, name := range ctx.Config.CriticalContainers {
 		running, exists := containerMap[name]
@@ -355,21 +355,21 @@ func checkCriticalContainers(ctx *AppContext, bot BotAPI) {
 }
 
 func getCachedContainerList(ctx *AppContext) []ContainerInfo {
-	ctx.Docker.mu.RLock()
+	ctx.Docker.Mu.RLock()
 	ttl := time.Duration(ctx.Config.Cache.DockerTTLSeconds) * time.Second
 	if time.Since(ctx.Docker.Cache.LastUpdate) < ttl && len(ctx.Docker.Cache.Containers) > 0 {
 		result := ctx.Docker.Cache.Containers
-		ctx.Docker.mu.RUnlock()
+		ctx.Docker.Mu.RUnlock()
 		return result
 	}
-	ctx.Docker.mu.RUnlock()
+	ctx.Docker.Mu.RUnlock()
 
 	containers := getContainerList()
 
-	ctx.Docker.mu.Lock()
+	ctx.Docker.Mu.Lock()
 	ctx.Docker.Cache.Containers = containers
 	ctx.Docker.Cache.LastUpdate = time.Now()
-	ctx.Docker.mu.Unlock()
+	ctx.Docker.Mu.Unlock()
 
 	return containers
 }
