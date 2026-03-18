@@ -11,6 +11,23 @@
 
 A self-hosted bot that gives you a **live dashboard** (CPU, RAM, Disks, Docker) directly in Telegram. No web UI, just a single binary.
 
+## TL;DR
+
+- NASBot is a self-hosted Telegram bot for your NAS/home server: monitor health, manage Docker, receive alerts, and run quick actions.
+- Setup is simple: one binary + one `config.json` (minimum required: `bot_token` and `allowed_user_id`).
+- Main daily flow: use `/status` for dashboard, `/quick` for snapshot, `/report` for full report, `/settings` for tuning.
+- Optional AI summaries are available with Gemini by setting `gemini_api_key`.
+- Designed for production-style usage: tests, CI, security scans, release artifacts, and update automation are included.
+
+Quick start in ~60 seconds:
+
+```bash
+cp config.example.json config.json
+# edit config.json: set bot_token and allowed_user_id
+go build -o nasbot ./...
+./nasbot
+```
+
 ## ✨ Key Features
 
 - **📊 Live Stats**: CPU, RAM, Swap, Disk (SSD/HDD), Net, Temperatures.
@@ -112,7 +129,7 @@ git config core.hooksPath .githooks
 chmod +x .githooks/pre-commit scripts/secret_scan.sh
 ```
 
-See [SECURITY.md](SECURITY.md) for full hardening policy and leak response steps.
+See [docs/SECURITY.md](docs/SECURITY.md) for full hardening policy and leak response steps.
 
 ## 🧪 Testing
 Run all tests:

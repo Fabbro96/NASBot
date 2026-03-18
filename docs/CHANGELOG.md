@@ -9,7 +9,7 @@ All notable changes to this project are documented in this file.
 - Versioned GitHub ruleset templates for branch/tag protections under `.github/rulesets/`.
 - Ruleset automation script (`scripts/apply_github_rulesets.sh`) with create/update and dry-run modes.
 - CODEOWNERS baseline for repository and security-critical paths.
-- Operational rollout guide for rulesets (`docs/GITHUB_RULESET_SETUP.md`).
+- Operational rollout guide for rulesets (`docs/governance/GITHUB_RULESET_SETUP.md`).
 
 ### Changed
 - CI workflow now uses a unified quality gate with timeout guards.
