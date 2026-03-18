@@ -41,12 +41,12 @@ go build -o nasbot ./...
 
 ## 🧩 Code Layout (Short)
 
-- `handlers.go`: bot entrypoints (`handleCommand`, `handleCallback`)
-- `handlers_callback_routes.go`: callback routing logic (settings, docker/power, scoped handlers)
-- `handlers_settings.go`: language + settings keyboards/text helpers
-- `config.go`: load/sanitize/patch flow
-- `config_defaults.go`: default template + recursive missing-field merge
-- `translations.go`: translations + automatic key coverage sync
+- `internal/app/handlers.go`: bot entrypoints (`handleCommand`, `handleCallback`)
+- `internal/app/handlers_callback_routes.go`: callback routing logic (settings, docker/power, scoped handlers)
+- `internal/app/handlers_settings.go`: language + settings keyboards/text helpers
+- `internal/app/config.go`: load/sanitize/patch flow
+- `internal/app/config_defaults.go`: default template + recursive missing-field merge
+- `internal/app/translations.go`: translations + automatic key coverage sync
 
 ---
 

@@ -30,6 +30,8 @@ Thumbs.db
 # Build artifacts
 dist/
 build/
+bin/
+var/
 
 # Test coverage
 coverage.out
