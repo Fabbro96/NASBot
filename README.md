@@ -61,6 +61,34 @@ chmod +x install.sh
 sudo ./install.sh
 ```
 
+### Minimal NAS Runtime (No Source Files)
+
+If you want a clean NAS folder with only runtime essentials (no Go source), build a runtime bundle:
+
+```bash
+./scripts/package_runtime.sh --arch arm64
+```
+
+This creates `dist/runtime` with only:
+
+- `nasbot`
+- `start_bot.sh`
+- `config.example.json`
+
+On NAS, keep just these plus runtime-generated files (`nasbot.log`, `nasbot.pid`, `nasbot_state.json`).
+
+Optional deploy with rsync:
+
+```bash
+./scripts/deploy_runtime_rsync.sh --target user@nas:/Volume1/public --arch arm64
+```
+
+Preview only:
+
+```bash
+./scripts/deploy_runtime_rsync.sh --target user@nas:/Volume1/public --arch arm64 --dry-run
+```
+
 ### 2. Configuration (`config.json`)
 Edit `config.json` with your details.
 *You must set at least `bot_token` and `allowed_user_id`.*
