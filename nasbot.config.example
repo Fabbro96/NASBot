@@ -1,0 +1,261 @@
+#!/bin/bash
+# nasbot.config.example - FULLY COMMENTED CONFIGURATION EXAMPLES
+# 
+# This file shows realistic configuration examples for different scenarios.
+# Copy sections to nasbot.config.local and customize for your needs.
+#
+# ============================================================================
+# SCENARIO 1: MINIMAL/DEFAULT SETUP (copy to nasbot.config.local)
+# ============================================================================
+
+# Just keep these if you want the most basic setup:
+# (All other settings will use hardcoded defaults)
+
+# BUILD_ARCH="native"          # Build for this machine
+# PACKAGE_OUT_DIR="./dist"     # Where to put the package
+
+# ============================================================================
+# SCENARIO 2: ARM64 NASWARE SETUP (NAS with ARM processor)
+# ============================================================================
+
+BUILD_ARCH="arm64"                           # Build for ARM64 NAS
+PACKAGE_OUT_DIR="./dist/nas-arm"             # Separate package directory
+INCLUDE_EXAMPLE_CONFIG="true"                # Include config template
+INCLUDE_README_RUNTIME="true"                # Include docs
+
+# Deployment settings for ARM NAS
+DEPLOY_TARGET="fabbro@nas:/Volume1/public"   # Single NAS machine
+DEPLOY_PATH="/Volume1/public"                # Where to deploy
+USE_RSYNC="true"                             # Use rsync for sync
+RSYNC_OPTS="--compress --progress"           # Show progress
+
+# Logging on NAS (flat directory structure)
+LOG_FILE="nasbot.log"                        # In same dir as binary
+PID_FILE="nasbot.pid"                        # Process ID
+STATE_FILE="nasbot_state.json"               # Bot state backup
+LOG_MAX_SIZE_MB=10                           # Rotate at 10MB
+
+
+# ============================================================================
+# SCENARIO 3: PRODUCTION MULTI-NAS SETUP
+# ============================================================================
+
+BUILD_ARCH="arm64"
+PACKAGE_OUT_DIR="./dist/prod-release"
+
+# Deploy to primary production NAS
+DEPLOY_TARGET="nasadmin@prod-nas.local:/data/bot"
+DEPLOY_PATH="/data/bot"
+USE_RSYNC="true"
+DELETE_EXTRA="true"                          # Clean up old files
+RSYNC_OPTS="--compress --partial --backup"   # Safety options
+
+# Keep these files even with --delete
+RSYNC_EXCLUDE_DELETE="config.json:nasbot.log:nasbot.pid:nasbot_state.json:.backup"
+
+# Logging paths (absolute for production)
+LOG_FILE="/data/bot/logs/nasbot.log"
+LOG_MAX_SIZE_MB=50                           # Larger logs for prod
+LOG_BACKUP_COUNT=5                           # Keep 5 backups
+
+# Version tracking
+VERSION="v2.1.0-prod"
+
+# Watchdog for monitoring
+WATCHDOG_ENABLED="true"
+WATCH_PATH="/data/bot"
+
+# Verbose logging in production
+VERBOSE="false"                              # Set to true for debugging
+DEBUG="false"                                # Never debug in prod
+
+
+# ============================================================================
+# SCENARIO 4: DEVELOPMENT SETUP (local machine)
+# ============================================================================
+
+BUILD_ARCH="native"                          # Build for my machine
+PACKAGE_OUT_DIR="./dist/dev"
+INCLUDE_EXAMPLE_CONFIG="true"
+INCLUDE_README_RUNTIME="true"
+
+# Local deployment for testing
+DEPLOY_TARGET="/mnt/nas-test"                # Local test mount
+USE_RSYNC="true"
+RSYNC_OPTS="--verbose --progress"            # More output
+
+# Development logging (permissive)
+LOG_FILE="./var/nasbot.log"
+LOG_MAX_SIZE_MB=5                            # Small logs
+PID_FILE="./var/nasbot.pid"
+STATE_FILE="./var/nasbot_state.json"
+
+# Development verbosity
+VERBOSE="true"                               # Show details
+DEBUG="false"                                # Can set to true for specific tests
+
+
+# ============================================================================
+# SCENARIO 5: CI/CD PIPELINE (GitHub Actions)
+# ============================================================================
+
+# These would be set as GitHub Secrets and env vars, not in file:
+# - NASBOT_BUILD_ARCH (from workflow)
+# - NASBOT_DEPLOY_TARGET (from secret)
+# - NASBOT_VERSION (from git tag)
+
+BUILD_ARCH="arm64"
+PACKAGE_OUT_DIR="/tmp/nasbot-build"
+
+# For read-only builds in CI:
+INCLUDE_EXAMPLE_CONFIG="true"
+INCLUDE_README_RUNTIME="true"
+
+# No deployment in CI unless specifically configured
+DEPLOY_TARGET=""
+
+
+# ============================================================================
+# SCENARIO 6: VOLUME MOUNT / DOCKER SETUP
+# ============================================================================
+
+BUILD_ARCH="amd64"
+PACKAGE_OUT_DIR="./dist"
+
+# Paths point to docker volumes
+LOG_FILE="/data/nasbot/nasbot.log"
+PID_FILE="/run/nasbot.pid"
+STATE_FILE="/data/nasbot/state.json"
+
+# Permissions for container
+UMASK="0022"
+ULIMIT_N="4096"
+
+# Container-to-NAS deployment
+DEPLOY_TARGET="nas-internal:/share/bot"
+RSYNC_OPTS="--compress"
+
+
+# ============================================================================
+# SCENARIO 7: BACKUP / REDUNDANT NAS SETUP
+# ============================================================================
+
+BUILD_ARCH="arm64"
+PACKAGE_OUT_DIR="./dist/backup-release"
+
+# Multiple deployments can be done with multiple calls:
+# Deploy to NAS #1 (Primary)
+# DEPLOY_TARGET="nas1@primary:/Volume1/nasbot" ./deploy_runtime_rsync.sh
+#
+# Deploy to NAS #2 (Backup)
+# DEPLOY_TARGET="nas2@backup:/data/bot" ./deploy_runtime_rsync.sh --delete
+#
+# Both can use this config for consistency
+
+RSYNC_OPTS="--compress --progress --backup"
+LOG_MAX_SIZE_MB=20
+
+
+# ============================================================================
+# SCENARIO 8: MINIMAL SYSTEM (Low resource NAS)
+# ============================================================================
+
+BUILD_ARCH="armv7"                           # 32-bit ARM
+PACKAGE_OUT_DIR="./dist/minimal"
+
+# Very limited resources
+LOG_MAX_SIZE_MB=2                            # Only 2MB logs
+LOG_BACKUP_COUNT=1                           # Keep 1 backup only
+CACHE_DIR=""                                 # No cache
+
+# Minimal rsync options
+RSYNC_OPTS="--compress"
+
+# No extra features
+WATCHDOG_ENABLED="false"
+VERBOSE="false"
+DEBUG="false"
+
+
+# ============================================================================
+# ADVANCED EXAMPLES - Using Environment Variables Override
+# ============================================================================
+
+# In bash, you can override config file with env vars:
+#
+# Example: Deploy to custom target without editing config
+#   export NASBOT_DEPLOY_TARGET="user@custom-host:/path"
+#   ./scripts/deploy_runtime_rsync.sh --config nasbot.config.local
+#
+# Example: One-off verbose build
+#   export NASBOT_VERBOSE="true"
+#   ./scripts/package_runtime.sh --config nasbot.config.local
+#
+# Environment variables always override config file values!
+
+
+# ============================================================================
+# COMBINING WITH SCRIPTS - PRACTICAL WORKFLOW
+# ============================================================================
+
+# 1. Create your config:
+#    cp nasbot.config.example nasbot.config.local
+#    nano nasbot.config.local  # Edit values
+
+# 2. Build runtime package:
+#    ./scripts/package_runtime.sh --config nasbot.config.local
+
+# 3. Do a dry-run deployment first:
+#    ./scripts/deploy_runtime_rsync.sh --config nasbot.config.local --dry-run
+
+# 4. Review output, then deploy for real:
+#    ./scripts/deploy_runtime_rsync.sh --config nasbot.config.local
+
+# 5. Start bot with environment overrides if needed:
+#    export NASBOT_LOG_FILE=/custom/path/bot.log
+#    ./start_bot.sh start
+#    ./start_bot.sh status
+#    ./start_bot.sh watch
+
+
+# ============================================================================
+# HELPER: VALIDATE YOUR CONFIG
+# ============================================================================
+
+# Source it to validate - should not error:
+#   bash -n nasbot.config.local
+#
+# Check what it contains:
+#   grep -E '^\s*[A-Z_]+=' nasbot.config.local
+#
+# Test deployment with dry-run:
+#   ./scripts/deploy_runtime_rsync.sh --config nasbot.config.local --dry-run
+
+
+# ============================================================================
+# TIPS & TRICKS
+# ============================================================================
+
+# Multiple configs for different environments:
+#   nasbot.config.dev      - Development machine
+#   nasbot.config.staging  - Staging NAS
+#   nasbot.config.prod     - Production NAS
+#
+# Use them like:
+#   ./scripts/package_runtime.sh --config nasbot.config.prod
+
+# Absolute vs relative paths:
+#   - Absolute: /data/bot/log.txt (works everywhere)
+#   - Relative: log.txt (relative to script launch directory)
+
+# Include additional files in package:
+#   ADDITIONAL_FILES="docs/README.md:LICENSE:CHANGELOG.md"
+
+# Exclude from rsync delete:
+#   RSYNC_EXCLUDE_DELETE="config.json:custom-data:important.db"
+
+# Custom build flags:
+#   BUILD_FLAGS="-trimpath -v"
+
+# Custom rsync behavior:
+#   RSYNC_OPTS="--exclude-from=.rsignore --bwlimit=1000"

@@ -1,0 +1,130 @@
+# NASBot Configuration Template
+# Copy to nasbot.config.local and customize for your environment
+# All values can be overridden via environment variables: PREFIX_VAR=value
+
+# ============================================================================
+# BUILD SETTINGS
+# ============================================================================
+# Go version to use (auto-detect if empty)
+GO_VERSION=""
+# Valid architectures: native, arm64, amd64, armv7
+BUILD_ARCH="native"
+# Additional go build flags
+BUILD_FLAGS=""
+
+# ============================================================================
+# RUNTIME SETTINGS
+# ============================================================================
+# Application name (used in scripts and logs)
+APP_NAME="nasbot"
+# Config file path (relative to runtime directory or absolute)
+CONFIG_FILE="config.json"
+# Config example file path
+CONFIG_EXAMPLE="config.example.json"
+
+# ============================================================================
+# LOGGING & STATE
+# ============================================================================
+# Log file path (absolute or relative to runtime directory)
+LOG_FILE="nasbot.log"
+# PID file path (absolute or relative to runtime directory)
+PID_FILE="nasbot.pid"
+# State file path (absolute or relative to runtime directory)
+STATE_FILE="nasbot_state.json"
+# Log rotation settings (optional)
+LOG_MAX_SIZE_MB=10
+LOG_BACKUP_COUNT=5
+
+# ============================================================================
+# DEPLOYMENT SETTINGS
+# ============================================================================
+# Default deployment target (can be overridden via --target flag)
+DEPLOY_TARGET=""
+# Deployment user (can differ from system user)
+DEPLOY_USER=""
+# Deployment host (can differ from current host)
+DEPLOY_HOST=""
+# Deployment path on remote host
+DEPLOY_PATH="/Volume1/public"
+# Use rsync for deployment (true/false)
+USE_RSYNC="true"
+# Additional rsync options
+RSYNC_OPTS="--compress --progress"
+# Files/patterns to never delete during sync
+RSYNC_EXCLUDE_DELETE="config.json:nasbot.log:nasbot.pid:nasbot_state.json:#recycle"
+
+# ============================================================================
+# PACKAGE SETTINGS
+# ============================================================================
+# Output directory for packaged runtime
+PACKAGE_OUT_DIR="./dist"
+# Include example config in package
+INCLUDE_EXAMPLE_CONFIG="true"
+# Include README for runtime
+INCLUDE_README_RUNTIME="true"
+# Additional files to include (colon-separated paths relative to repo root)
+ADDITIONAL_FILES=""
+# Binary file name (without extension)
+BINARY_NAME="nasbot"
+
+# ============================================================================
+# WATCHDOG SETTINGS
+# ============================================================================
+# Enable watchdog service (for monitoring file system changes)
+WATCHDOG_ENABLED="false"
+# Watchdog binary name
+WATCHDOG_BINARY="fswatchdog"
+# Watch path for NAS updates
+WATCH_PATH="/mnt/nas"
+
+# ============================================================================
+# UPDATE SETTINGS
+# ============================================================================
+# Check for updates on startup
+CHECK_UPDATES="true"
+# Update check interval (seconds)
+UPDATE_CHECK_INTERVAL=3600
+# Pattern to detect update files (must match exactly)
+UPDATE_FILE_PATTERN="nasbot-update*"
+# Auto-restart after update
+AUTO_RESTART_ON_UPDATE="true"
+# Restart script path
+RESTART_SCRIPT="./start_bot_runtime.sh"
+
+# ============================================================================
+# PERFORMANCE & DEBUG
+# ============================================================================
+# Enable verbose logging (true/false)
+VERBOSE="false"
+# Debug mode (additional logging, disables daemonization)
+DEBUG="false"
+# Number of parallel workers
+PARALLEL_WORKERS=""
+# Database/cache location (optional)
+CACHE_DIR="./cache"
+
+# ============================================================================
+# NOTIFICATIONS & MONITORING
+# ============================================================================
+# Send notifications (telegram, discord, webhook, etc.)
+NOTIFICATIONS_ENABLED="false"
+# Notification endpoint (depends on type)
+NOTIFICATION_ENDPOINT=""
+# Health check endpoint (for external monitoring)
+HEALTH_CHECK_ENABLED="false"
+# Health check port
+HEALTH_CHECK_PORT=8080
+
+# ============================================================================
+# ADVANCED
+# ============================================================================
+# Timezone (affects log timestamps)
+TZ="UTC"
+# Umask for file creation
+UMASK="0022"
+# Max file descriptors
+ULIMIT_N=""
+# Network interface (if multiple NAS connections)
+NETWORK_INTERFACE=""
+# Custom environment variables (colon-separated KEY=VALUE)
+CUSTOM_ENV=""

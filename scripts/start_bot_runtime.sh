@@ -1,14 +1,27 @@
 #!/usr/bin/env bash
 set -u -o pipefail
 
-BOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-BOT_NAME="nasbot"
-BOT_BINARY="$BOT_DIR/$BOT_NAME"
-UPDATE_FILE="$BOT_DIR/nasbot-update"
-LOG_FILE="$BOT_DIR/nasbot.log"
-PID_FILE="$BOT_DIR/nasbot.pid"
-STATE_FILE="$BOT_DIR/nasbot_state.json"
-MAX_LOG_SIZE=$((10 * 1024 * 1024))
+# Source common utilities (if available in same directory)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+BOT_DIR="${SCRIPT_DIR}"
+if [[ -f "${SCRIPT_DIR}/common.sh" ]]; then
+	# shellcheck disable=SC1091
+	NASBOT_NO_AUTO_LOAD=1 source "${SCRIPT_DIR}/common.sh"
+fi
+
+# Configuration (with environment variable overrides)
+BOT_NAME="${NASBOT_APP_NAME:-nasbot}"
+BOT_BINARY="${NASBOT_BINARY_PATH:-${BOT_DIR}/${BOT_NAME}}"
+LOG_FILE="${NASBOT_LOG_FILE:-${BOT_DIR}/nasbot.log}"
+PID_FILE="${NASBOT_PID_FILE:-${BOT_DIR}/nasbot.pid}"
+STATE_FILE="${NASBOT_STATE_FILE:-${BOT_DIR}/nasbot_state.json}"
+UPDATE_FILE_PATTERN="${NASBOT_UPDATE_FILE_PATTERN:-nasbot-update*}"
+MAX_LOG_SIZE_MB="${NASBOT_LOG_MAX_SIZE_MB:-10}"
+MAX_LOG_SIZE=$((MAX_LOG_SIZE_MB * 1024 * 1024))
+AUTO_RESTART_ON_UPDATE="${NASBOT_AUTO_RESTART_ON_UPDATE:-true}"
+ULIMIT_N="${NASBOT_ULIMIT_N:-}"
+VERBOSE="${NASBOT_VERBOSE:-false}"
+DEBUG_MODE="${NASBOT_DEBUG:-false}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -86,10 +99,13 @@ start_bot() {
 
 	rotate_logs
 	echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting NASBot..." >>"$LOG_FILE"
-	NASBOT_LOG_FILE="$LOG_FILE" \
-		NASBOT_PID_FILE="$PID_FILE" \
-		NASBOT_STATE_FILE="$STATE_FILE" \
-		nohup "$BOT_BINARY" >>"$LOG_FILE" 2>&1 &
+	export NASBOT_LOG_FILE="$LOG_FILE"
+	export NASBOT_PID_FILE="$PID_FILE"
+	export NASBOT_STATE_FILE="$STATE_FILE"
+	if [[ -n "$ULIMIT_N" ]]; then
+		ulimit -n "$ULIMIT_N" 2>/dev/null || true
+	fi
+	nohup "$BOT_BINARY" >>"$LOG_FILE" 2>&1 &
 	echo $! >"$PID_FILE"
 
 	sleep 2
@@ -180,20 +196,23 @@ status_bot() {
 	echo "⚙️  Binary: $BOT_BINARY"
 	echo "📝 Log: $LOG_FILE"
 	if [[ -f "$LOG_FILE" ]]; then
-		echo "📊 Log size: $(ls -lh "$LOG_FILE" | awk '{print $5}')"
+		echo "📊 Log size: $(format_bytes "$(get_file_size "$LOG_FILE")")"
 	fi
 	echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
 }
 
 check_updates() {
 	local update_file=""
-	if [[ -f "$UPDATE_FILE" ]]; then
-		update_file="$UPDATE_FILE"
-	elif [[ -f "$BOT_DIR/nasbot-update-amd64" ]]; then
-		update_file="$BOT_DIR/nasbot-update-amd64"
-	elif [[ -f "$BOT_DIR/nasbot-update-arm64" ]]; then
-		update_file="$BOT_DIR/nasbot-update-arm64"
-	else
+	# Search for update files matching the pattern
+	local candidates=()
+	mapfile -t candidates < <(compgen -G "${BOT_DIR}/${UPDATE_FILE_PATTERN}" || true)
+	for candidate in "${candidates[@]}"; do
+		if [[ -f "${candidate}" ]]; then
+			update_file="${candidate}"
+			break
+		fi
+	done
+	if [[ -z "${update_file}" ]]; then
 		return
 	fi
 
@@ -243,21 +262,123 @@ install_persistence() {
 
 usage() {
 	print_header
-	echo "Usage: $0 {start|stop|restart|status|watchdog|logs [n]|install}"
+	cat <<EOF
+
+COMMANDS:
+  start              Start the bot daemon
+  stop               Stop the bot gracefully  
+  restart            Restart the bot
+  status             Show detailed status and metrics
+  watchdog           Restart if not running (for cron)
+  logs [N]           Show last N lines of logs (default: 50)
+  watch              Watch logs in real-time (tail -f)
+  config [init]      Initialize or show configuration
+  install            Setup auto-restart via cron
+
+OPTIONS (global):
+  --help, -h         Show this help message
+  --verbose          Enable verbose output
+
+EXAMPLES:
+  \${0##*/} start              # Start bot
+  \${0##*/} watch              # Monitor logs live
+  \${0##*/} config init        # Create config from template
+  \${0##*/} logs 100           # Show last 100 lines
+  \${0##*/} --verbose restart  # Restart with verbose output
+
+CONFIGURATION (via environment variables):
+  NASBOT_LOG_FILE        Log file path (default: $LOG_FILE)
+  NASBOT_PID_FILE        PID file path (default: $PID_FILE)
+  NASBOT_STATE_FILE      State file path (default: $STATE_FILE)
+  NASBOT_APP_NAME        Application name (default: $BOT_NAME)
+  NASBOT_DEBUG           Enable debug mode (default: false)
+  NASBOT_VERBOSE         Enable verbose logging (default: false)
+
+For custom configuration, copy nasbot.config.template to nasbot.config.local
+and modify values as needed.
+
+EOF
+}
+
+watch_logs() {
+	if [[ ! -f "$LOG_FILE" ]]; then
+		echo -e "${RED}❌ Log file not found${NC}"
+		return 1
+	fi
+	
+	echo -e "${BLUE}Watching logs (press Ctrl+C to exit)...${NC}"
+	tail -f "$LOG_FILE"
+}
+
+init_config() {
+	local config_template="config.example.json"
+	local config_file="config.json"
+	
+	if [[ ! -f "$config_template" ]]; then
+		echo -e "${RED}❌ Config template not found: $config_template${NC}"
+		return 1
+	fi
+	
+	if [[ -f "$config_file" ]]; then
+		echo -e "${YELLOW}⚠️  Config already exists: $config_file${NC}"
+		read -p "Overwrite? (y/N) " -n 1 -r; echo
+		if [[ ! "$REPLY" =~ ^[Yy]$ ]]; then
+			echo "Cancelled."
+			return 0
+		fi
+	fi
+	
+	cp "$config_template" "$config_file"
+	chmod 600 "$config_file"
+	echo -e "${GREEN}✅ Config created: $config_file${NC}"
+	echo "📝 Edit with your settings before starting the bot."
+	
+	if command -v nano >/dev/null 2>&1; then
+		read -p "Edit now? (y/N) " -n 1 -r; echo
+		if [[ "$REPLY" =~ ^[Yy]$ ]]; then
+			nano "$config_file"
+		fi
+	fi
+}
+
+show_config() {
+	print_header
 	echo
-	echo "  start     - Start the bot"
-	echo "  stop      - Stop the bot"
-	echo "  restart   - Restart the bot"
-	echo "  status    - Show detailed status"
-	echo "  watchdog  - Restart if inactive (for cron)"
-	echo "  logs [n]  - Show last n logs (default: 50)"
-	echo "  install   - Setup persistence"
+	echo "📋 Configuration:"
+	echo "  Bot Name:       $BOT_NAME"
+	echo "  Binary:         $BOT_BINARY"
+	echo "  Log File:       $LOG_FILE"
+	echo "  PID File:       $PID_FILE"
+	echo "  State File:     $STATE_FILE"
+	echo "  Max Log Size:   $MAX_LOG_SIZE_MB MB"
+	echo "  Verbose:        $VERBOSE"
+	echo "  Debug Mode:     $DEBUG_MODE"
+	echo
 }
 
 ensure_binary_permissions
-check_updates
+if [[ "${AUTO_RESTART_ON_UPDATE}" == "true" ]]; then
+	check_updates
+fi
 
-case "${1:-}" in
+# Parse global options
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	--verbose)
+		VERBOSE="true"
+		shift
+		;;
+	--help|-h)
+		usage
+		exit 0
+		;;
+	*)
+		break
+		;;
+	esac
+done
+
+case "${1:-status}" in
 start)
 	start_bot
 	;;
@@ -276,11 +397,25 @@ watchdog)
 logs)
 	show_logs "${2:-50}"
 	;;
+watch)
+	watch_logs
+	;;
+config)
+	case "${2:-show}" in
+	init)
+		init_config
+		;;
+	*)
+		show_config
+		;;
+	esac
+	;;
 install)
 	install_persistence
 	start_bot
 	;;
 *)
 	usage
+	exit 1
 	;;
 esac
