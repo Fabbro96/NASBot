@@ -3,10 +3,14 @@ set -u -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 BOT_DIR="$(cd "$SCRIPT_DIR/.." >/dev/null 2>&1 && pwd)"
+BIN_DIR="$BOT_DIR/bin"
+VAR_DIR="$BOT_DIR/var"
 BOT_NAME="nasbot"
-UPDATE_FILE="nasbot-update"
-LOG_FILE="$BOT_DIR/nasbot.log"
-PID_FILE="$BOT_DIR/nasbot.pid"
+BOT_BINARY="$BIN_DIR/$BOT_NAME"
+UPDATE_FILE="$BIN_DIR/nasbot-update"
+LOG_FILE="$VAR_DIR/nasbot.log"
+PID_FILE="$VAR_DIR/nasbot.pid"
+STATE_FILE="$VAR_DIR/nasbot_state.json"
 MAX_LOG_SIZE=$((10 * 1024 * 1024))
 
 RED='\033[0;31m'
@@ -17,6 +21,28 @@ NC='\033[0m'
 
 cd "$BOT_DIR" || exit 1
 
+init_dirs() {
+	mkdir -p "$BIN_DIR" "$VAR_DIR"
+}
+
+migrate_legacy_layout() {
+	if [[ -x "$BOT_DIR/$BOT_NAME" && ! -e "$BOT_BINARY" ]]; then
+		mv "$BOT_DIR/$BOT_NAME" "$BOT_BINARY"
+	fi
+
+	if [[ -f "$BOT_DIR/nasbot.log" && ! -f "$LOG_FILE" ]]; then
+		mv "$BOT_DIR/nasbot.log" "$LOG_FILE"
+	fi
+
+	if [[ -f "$BOT_DIR/nasbot.pid" && ! -f "$PID_FILE" ]]; then
+		mv "$BOT_DIR/nasbot.pid" "$PID_FILE"
+	fi
+
+	if [[ -f "$BOT_DIR/nasbot_state.json" && ! -f "$STATE_FILE" ]]; then
+		mv "$BOT_DIR/nasbot_state.json" "$STATE_FILE"
+	fi
+}
+
 print_header() {
 	echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
 	echo -e "${BLUE}  🤖 NASBot Manager${NC}"
@@ -24,8 +50,8 @@ print_header() {
 }
 
 ensure_binary_permissions() {
-	if [[ -f "$BOT_NAME" ]]; then
-		chmod +x "$BOT_NAME" 2>/dev/null || true
+	if [[ -f "$BOT_BINARY" ]]; then
+		chmod +x "$BOT_BINARY" 2>/dev/null || true
 	fi
 }
 
@@ -78,14 +104,17 @@ start_bot() {
 		return 1
 	fi
 
-	if [[ ! -x "$BOT_NAME" ]]; then
-		echo -e "${RED}❌ Binary '$BOT_NAME' not found or not executable${NC}"
+	if [[ ! -x "$BOT_BINARY" ]]; then
+		echo -e "${RED}❌ Binary '$BOT_BINARY' not found or not executable${NC}"
 		return 1
 	fi
 
 	rotate_logs
 	echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting NASBot..." >>"$LOG_FILE"
-	nohup "./$BOT_NAME" >>"$LOG_FILE" 2>&1 &
+	NASBOT_LOG_FILE="$LOG_FILE" \
+		NASBOT_PID_FILE="$PID_FILE" \
+		NASBOT_STATE_FILE="$STATE_FILE" \
+		nohup "$BOT_BINARY" >>"$LOG_FILE" 2>&1 &
 	echo $! >"$PID_FILE"
 
 	sleep 2
@@ -173,6 +202,7 @@ status_bot() {
 
 	echo -e "${BLUE}───────────────────────────────────────${NC}"
 	echo "📁 Directory: $BOT_DIR"
+	echo "⚙️  Binary: $BOT_BINARY"
 	echo "📝 Log: $LOG_FILE"
 	if [[ -f "$LOG_FILE" ]]; then
 		echo "📊 Log size: $(ls -lh "$LOG_FILE" | awk '{print $5}')"
@@ -183,10 +213,16 @@ status_bot() {
 check_updates() {
 	local update_file="$UPDATE_FILE"
 	if [[ ! -f "$update_file" ]]; then
-		if [[ -f "nasbot-arm64" ]]; then
-			update_file="nasbot-arm64"
-		elif [[ -f "nasbot-amd64" ]]; then
-			update_file="nasbot-amd64"
+		if [[ -f "$BIN_DIR/nasbot-update-amd64" ]]; then
+			update_file="$BIN_DIR/nasbot-update-amd64"
+		elif [[ -f "$BIN_DIR/nasbot-update-arm64" ]]; then
+			update_file="$BIN_DIR/nasbot-update-arm64"
+		elif [[ -f "$BOT_DIR/nasbot-update" ]]; then
+			update_file="$BOT_DIR/nasbot-update"
+		elif [[ -f "$BOT_DIR/nasbot-update-amd64" ]]; then
+			update_file="$BOT_DIR/nasbot-update-amd64"
+		elif [[ -f "$BOT_DIR/nasbot-update-arm64" ]]; then
+			update_file="$BOT_DIR/nasbot-update-arm64"
 		else
 			return
 		fi
@@ -198,22 +234,22 @@ check_updates() {
 		stop_bot
 	fi
 
-	if [[ -f "$BOT_NAME" ]]; then
-		mv "$BOT_NAME" "${BOT_NAME}.bak"
+	if [[ -f "$BOT_BINARY" ]]; then
+		mv "$BOT_BINARY" "${BOT_BINARY}.bak"
 	fi
 
-	mv "$update_file" "$BOT_NAME"
-	chmod +x "$BOT_NAME"
+	mv "$update_file" "$BOT_BINARY"
+	chmod +x "$BOT_BINARY"
 
-	if [[ ! -x "$BOT_NAME" ]]; then
+	if [[ ! -x "$BOT_BINARY" ]]; then
 		echo -e "${RED}❌ Update failed: binary is not executable${NC}"
-		if [[ -f "${BOT_NAME}.bak" ]]; then
-			mv "${BOT_NAME}.bak" "$BOT_NAME"
+		if [[ -f "${BOT_BINARY}.bak" ]]; then
+			mv "${BOT_BINARY}.bak" "$BOT_BINARY"
 		fi
 		return
 	fi
 
-	rm -f "${BOT_NAME}.bak"
+	rm -f "${BOT_BINARY}.bak"
 	echo -e "${GREEN}✅ Binary updated.${NC}"
 }
 
@@ -274,6 +310,8 @@ usage() {
 	echo "  install   - Setup persistence and kernel tweaks"
 }
 
+init_dirs
+migrate_legacy_layout
 ensure_binary_permissions
 check_updates
 apply_system_tweaks

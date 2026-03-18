@@ -1,0 +1,176 @@
+package app
+
+import (
+	"encoding/json"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"time"
+)
+
+// BotState for persistence (DTO)
+type BotState struct {
+	LastReportTime      time.Time              `json:"last_report_time"`
+	AutoRestarts        map[string][]time.Time `json:"auto_restarts"`
+	ReportEvents        []ReportEvent          `json:"report_events,omitempty"`
+	LastReleaseNotified string                 `json:"last_release_notified,omitempty"`
+	Language            string                 `json:"language"`
+	ReportMode          int                    `json:"report_mode"` // 0=disabled, 1=once, 2=twice
+
+	// User-configurable settings
+	ReportMorningHour   int `json:"report_morning_hour"`
+	ReportMorningMinute int `json:"report_morning_minute"`
+	ReportEveningHour   int `json:"report_evening_hour"`
+	ReportEveningMinute int `json:"report_evening_minute"`
+
+	QuietHoursEnabled bool `json:"quiet_hours_enabled"`
+	QuietStartHour    int  `json:"quiet_start_hour"`
+	QuietStartMinute  int  `json:"quiet_start_minute"`
+	QuietEndHour      int  `json:"quiet_end_hour"`
+	QuietEndMinute    int  `json:"quiet_end_minute"`
+
+	DockerPruneEnabled bool   `json:"docker_prune_enabled"`
+	DockerPruneDay     string `json:"docker_prune_day"`
+	DockerPruneHour    int    `json:"docker_prune_hour"`
+
+	// Healthchecks.io tracking
+	Healthchecks HealthchecksState `json:"healthchecks"`
+}
+
+func stateFilePath() string {
+	if p := os.Getenv("NASBOT_STATE_FILE"); p != "" {
+		return p
+	}
+	return filepath.Join("var", "nasbot_state.json")
+}
+
+func loadState(ctx *AppContext) {
+	statePath := stateFilePath()
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		slog.Info("First run - no state found")
+		return
+	}
+	var state BotState
+	if err := json.Unmarshal(data, &state); err != nil {
+		slog.Warn("State load error", "err", err)
+		return
+	}
+
+	ctx.State.Mu.Lock()
+	ctx.State.LastReport = state.LastReportTime
+	ctx.State.LastReleaseNotified = state.LastReleaseNotified
+	if len(state.ReportEvents) > 100 {
+		ctx.State.ReportEvents = append([]ReportEvent{}, state.ReportEvents[len(state.ReportEvents)-100:]...)
+	} else if len(state.ReportEvents) > 0 {
+		ctx.State.ReportEvents = append([]ReportEvent{}, state.ReportEvents...)
+	}
+	ctx.State.Mu.Unlock()
+
+	ctx.Docker.Mu.Lock()
+	if state.AutoRestarts != nil {
+		ctx.Docker.AutoRestarts = state.AutoRestarts
+	}
+	ctx.Docker.Mu.Unlock()
+
+	ctx.Monitor.Mu.Lock()
+	ctx.Monitor.Healthchecks = state.Healthchecks
+	ctx.Monitor.Mu.Unlock()
+
+	ctx.Settings.Mu.Lock()
+	if state.Language != "" {
+		ctx.Settings.Language = state.Language
+	}
+	if state.ReportMode > 0 {
+		ctx.Settings.ReportMode = state.ReportMode
+	}
+
+	if state.ReportMorningHour > 0 || state.ReportMorningMinute > 0 {
+		ctx.Settings.ReportMorning = TimePoint{Hour: state.ReportMorningHour, Minute: state.ReportMorningMinute}
+	}
+	if state.ReportEveningHour > 0 || state.ReportEveningMinute > 0 {
+		ctx.Settings.ReportEvening = TimePoint{Hour: state.ReportEveningHour, Minute: state.ReportEveningMinute}
+	}
+
+	if state.QuietStartHour > 0 || state.QuietStartMinute > 0 {
+		ctx.Settings.QuietHours.Enabled = state.QuietHoursEnabled
+		ctx.Settings.QuietHours.Start = TimePoint{Hour: state.QuietStartHour, Minute: state.QuietStartMinute}
+		ctx.Settings.QuietHours.End = TimePoint{Hour: state.QuietEndHour, Minute: state.QuietEndMinute}
+	}
+
+	if state.DockerPruneDay != "" {
+		ctx.Settings.DockerPrune.Enabled = state.DockerPruneEnabled
+		ctx.Settings.DockerPrune.Day = state.DockerPruneDay
+		ctx.Settings.DockerPrune.Hour = state.DockerPruneHour
+	}
+	ctx.Settings.Mu.Unlock()
+}
+
+func saveState(ctx *AppContext) {
+	ctx.State.Mu.Lock()
+	lastReport := ctx.State.LastReport
+	lastReleaseNotified := ctx.State.LastReleaseNotified
+	ctx.State.Mu.Unlock()
+	reportEvents := ctx.State.GetEvents()
+
+	ctx.Docker.Mu.RLock()
+	autoRestarts := make(map[string][]time.Time, len(ctx.Docker.AutoRestarts))
+	for k, v := range ctx.Docker.AutoRestarts {
+		vv := make([]time.Time, len(v))
+		copy(vv, v)
+		autoRestarts[k] = vv
+	}
+	ctx.Docker.Mu.RUnlock()
+
+	ctx.Monitor.Mu.Lock()
+	healthchecks := ctx.Monitor.Healthchecks
+	if len(ctx.Monitor.Healthchecks.DowntimeEvents) > 0 {
+		downtimeCopy := make([]DowntimeLog, len(ctx.Monitor.Healthchecks.DowntimeEvents))
+		copy(downtimeCopy, ctx.Monitor.Healthchecks.DowntimeEvents)
+		healthchecks.DowntimeEvents = downtimeCopy
+	}
+	ctx.Monitor.Mu.Unlock()
+
+	ctx.Settings.Mu.RLock()
+	language := ctx.Settings.Language
+	reportMode := ctx.Settings.ReportMode
+	reportMorning := ctx.Settings.ReportMorning
+	reportEvening := ctx.Settings.ReportEvening
+	quietHours := ctx.Settings.QuietHours
+	dockerPrune := ctx.Settings.DockerPrune
+	ctx.Settings.Mu.RUnlock()
+
+	state := BotState{
+		LastReportTime:      lastReport,
+		AutoRestarts:        autoRestarts,
+		ReportEvents:        reportEvents,
+		LastReleaseNotified: lastReleaseNotified,
+		Language:            language,
+		ReportMode:          reportMode,
+		ReportMorningHour:   reportMorning.Hour,
+		ReportMorningMinute: reportMorning.Minute,
+		ReportEveningHour:   reportEvening.Hour,
+		ReportEveningMinute: reportEvening.Minute,
+		QuietHoursEnabled:   quietHours.Enabled,
+		QuietStartHour:      quietHours.Start.Hour,
+		QuietStartMinute:    quietHours.Start.Minute,
+		QuietEndHour:        quietHours.End.Hour,
+		QuietEndMinute:      quietHours.End.Minute,
+		DockerPruneEnabled:  dockerPrune.Enabled,
+		DockerPruneDay:      dockerPrune.Day,
+		DockerPruneHour:     dockerPrune.Hour,
+		Healthchecks:        healthchecks,
+	}
+
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		slog.Error("State marshal error", "err", err)
+		return
+	}
+
+	statePath := stateFilePath()
+	ensureParentDir(statePath)
+	if err := os.WriteFile(statePath, data, 0644); err != nil {
+		slog.Error("State save error", "err", err)
+	}
+}
