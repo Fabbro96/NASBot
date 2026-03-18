@@ -20,6 +20,14 @@ type Config struct {
 	KernelWatchdog     KernelWatchdogConfig  `json:"kernel_watchdog"`
 	NetworkWatchdog    NetworkWatchdogConfig `json:"network_watchdog"`
 	RaidWatchdog       RaidWatchdogConfig    `json:"raid_watchdog"`
+	Update              UpdateConfig           `json:"update"`
+}
+
+// UpdateConfig controls automatic update behavior.
+type UpdateConfig struct {
+	// If true, NASBot will automatically download and apply new GitHub releases
+	// when detected, and then restart itself.
+	AutoApply bool `json:"auto_apply"`
 }
 
 type PathsConfig struct {
