@@ -122,5 +122,8 @@
   "kernel_watchdog": {
     "enabled": true,
     "check_interval_seconds": 60
+  },
+  "update": {
+    "auto_apply": false
   }
 }

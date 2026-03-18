@@ -205,7 +205,12 @@ func updaterLoop(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 		if err != nil {
 			slog.Warn("Update check failed", "err", err)
 		} else if hasUpdate {
-			notifyUpdateAvailable(ctx, bot, rel)
+			if ctx.Config != nil && ctx.Config.Update.AutoApply {
+				// Auto-apply update without user interaction.
+				applyLatestRelease(ctx, bot, 0, 0)
+			} else {
+				notifyUpdateAvailable(ctx, bot, rel)
+			}
 		}
 
 		if !sleepWithContext(runCtx, releaseCheckEvery) {

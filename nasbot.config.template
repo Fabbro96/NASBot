@@ -91,6 +91,9 @@ AUTO_RESTART_ON_UPDATE="true"
 # Restart script path
 RESTART_SCRIPT="./start_bot_runtime.sh"
 
+# Automatically apply new GitHub releases (download & restart)
+AUTO_APPLY_RELEASES="false"
+
 # ============================================================================
 # PERFORMANCE & DEBUG
 # ============================================================================
