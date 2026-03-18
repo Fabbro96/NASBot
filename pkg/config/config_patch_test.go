@@ -23,7 +23,7 @@ func TestApplyConfigPatch_SanitizesAndIgnoresLocked(t *testing.T) {
 	}
 
 	patch := map[string]interface{}{
-			"bot_token": "redacted",
+		"bot_token": "redacted",
 		"quiet_hours": map[string]interface{}{
 			"enabled":      true,
 			"start_hour":   7,
