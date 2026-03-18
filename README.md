@@ -52,6 +52,17 @@ go build -o nasbot ./...
 
 ## 🚀 Quick Install
 
+### Modular Configuration System
+
+**NEW: NASBot now has a fully modular and customizable deployment system!**
+
+All scripts (package, deploy, runtime) use a hierarchical configuration system with environment variable overrides. No script editing needed.
+
+- 📖 **Start here**: [MODULAR_CONFIG_GUIDE.md](MODULAR_CONFIG_GUIDE.md) - Usage guide and examples
+- 🏗️ **Deep dive**: [MODULAR_ARCHITECTURE.md](MODULAR_ARCHITECTURE.md) - System design and extensibility
+- ⚙️ **Template**: [nasbot.config.template](nasbot.config.template) - Default configuration (documented)
+- 📋 **Examples**: [nasbot.config.example](nasbot.config.example) - Real-world scenarios
+
 ### 1. Download & Install
 Run the installer script (works on most Linux ARM64/AMD64 systems):
 
