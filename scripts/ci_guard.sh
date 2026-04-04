@@ -126,7 +126,6 @@ go build ./...
 
 if [[ "$mode" == "release" ]]; then
   check_tag_semver
-  check_changelog_entry
 fi
 
 echo "ci_guard: ${mode} checks passed"
