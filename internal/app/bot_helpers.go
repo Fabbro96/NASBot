@@ -149,7 +149,7 @@ func handlePowerConfirm(ctx *AppContext, bot BotAPI, chatID int64, msgID int, da
 
 func executeForcedReboot(ctx *AppContext, bot BotAPI, chatID int64, msgID int, reason string) {
 	source := powerSourceFromReason(reason)
-	addPowerLifecycleEvent(ctx, "reboot", true, source, "reboot -f", reason)
+	addPowerLifecycleEvent(ctx, "reboot", true, source, "reboot", reason)
 	saveState(ctx)
 
 	if msgID > 0 {

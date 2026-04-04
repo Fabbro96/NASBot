@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"runtime/debug"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -138,15 +137,10 @@ func periodicReport(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 			ctx.State.Mu.Lock()
 			ctx.State.LastReport = time.Now()
 			ctx.State.Mu.Unlock()
-			go saveState(ctx)
-			go func() {
-				defer func() {
-					if r := recover(); r != nil {
-						slog.Error("Panic recovered in goroutine", "goroutine", "logs-prune-after-report", "err", r, "stack", string(debug.Stack()))
-					}
-				}()
+			goSafe("save-state-after-report", func() { saveState(ctx) })
+			goSafe("logs-prune-after-report", func() {
 				prunePersistentLogsAfterReport(ctx)
-			}()
+			})
 		}
 	}
 }

@@ -27,7 +27,7 @@ func TestPowerSourceFromReason(t *testing.T) {
 func TestAddPowerLifecycleEventAddsStructuredEntry(t *testing.T) {
 	ctx := newTestAppContext()
 
-	addPowerLifecycleEvent(ctx, "reboot", true, "command", "reboot -f", "manual-force-command")
+	addPowerLifecycleEvent(ctx, "reboot", true, "command", "reboot", "manual-force-command")
 
 	events := ctx.State.GetEvents()
 	if len(events) == 0 {
@@ -40,7 +40,7 @@ func TestAddPowerLifecycleEventAddsStructuredEntry(t *testing.T) {
 		"action=reboot",
 		"forced=yes",
 		"source=command",
-		"cmd=\"reboot -f\"",
+		"cmd=\"reboot\"",
 		"reason=manual-force-command",
 	}
 
