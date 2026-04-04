@@ -347,11 +347,11 @@ func applyLatestRelease(ctx *AppContext, bot BotAPI, chatID int64, msgID int) {
 		sendMarkdown(bot, chatID, okText)
 	}
 
-	go func() {
+	goSafe("updater-restart", func() {
 		time.Sleep(1200 * time.Millisecond)
 		if err := restartWithStartScript(); err != nil {
 			slog.Error("Update restart failed", "err", err)
 			sendMarkdown(bot, chatID, fmt.Sprintf("❌ Restart post-update fallito: %v", err))
 		}
-	}()
+	})
 }
