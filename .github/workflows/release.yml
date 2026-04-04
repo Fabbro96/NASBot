@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - "v*"
+    branches:
+      - "main"
   workflow_dispatch:
 
 permissions:
@@ -24,6 +26,27 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: '0'
+
+      - name: Bump version and push tag
+        id: auto_tag
+        if: github.ref == 'refs/heads/main'
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          default_bump: patch
+
+      - name: Determine Version
+        id: get_version
+        run: |
+          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            echo "VERSION=${{ steps.auto_tag.outputs.new_tag }}" >> $GITHUB_ENV
+            echo "RELEASE_TAG=${{ steps.auto_tag.outputs.new_tag }}" >> $GITHUB_ENV
+          else
+            echo "VERSION=${{ github.ref_name }}" >> $GITHUB_ENV
+            echo "RELEASE_TAG=${{ github.ref_name }}" >> $GITHUB_ENV
+          fi
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -37,11 +60,9 @@ jobs:
       - name: Release guard
         run: |
           chmod +x scripts/ci_guard.sh scripts/secret_scan.sh
-          scripts/ci_guard.sh release "${GITHUB_REF_NAME}"
+          scripts/ci_guard.sh release "${RELEASE_TAG}"
 
       - name: Build release binaries
-        env:
-          VERSION: ${{ github.ref_name }}
         run: |
           chmod +x scripts/build_release.sh
           ./scripts/build_release.sh
@@ -60,6 +81,7 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
           generate_release_notes: true
           files: |
             nasbot
