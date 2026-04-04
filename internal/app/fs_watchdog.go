@@ -459,7 +459,7 @@ func (w *FSWatchdog) checkAndAlert(bot BotAPI, path string) {
 		}
 
 		// Run deep scan in background to not block
-		go func() {
+		goSafe("fs-deepscan", func() {
 			result := w.DeepScan(w.config.DeepScanPaths)
 			if result == nil {
 				return // Scan already in progress
@@ -467,7 +467,7 @@ func (w *FSWatchdog) checkAndAlert(bot BotAPI, path string) {
 
 			// Send results
 			w.sendDeepScanReport(bot, result)
-		}()
+		})
 
 		w.lastAlertTime = time.Now()
 		addReportEvent("critical", fmt.Sprintf("Disk %s at %.1f%% - deep scan triggered", path, usedPercent))

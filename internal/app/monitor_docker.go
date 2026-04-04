@@ -144,7 +144,7 @@ func checkWeeklyPrune(ctx *AppContext, bot BotAPI) {
 			ctx.Docker.PruneDoneToday = true
 			ctx.Docker.Mu.Unlock()
 
-			go func() {
+			goSafe("docker-weekly-prune", func() {
 				c, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 				defer cancel()
 
@@ -176,7 +176,7 @@ func checkWeeklyPrune(ctx *AppContext, bot BotAPI) {
 					m.ParseMode = "Markdown"
 					safeSend(bot, m)
 				}
-			}()
+			})
 		}
 	} else {
 		// Reset flag if hour passed

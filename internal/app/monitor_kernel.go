@@ -246,12 +246,12 @@ func handleOOMLoop(ctx *AppContext, bot BotAPI) {
 		slog.Error("OOM Loop detected. Triggering reboot.", "count", len(valid), "window", oomLoopWindow)
 
 		// Execute reboot in a separate goroutine to allow message to send
-		go func() {
+		goSafe("oom-reboot", func() {
 			slog.Info("Rebooting system now...")
 			if err := runCommand(context.Background(), "reboot"); err != nil {
 				slog.Error("OOM reboot command failed", "err", err)
 			}
-		}()
+		})
 	}
 }
 
