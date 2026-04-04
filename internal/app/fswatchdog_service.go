@@ -4,7 +4,6 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"runtime/debug"
 	"syscall"
 )
 
@@ -19,14 +18,9 @@ func RunFSWatchdogService() {
 
 	// Start the watchdog loop in a goroutine (it blocks)
 	// Pass nil for bot since this is the standalone binary
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				slog.Error("Panic recovered in goroutine", "goroutine", "fswatchdog-loop", "err", r, "stack", string(debug.Stack()))
-			}
-		}()
+	goSafe("fswatchdog-loop", func() {
 		RunFSWatchdog(nil)
-	}()
+	})
 
 	slog.Info("FS Watchdog started successfully")
 
