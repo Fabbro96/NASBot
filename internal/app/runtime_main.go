@@ -209,8 +209,21 @@ func sendStartupNotification(ctx *AppContext, bot BotAPI) {
 		quietInfo = fmt.Sprintf(ctx.Tr("boot_quiet_fmt"), qStartH, qStartM, qEndH, qEndM)
 	}
 
+	// Check if bot was updated since last run
+	var updateInfo string
+	ctx.State.Mu.Lock()
+	prevVersion := ctx.State.LastReleaseNotified
+	if Version != "dev" && prevVersion != "" && prevVersion != Version {
+		updateInfo = fmt.Sprintf(ctx.Tr("update_completed"), prevVersion, Version)
+	}
+	ctx.State.LastReleaseNotified = Version
+	ctx.State.Mu.Unlock()
+	if updateInfo != "" {
+		goSafe("save-state-post-update", func() { saveState(ctx) })
+	}
+
 	crashInfo := checkPreviousBootCrash(ctx)
-	startupText := fmt.Sprintf(ctx.Tr("boot_online"), nextReportStr, quietInfo) + crashInfo
+	startupText := fmt.Sprintf(ctx.Tr("boot_online"), nextReportStr, quietInfo) + updateInfo + crashInfo
 
 	msg := tgbotapi.NewMessage(int64(ctx.Config.AllowedUserID), startupText)
 	msg.ParseMode = "Markdown"

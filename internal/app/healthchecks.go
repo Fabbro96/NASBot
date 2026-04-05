@@ -139,7 +139,7 @@ func recordHealthcheckSuccess(ctx *AppContext, bot BotAPI) {
 
 	// Save state periodically (every 10 pings)
 	if totalPings%10 == 0 {
-		go saveState(ctx)
+		goSafe("save-state-healthcheck", func() { saveState(ctx) })
 	}
 }
 
@@ -207,7 +207,7 @@ func recordHealthcheckFailure(ctx *AppContext, bot BotAPI, reason string) {
 		ctx.Monitor.Mu.Unlock()
 	}
 
-	go saveState(ctx)
+	goSafe("save-state-healthcheck-fail", func() { saveState(ctx) })
 }
 
 // getHealthchecksStats returns formatted stats for the /health command
