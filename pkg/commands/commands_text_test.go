@@ -52,9 +52,9 @@ func TestGetStatusText(t *testing.T) {
 
 func TestGetHelpText(t *testing.T) {
 	ctx := setupTestContext()
-	
+
 	text := GetHelpText(ctx)
-	
+
 	if !strings.Contains(text, "[help_intro]") {
 		t.Errorf("Expected help intro, got: %s", text)
 	}
@@ -65,7 +65,7 @@ func TestGetHelpText(t *testing.T) {
 
 func TestGetPingText(t *testing.T) {
 	ctx := setupTestContext()
-	
+
 	text := GetPingText(ctx)
 	if !strings.Contains(text, "[ping_pong]") {
 		t.Errorf("Expected ping_pong, got: %s", text)

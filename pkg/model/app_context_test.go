@@ -11,15 +11,15 @@ func TestRuntimeStateEvents(t *testing.T) {
 
 	ctx.State.AddEvent("test_type", "test_msg")
 	events := ctx.State.GetEvents()
-	
+
 	if len(events) != 1 {
 		t.Fatalf("Expected 1 event, got %d", len(events))
 	}
-	
+
 	if events[0].Type != "test_type" || events[0].Message != "test_msg" {
 		t.Errorf("Event data mismatch: %v", events[0])
 	}
-	
+
 	ctx.State.ClearEvents()
 	if len(ctx.State.GetEvents()) != 0 {
 		t.Errorf("Expected 0 events after clear")
@@ -28,14 +28,14 @@ func TestRuntimeStateEvents(t *testing.T) {
 
 func TestThreadSafeStats(t *testing.T) {
 	ctx := InitApp(nil)
-	
+
 	_, ready := ctx.GetStats()
 	if ready {
 		t.Fatal("Expected stats to be unready initially")
 	}
-	
+
 	ctx.Stats.Set(Stats{CPU: 42.0})
-	
+
 	stats, ready := ctx.GetStats()
 	if !ready || stats.CPU != 42.0 {
 		t.Errorf("Stats not updated correctly: %v, ready=%v", stats, ready)
