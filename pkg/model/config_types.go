@@ -27,7 +27,8 @@ type Config struct {
 type UpdateConfig struct {
 	// If true, NASBot will automatically download and apply new GitHub releases
 	// when detected, and then restart itself.
-	AutoApply bool `json:"auto_apply"`
+	AutoApply          bool `json:"auto_apply"`
+	CheckIntervalHours int  `json:"check_interval_hours"`
 }
 
 type PathsConfig struct {
