@@ -20,8 +20,9 @@ import (
 var Version = "dev"
 
 const (
-	defaultGitHubRepo = "Fabbro96/NASBot"
-	releaseCheckEvery = 6 * time.Hour
+	defaultGitHubRepo   = "Fabbro96/NASBot"
+	defaultReleaseCheck = 1 * time.Hour
+	startupReleaseCheck = 10 * time.Second
 )
 
 type githubRelease struct {
@@ -196,7 +197,8 @@ func notifyUpdateAvailable(ctx *AppContext, bot BotAPI, rel releaseCandidate) {
 }
 
 func updaterLoop(ctx *AppContext, bot BotAPI, runCtx context.Context) {
-	if !sleepWithContext(runCtx, 30*time.Second) {
+	// First check after a short delay at startup
+	if !sleepWithContext(runCtx, startupReleaseCheck) {
 		return
 	}
 
@@ -213,7 +215,12 @@ func updaterLoop(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 			}
 		}
 
-		if !sleepWithContext(runCtx, releaseCheckEvery) {
+		interval := defaultReleaseCheck
+		if ctx.Config != nil && ctx.Config.Update.CheckIntervalHours > 0 {
+			interval = time.Duration(ctx.Config.Update.CheckIntervalHours) * time.Hour
+		}
+
+		if !sleepWithContext(runCtx, interval) {
 			return
 		}
 	}

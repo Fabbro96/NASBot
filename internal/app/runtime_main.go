@@ -213,7 +213,7 @@ func sendStartupNotification(ctx *AppContext, bot BotAPI) {
 	var updateInfo string
 	ctx.State.Mu.Lock()
 	prevVersion := ctx.State.LastReleaseNotified
-	if Version != "dev" && prevVersion != "" && prevVersion != Version {
+	if prevVersion != "" && prevVersion != Version {
 		updateInfo = fmt.Sprintf(ctx.Tr("update_completed"), prevVersion, Version)
 	}
 	ctx.State.LastReleaseNotified = Version

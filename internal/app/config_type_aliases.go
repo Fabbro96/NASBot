@@ -24,3 +24,4 @@ type HealthchecksConfig = pmodel.HealthchecksConfig
 type KernelWatchdogConfig = pmodel.KernelWatchdogConfig
 type NetworkWatchdogConfig = pmodel.NetworkWatchdogConfig
 type RaidWatchdogConfig = pmodel.RaidWatchdogConfig
+type UpdateConfig = pmodel.UpdateConfig

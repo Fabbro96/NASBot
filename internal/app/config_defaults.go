@@ -47,6 +47,7 @@ func defaultConfigTemplate() Config {
 			ForceRebootAfterMins: 3,
 		},
 		RaidWatchdog: RaidWatchdogConfig{Enabled: true, CheckIntervalSecs: 300, CooldownMins: 30, RecoveryNotify: true},
+		Update:       UpdateConfig{AutoApply: true, CheckIntervalHours: 1},
 	}
 }
 
