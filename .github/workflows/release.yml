@@ -40,13 +40,14 @@ jobs:
       - name: Determine Version
         id: get_version
         run: |
-          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
-            echo "VERSION=${{ steps.auto_tag.outputs.new_tag }}" >> $GITHUB_ENV
-            echo "RELEASE_TAG=${{ steps.auto_tag.outputs.new_tag }}" >> $GITHUB_ENV
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG="${{ github.ref_name }}"
           else
-            echo "VERSION=${{ github.ref_name }}" >> $GITHUB_ENV
-            echo "RELEASE_TAG=${{ github.ref_name }}" >> $GITHUB_ENV
+            TAG="${{ steps.auto_tag.outputs.new_tag }}"
           fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
+          echo "VERSION=${TAG:-dev}" >> $GITHUB_ENV
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -58,19 +59,23 @@ jobs:
         run: go mod download
 
       - name: Release guard
+        if: steps.get_version.outputs.tag != ''
         run: |
           chmod +x scripts/ci_guard.sh scripts/secret_scan.sh
           scripts/ci_guard.sh release "${RELEASE_TAG}"
 
       - name: Build release binaries
+        if: steps.get_version.outputs.tag != ''
         run: |
           chmod +x scripts/build_release.sh
           ./scripts/build_release.sh
 
       - name: Generate checksums
+        if: steps.get_version.outputs.tag != ''
         run: sha256sum nasbot nasbot-arm64 > SHA256SUMS.txt
 
       - name: Attest build provenance
+        if: steps.get_version.outputs.tag != ''
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
@@ -79,9 +84,10 @@ jobs:
             SHA256SUMS.txt
 
       - name: Publish GitHub Release
+        if: steps.get_version.outputs.tag != ''
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.RELEASE_TAG }}
+          tag_name: ${{ steps.get_version.outputs.tag }}
           generate_release_notes: true
           files: |
             nasbot

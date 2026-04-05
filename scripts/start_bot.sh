@@ -111,10 +111,12 @@ start_bot() {
 
 	rotate_logs
 	echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting NASBot..." >>"$LOG_FILE"
-	NASBOT_LOG_FILE="$LOG_FILE" \
-		NASBOT_PID_FILE="$PID_FILE" \
-		NASBOT_STATE_FILE="$STATE_FILE" \
-		nohup "$BOT_BINARY" >>"$LOG_FILE" 2>&1 &
+	
+	export NASBOT_LOG_FILE="$LOG_FILE"
+	export NASBOT_PID_FILE="$PID_FILE"
+	export NASBOT_STATE_FILE="$STATE_FILE"
+	
+	nohup "$BOT_BINARY" >>"$LOG_FILE" 2>&1 &
 	echo $! >"$PID_FILE"
 
 	sleep 2
@@ -205,7 +207,7 @@ status_bot() {
 	echo "⚙️  Binary: $BOT_BINARY"
 	echo "📝 Log: $LOG_FILE"
 	if [[ -f "$LOG_FILE" ]]; then
-		echo "📊 Log size: $(ls -lh "$LOG_FILE" | awk '{print $5}')"
+		echo "📊 Log size: $(du -sh "$LOG_FILE" | awk '{print $1}')"
 	fi
 	echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
 }
