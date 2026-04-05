@@ -172,6 +172,8 @@ func getHelpText(ctx *AppContext) string {
 	b.WriteString("/settings — *configure everything*\n")
 	b.WriteString("/report — full detailed report\n")
 	b.WriteString("/ping — check if bot is alive\n")
+	b.WriteString("/version — show bot version\n")
+	b.WriteString("/health — healthchecks.io status\n")
 	b.WriteString("/config — show current config\n")
 	b.WriteString("/configjson — show full config.json (redacted)\n")
 	b.WriteString("/configset <json> — update config.json\n")
@@ -398,3 +400,28 @@ func getSysInfoText(ctx *AppContext) string {
 
 	return b.String()
 }
+
+func getVersionText(ctx *AppContext) string {
+	tr := ctx.Tr
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf(tr("version_title"), getVersion()))
+
+	if buildInfo, ok := debug.ReadBuildInfo(); ok {
+		b.WriteString(fmt.Sprintf(tr("version_go"), buildInfo.GoVersion))
+	}
+
+	h, err := host.Info()
+	if err == nil {
+		b.WriteString(fmt.Sprintf(tr("version_arch"), h.KernelArch))
+		b.WriteString(fmt.Sprintf(tr("version_os"), h.Platform, h.PlatformVersion))
+	}
+
+	ctx.Bot.Mu.Lock()
+	startTime := ctx.Bot.StartTime
+	ctx.Bot.Mu.Unlock()
+	b.WriteString(fmt.Sprintf(tr("version_uptime"), format.FormatDuration(time.Since(startTime))))
+
+	return b.String()
+}
+
+func GetVersionText(ctx *AppContext) string { return getVersionText(ctx) }

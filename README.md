@@ -2,7 +2,7 @@
 
 > A lightweight Telegram bot to monitor and control your home server/NAS.
 
-![Platform](https://img.shields.io/badge/Platform-Linux%20ARM64-orange)
+![Platform](https://img.shields.io/badge/Platform-Linux%20ARM64%20%7C%20AMD64-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
 [![CI](https://github.com/Fabbro96/NASBot/actions/workflows/ci.yml/badge.svg)](https://github.com/Fabbro96/NASBot/actions/workflows/ci.yml)
 [![Security](https://github.com/Fabbro96/NASBot/actions/workflows/security.yml/badge.svg)](https://github.com/Fabbro96/NASBot/actions/workflows/security.yml)
@@ -16,6 +16,7 @@ A self-hosted bot that gives you a **live dashboard** (CPU, RAM, Disks, Docker) 
 - NASBot is a self-hosted Telegram bot for your NAS/home server: monitor health, manage Docker, receive alerts, and run quick actions.
 - Setup is simple: one binary + one `config.json` (minimum required: `bot_token` and `allowed_user_id`).
 - Main daily flow: use `/status` for dashboard, `/quick` for snapshot, `/report` for full report, `/settings` for tuning.
+- **Auto-updates**: when a new release is published, NASBot downloads and installs it automatically (configurable).
 - Optional AI summaries are available with Gemini by setting `gemini_api_key`.
 - Designed for production-style usage: tests, CI, security scans, release artifacts, and update automation are included.
 
@@ -35,9 +36,11 @@ go build -o nasbot ./...
 - **🤖 AI Reports**: Daily summaries powered by **Gemini 2.5 Flash** (optional).
 - **🌍 Multi-language**: EN, IT, ES, DE, ZH, UK (full key coverage with EN fallback).
 - **🔔 Smart Alerts**: Notify on high usage, stopped containers, or critical errors.
-- **🛡️ Watchdogs**: Auto-restart Docker or containers if they crash or freeze.
+- **🛡️ Watchdogs**: Network, Kernel, RAID, and Docker watchdogs with auto-recovery.
+- **🔄 Auto-Updates**: Checks GitHub releases periodically and downloads new versions. Notifies you on Telegram when an update is applied.
 - **⚙️ Legacy Config Auto-Heal**: Missing fields in old `config.json` are auto-added with defaults.
 - **📨 Reports**: Scheduled summary (morning/evening) with trends and events.
+- **💓 Healthchecks.io**: Built-in integration for uptime monitoring.
 
 ## 🧩 Code Layout (Short)
 
@@ -47,6 +50,8 @@ go build -o nasbot ./...
 - `internal/app/config.go`: load/sanitize/patch flow
 - `internal/app/config_defaults.go`: default template + recursive missing-field merge
 - `internal/app/translations.go`: translations + automatic key coverage sync
+- `internal/app/runtime_main.go`: boot sequence, goroutine lifecycle, `goSafe` panic recovery
+- `internal/app/updater.go`: auto-update from GitHub releases
 
 ---
 
@@ -106,11 +111,11 @@ Edit `config.json` with your details.
 
 ```json
 {
-  "bot_token": "YOUR_TELEGRAM_BOT_TOKEN",
-  "allowed_user_id": 12345678,     // Your Telegram User ID
-  "gemini_api_key": "",            // Optional: For AI summaries
+  "bot_token": "TOKEN",
+  "allowed_user_id": 12345678,
+  "gemini_api_key": "",
   "timezone": "Europe/Rome",
-  "paths": { "ssd": "/", "hdd": "/mnt/data" } // Paths to monitor
+  "paths": { "ssd": "/", "hdd": "/mnt/data" }
 }
 ```
 
@@ -118,17 +123,47 @@ Edit `config.json` with your details.
 
 ## 🎮 Commands
 
+### 📊 Monitoring
 | Command | Action |
-|:---:|---|
-| `/status` | 🖥 **Main Dashboard** (Resource usage & interactive menu) |
-| `/quick` | ⚡ One-line summary |
-| `/docker` | 🐳 Manage containers |
-| `/net` | 🌐 Network info (Local/Public IP) |
-| `/report` | 📨 Generate full status report now |
-| `/settings` | ⚙️ Configure Language, Reports, Quiet Hours |
-| `/temp` | 🌡 System temperatures |
-| `/reboot` | 🔄 Reboot server |
-| `/help` | 📜 Show all commands |
+|:--------|--------|
+| `/status` | 🖥 Main dashboard (CPU, RAM, Disk, I/O) |
+| `/quick` | ⚡ Ultra-compact one-line summary |
+| `/temp` | 🌡 CPU & disk temperatures |
+| `/top` | 🔥 Top processes by CPU |
+| `/sysinfo` | 🖥 Detailed system info |
+| `/diskpred` | 📈 Disk space prediction |
+
+### 🐳 Docker
+| Command | Action |
+|:--------|--------|
+| `/docker` | Manage containers (start/stop/restart/kill/logs) |
+| `/dstats` | Container resource usage |
+| `/kill <name>` | Force kill a container |
+| `/logsearch <name> <keyword>` | Search container logs |
+| `/restartdocker` | Restart the Docker daemon |
+
+### 🌐 Network
+| Command | Action |
+|:--------|--------|
+| `/net` | Local & public IP |
+| `/speedtest` | Run a speed test |
+
+### ⚙️ Settings & System
+| Command | Action |
+|:--------|--------|
+| `/settings` | Configure language, reports, quiet hours |
+| `/report` | Generate full status report now |
+| `/ping` | Check if bot is alive |
+| `/version` | Show bot version, Go runtime, architecture |
+| `/health` | Healthchecks.io status & uptime |
+| `/config` | Show current config summary |
+| `/configjson` | Show full config.json (redacted) |
+| `/configset <json>` | Update config.json live |
+| `/logs` | Recent system logs |
+| `/ask <question>` | Ask AI about recent logs |
+| `/update` | Install latest GitHub release |
+| `/reboot` / `/shutdown` | Power control (with confirmation) |
+| `/forcereboot` | Forced reboot (no confirmation) |
 
 ---
 
@@ -138,6 +173,17 @@ NASBot can use **Google Gemini** to write friendly daily reports ("Everything lo
 1. Get a key from [Google AI Studio](https://aistudio.google.com/).
 2. Add it to `gemini_api_key` in `config.json`.
 3. Enjoy human-readable server updates!
+
+---
+
+## 🔄 Auto-Updates
+
+NASBot includes a built-in updater that periodically checks GitHub releases:
+
+1. **Automatic check**: every 6 hours, NASBot queries the latest release on GitHub.
+2. **Auto-apply** (if `update.auto_apply` is `true` in config): downloads and installs the new binary automatically.
+3. **Notification**: after restarting, the bot sends a Telegram message: *"✅ Bot updated! `v0.1.3` → `v0.2.0`"*.
+4. **Manual trigger**: use `/update` to check and apply updates on demand.
 
 ---
 
@@ -152,6 +198,10 @@ The `config.json` allows granular control over thresholds and automation:
 - **Quiet Hours**: Silence notifications at night.
 - **Docker Watchdog**: Auto-restart Docker service if it hangs.
 - **Auto-Prune**: Weekly cleanup of unused Docker images.
+- **Network Watchdog**: Force reboot if network is down for too long.
+- **Kernel Watchdog**: Detect OOM kills, kernel panics, hung tasks.
+- **RAID Watchdog**: Alert on degraded RAID arrays.
+- **Healthchecks.io**: External uptime monitoring integration.
 
 See `config.example.json` for the full schema.
 </details>
@@ -171,18 +221,17 @@ chmod +x .githooks/pre-commit scripts/secret_scan.sh
 See [docs/SECURITY.md](docs/SECURITY.md) for full hardening policy and leak response steps.
 
 ## 🧪 Testing
-Run all tests:
+Run all tests (with race detector):
 
 ```bash
-go test ./...
+go test -race ./...
 ```
 
 ## 🔁 CI/CD
 
 GitHub Actions pipelines:
 
-- `CI` (push/PR): secret scan, `gofmt` check, `go vet`, race tests, build, release script smoke.
-- `ShellCheck` (push/PR): strict lint for all `.sh` scripts.
-- `Security` (PR + weekly): Dependency Review + CodeQL.
-- `Release` (tag `v*`): build binaries, generate checksums, publish GitHub Release artifacts.
-- `Dependabot`: weekly updates for `gomod` and GitHub Actions.
+- **CI** (push/PR): secret scan, `gofmt` check, `go vet`, race tests, build, release script smoke.
+- **Security** (PR + weekly): Dependency Review + CodeQL.
+- **Release** (push to `main` or tag `v*`): auto-tag via [github-tag-action](https://github.com/mathieudutour/github-tag-action), build ARM64/AMD64 binaries, generate checksums, attest provenance, publish GitHub Release.
+- **Dependabot**: weekly updates for `gomod` and GitHub Actions.
