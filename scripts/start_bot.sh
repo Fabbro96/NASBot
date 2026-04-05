@@ -225,6 +225,11 @@ check_updates() {
 		"$BOT_DIR/nasbot-update-amd64"
 		"$BOT_DIR/nasbot-arm64"
 		"$BOT_DIR/nasbot-amd64"
+		"$SCRIPT_DIR/nasbot-update"
+		"$SCRIPT_DIR/nasbot-update-arm64"
+		"$SCRIPT_DIR/nasbot-update-amd64"
+		"$SCRIPT_DIR/nasbot-arm64"
+		"$SCRIPT_DIR/nasbot-amd64"
 	)
 
 	for candidate in "${candidates[@]}"; do
