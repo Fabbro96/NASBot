@@ -111,10 +111,12 @@ start_bot() {
 
 	rotate_logs
 	echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting NASBot..." >>"$LOG_FILE"
-	NASBOT_LOG_FILE="$LOG_FILE" \
-		NASBOT_PID_FILE="$PID_FILE" \
-		NASBOT_STATE_FILE="$STATE_FILE" \
-		nohup "$BOT_BINARY" >>"$LOG_FILE" 2>&1 &
+	
+	export NASBOT_LOG_FILE="$LOG_FILE"
+	export NASBOT_PID_FILE="$PID_FILE"
+	export NASBOT_STATE_FILE="$STATE_FILE"
+	
+	nohup "$BOT_BINARY" >>"$LOG_FILE" 2>&1 &
 	echo $! >"$PID_FILE"
 
 	sleep 2
@@ -205,29 +207,36 @@ status_bot() {
 	echo "⚙️  Binary: $BOT_BINARY"
 	echo "📝 Log: $LOG_FILE"
 	if [[ -f "$LOG_FILE" ]]; then
-		echo "📊 Log size: $(ls -lh "$LOG_FILE" | awk '{print $5}')"
+		echo "📊 Log size: $(du -sh "$LOG_FILE" | awk '{print $1}')"
 	fi
 	echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
 }
 
 check_updates() {
-	local update_file="$UPDATE_FILE"
-	if [[ ! -f "$update_file" ]]; then
-		if [[ -f "$BIN_DIR/nasbot-update-amd64" ]]; then
-			update_file="$BIN_DIR/nasbot-update-amd64"
-		elif [[ -f "$BIN_DIR/nasbot-update-arm64" ]]; then
-			update_file="$BIN_DIR/nasbot-update-arm64"
-		elif [[ -f "$BOT_DIR/nasbot-update" ]]; then
-			update_file="$BOT_DIR/nasbot-update"
-		elif [[ -f "$BOT_DIR/nasbot-update-amd64" ]]; then
-			update_file="$BOT_DIR/nasbot-update-amd64"
-		elif [[ -f "$BOT_DIR/nasbot-update-arm64" ]]; then
-			update_file="$BOT_DIR/nasbot-update-arm64"
-		else
-			return
-		fi
-	fi
+	local update_file=""
+	local candidates=(
+		"$UPDATE_FILE"
+		"$BIN_DIR/nasbot-update-arm64"
+		"$BIN_DIR/nasbot-update-amd64"
+		"$BIN_DIR/nasbot-arm64"
+		"$BIN_DIR/nasbot-amd64"
+		"$BOT_DIR/nasbot-update"
+		"$BOT_DIR/nasbot-update-arm64"
+		"$BOT_DIR/nasbot-update-amd64"
+		"$BOT_DIR/nasbot-arm64"
+		"$BOT_DIR/nasbot-amd64"
+	)
 
+	for candidate in "${candidates[@]}"; do
+		if [[ -f "$candidate" && "$candidate" != "$BOT_BINARY" ]]; then
+			update_file="$candidate"
+			break
+		fi
+	done
+
+	if [[ -z "$update_file" ]]; then
+		return
+	fi
 	echo -e "${YELLOW}🔄 Update detected: $update_file${NC}"
 	if is_running; then
 		echo "   Stopping running instance for update..."
