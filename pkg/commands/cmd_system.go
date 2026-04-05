@@ -53,3 +53,10 @@ func isForceRebootArg(args string) bool {
 		return false
 	}
 }
+
+type VersionCmd struct{}
+
+func (c *VersionCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, args string) {
+	sendMarkdown(bot, msg.Chat.ID, getVersionText(ctx))
+}
+func (c *VersionCmd) Description() string { return "Show bot version" }

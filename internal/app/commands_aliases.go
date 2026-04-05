@@ -33,6 +33,7 @@ type ConfigJSONCmd = pcommands.ConfigJSONCmd
 type ConfigSetCmd = pcommands.ConfigSetCmd
 type LanguageCmd = pcommands.LanguageCmd
 type SettingsCmd = pcommands.SettingsCmd
+type VersionCmd = pcommands.VersionCmd
 
 func getStatusText(ctx *AppContext) string  { return pcommands.GetStatusText(ctx) }
 func getTempText(ctx *AppContext) string    { return pcommands.GetTempText(ctx) }
