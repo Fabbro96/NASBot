@@ -35,9 +35,10 @@ func handleSettingsCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int
 	}
 	if strings.HasPrefix(data, "set_reports_") {
 		mode := 0
-		if data == "set_reports_1" {
+		switch data {
+		case "set_reports_1":
 			mode = 1
-		} else if data == "set_reports_2" {
+		case "set_reports_2":
 			mode = 2
 		}
 		ctx.Settings.Mu.Lock()
