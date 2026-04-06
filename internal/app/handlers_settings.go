@@ -117,9 +117,10 @@ func getSettingsMenuText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup
 
 	reportMode := ctx.Settings.GetReportMode()
 	reportText := ctx.Tr("report_disabled")
-	if reportMode == 1 {
+	switch reportMode {
+	case 1:
 		reportText = ctx.Tr("report_once")
-	} else if reportMode == 2 {
+	case 2:
 		reportText = ctx.Tr("report_twice")
 	}
 
@@ -173,11 +174,12 @@ func getReportSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMark
 	checkOnce := " "
 	checkTwice := " "
 	mode := ctx.Settings.GetReportMode()
-	if mode == 0 {
+	switch mode {
+	case 0:
 		checkDisabled = "✓"
-	} else if mode == 1 {
+	case 1:
 		checkOnce = "✓"
-	} else if mode == 2 {
+	case 2:
 		checkTwice = "✓"
 	}
 	kb := tgbotapi.NewInlineKeyboardMarkup(
