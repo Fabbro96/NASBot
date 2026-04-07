@@ -332,7 +332,18 @@ func applyLatestRelease(ctx *AppContext, bot BotAPI, chatID int64, msgID int) {
 	if msgID > 0 {
 		editMessage(bot, chatID, msgID, statusText, nil)
 	} else {
-		sendMarkdown(bot, chatID, statusText)
+		// INIZIO FIX: Catturiamo l'ID del messaggio appena inviato per aggiornarlo in tempo reale
+		msg := tgbotapi.NewMessage(chatID, statusText)
+		msg.ParseMode = "Markdown"
+		sentMsg, err := bot.Send(msg)
+		if err != nil {
+			msg.ParseMode = ""
+			sentMsg, _ = bot.Send(msg)
+		}
+		if sentMsg.MessageID != 0 {
+			msgID = sentMsg.MessageID // Assegniamo l'ID ai prossimi step (successo o fallimento!)
+		}
+		// FINE FIX
 	}
 
 	if _, err := downloadReleaseAsset(ctx, rel); err != nil {
