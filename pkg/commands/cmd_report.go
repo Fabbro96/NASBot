@@ -12,7 +12,7 @@ type ReportCmd struct{}
 
 func (c *ReportCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, args string) {
 	chatID := msg.Chat.ID
-	modelName := "gemini-2.5-flash"
+	modelName := "gemini-3.1-flash-lite"
 	loadingMsg := tgbotapi.NewMessage(chatID, fmt.Sprintf(ctx.Tr("generating_report"), modelName))
 	loadingMsg.ParseMode = tgbotapi.ModeMarkdown
 	sentMsg, err := bot.Send(loadingMsg)

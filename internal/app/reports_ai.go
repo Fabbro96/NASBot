@@ -131,7 +131,7 @@ Your goal is to write a **Daily Report** for the owner.
 }
 
 func callGeminiWithFallback(ctx *AppContext, prompt string, onModelChange func(string)) (string, error) {
-	models := []string{"gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"}
+	models := []string{"gemini-3.1-flash-lite", "gemini-3.1-flash", "gemini-3.1-pro"}
 
 	c, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -140,25 +140,25 @@ func callGeminiWithFallback(ctx *AppContext, prompt string, onModelChange func(s
 	var err error
 
 	for _, model := range models {
+		if onModelChange != nil {
+			onModelChange(model)
+		}
+		summary, err = callGeminiAPIWithError(ctx, c, prompt, model)
+		if err == nil {
+			return summary, nil
+		}
+
 		select {
 		case <-c.Done():
 			slog.Error("Gemini: Overall timeout")
 			return "", fmt.Errorf("overall timeout")
 		default:
 		}
-
-		if onModelChange != nil {
-			onModelChange(model)
-		}
-		summary, err = callGeminiAPIWithError(ctx, prompt, model)
-		if err == nil {
-			return summary, nil
-		}
 	}
 	return "", err
 }
 
-func callGeminiAPIWithError(ctx *AppContext, prompt string, model string) (string, error) {
+func callGeminiAPIWithError(ctx *AppContext, parentCtx context.Context, prompt string, model string) (string, error) {
 	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, ctx.Config.GeminiAPIKey)
 
 	requestBody := map[string]interface{}{
@@ -176,7 +176,7 @@ func callGeminiAPIWithError(ctx *AppContext, prompt string, model string) (strin
 		return "", err
 	}
 
-	c, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	c, cancel := context.WithTimeout(parentCtx, 15*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(c, "POST", url, bytes.NewBuffer(jsonBody))

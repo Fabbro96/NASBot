@@ -433,7 +433,7 @@ func handleHealthCallback(ctx *AppContext, bot BotAPI, query *tgbotapi.CallbackQ
 		}
 
 		// Show loading
-		modelName := "gemini-2.5-flash"
+		modelName := "gemini-3.1-flash-lite"
 		loadingText := fmt.Sprintf("⏳ %s\n_(%s)_", ctx.Tr("health_analyzing"), modelName)
 		loadingMsg := tgbotapi.NewEditMessageText(chatID, msgID, loadingText)
 		loadingMsg.ParseMode = "Markdown"
