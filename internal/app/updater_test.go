@@ -2,11 +2,12 @@ package app
 
 import (
 	"bytes"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 func TestIsNewerRelease(t *testing.T) {
