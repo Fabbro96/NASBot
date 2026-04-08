@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -114,7 +115,9 @@ Your goal is to write a **Daily Report** for the owner.
 **Instructions:**
 1. **Style:** Friendly, discursive/narrative, but **CONCISE**. Keep it short.
 2. **Language:** Write in %s.
-3. **Format:** Use Markdown (bold, italics) and Emojis.
+3. **Format:** Use simple Telegram Markdown (*bold*, _italics_) and Emojis.
+   - **TELEGRAM FORMATTING:** Do NOT use Markdown headers ('#' or '##'). Telegram does not support them properly.
+   - For section titles or emphasis, use single asterisks: *Title* instead of # Title or **Title**.
 4. **Content:**
    - Greeting and date/time.
    - **MANDATORY:** State number of running/stopped containers.
@@ -220,7 +223,25 @@ func callGeminiAPIWithError(ctx *AppContext, parentCtx context.Context, prompt s
 	}
 
 	if len(result.Candidates) > 0 && len(result.Candidates[0].Content.Parts) > 0 {
-		return strings.TrimSpace(result.Candidates[0].Content.Parts[0].Text), nil
+		return cleanTelegramMarkdown(strings.TrimSpace(result.Candidates[0].Content.Parts[0].Text)), nil
 	}
 	return "", fmt.Errorf("empty response")
+}
+
+func cleanTelegramMarkdown(text string) string {
+	// First, replace **bold** with *bold*
+	reBold := regexp.MustCompile(`\*\*([^*]+)\*\*`)
+	text = reBold.ReplaceAllString(text, "*$1*")
+
+	// Replace headers (###, ##, #) with bolded text for Telegram
+	reH3 := regexp.MustCompile(`(?m)^###\s+(.*?)\r?$`)
+	text = reH3.ReplaceAllString(text, "*$1*")
+
+	reH2 := regexp.MustCompile(`(?m)^##\s+(.*?)\r?$`)
+	text = reH2.ReplaceAllString(text, "*$1*")
+
+	reH1 := regexp.MustCompile(`(?m)^#\s+(.*?)\r?$`)
+	text = reH1.ReplaceAllString(text, "*$1*")
+
+	return text
 }
