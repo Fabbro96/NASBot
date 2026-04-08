@@ -34,10 +34,13 @@ func (c *TempCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, ar
 }
 func (c *TempCmd) Description() string { return "Show temperature sensors" }
 
-type PowerCmd struct{ Action string }
+type PowerCmd struct {
+	Action string
+	Force  bool
+}
 
 func (c *PowerCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, args string) {
-	if c.Action == "reboot" && isForceRebootArg(args) {
+	if c.Force || (c.Action == "reboot" && isForceRebootArg(args)) {
 		executeForcedReboot(ctx, bot, msg.Chat.ID, 0, "manual-force-command")
 		return
 	}

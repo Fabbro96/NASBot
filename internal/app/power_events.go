@@ -12,7 +12,7 @@ func powerSourceFromReason(reason string) string {
 		return "command"
 	case strings.HasPrefix(low, "manual-force-button"):
 		return "button"
-	case strings.HasPrefix(low, "network-"):
+	case strings.HasPrefix(low, "network-") || strings.HasPrefix(low, "healthchecks-"):
 		return "watchdog"
 	case strings.HasPrefix(low, "oom-"):
 		return "watchdog"

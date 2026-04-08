@@ -48,7 +48,7 @@ func (c *AskCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, arg
 		return
 	}
 
-	modelName := "gemini-3.1-flash-lite"
+	modelName := "gemini-3.1-flash-lite-preview"
 	loadingText := fmt.Sprintf("⏳ %s\n_(%s)_", ctx.Tr("ask_analyzing"), modelName)
 	loadingMsg := tgbotapi.NewMessage(msg.Chat.ID, loadingText)
 	loadingMsg.ParseMode = "Markdown"

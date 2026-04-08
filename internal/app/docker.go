@@ -422,7 +422,7 @@ func showContainerAIAnalysis(ctx *AppContext, bot BotAPI, chatID int64, msgID in
 	}
 
 	// Show loading
-	modelName := "gemini-3.1-flash-lite"
+	modelName := "gemini-3.1-flash-lite-preview"
 	loadingText := fmt.Sprintf("⏳ %s\n_(%s)_", ctx.Tr("docker_ai_analyzing"), modelName)
 	edit := tgbotapi.NewEditMessageText(chatID, msgID, loadingText)
 	edit.ParseMode = "Markdown"

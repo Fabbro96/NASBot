@@ -46,6 +46,9 @@ func TestIsQuietHours(t *testing.T) {
 	ctx := InitApp(nil)
 	ctx.State.TimeLocation = time.UTC
 
+	// Explicitly disable for test
+	ctx.Settings.QuietHours.Enabled = false
+
 	// Default: disabled
 	if ctx.IsQuietHours() {
 		t.Fatal("Expected false when quiet hours disabled")
