@@ -125,7 +125,7 @@ var translations = map[string]map[string]string{
 		"ask_error":                "Log analysis failed",
 		"ask_title":                "Log Q&A",
 		"ask_no_logs":              "_No logs available to analyze_",
-	"ask_prompt":               "Answer the user's question using only the logs. Be EXTREMELY concise. Max 10-15 lines. If the logs do not contain the answer, say so.\nTELEGRAM FORMATTING: Do NOT use markdown headers (# or ##). For bold use single asterisks (*Text*) NOT double (**Text**).\n\nQuestion:\n%s\n\nLogs:\n%s",
+		"ask_prompt":               "Answer the user's question using only the logs. Be EXTREMELY concise. Max 10-15 lines. If the logs do not contain the answer, say so.\nTELEGRAM FORMATTING: Do NOT use markdown headers (# or ##). For bold use single asterisks (*Text*) NOT double (**Text**).\n\nQuestion:\n%s\n\nLogs:\n%s",
 		"crash_detected_prev_boot": "\n\n🚨 *Previous Boot Crash Detected!*\n\nThe system likely crashed or was rebooted due to:\n```\n%s\n```",
 		"oom_unknown_proc":         "unknown",
 		"oom_alert_simple":         "🚨 *OOM Kill Detected: %s*\n\nProcess `%s` was terminated due to memory pressure.\n\n_⚠️ System may be unstable. Check RAM usage._",
