@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -103,29 +104,30 @@ func generateAIReportWithPeriod(ctx *AppContext, s Stats, events []ReportEvent, 
 		periodInfo = fmt.Sprintf("\n**Report Period:** %s", periodDesc)
 	}
 
-	prompt := fmt.Sprintf(`You are an intelligent home NAS assistant named "NasBot".
-Your goal is to write a **Daily Report** for the owner.
+	prompt := fmt.Sprintf(`You are "NasBot", an intelligent home NAS assistant.
+Generate a system status report for the owner.
 
 **Status Data:**
 %s%s
 
-**Time:** %s
+**Context:**
+- Time: %s
+- Language: %s
 
-**Instructions:**
-1. **Style:** Friendly, discursive/narrative, but **CONCISE**. Keep it short.
-2. **Language:** Write in %s.
-3. **Format:** Use Markdown (bold, italics) and Emojis.
-4. **Content:**
-   - Greeting and date/time.
-   - **MANDATORY:** State number of running/stopped containers.
-   - **Focus on what happened.**
-   - If no events, say "quiet period".
-   - If everything is fine, say it briefly.
-   - Explain issues clearly with warning icons.
-   - Mention resources only if high usage.
-   - End with short footer showing report period.
+**CRITICAL TELEGRAM FORMATTING RULES:**
+1. NO HEADERS (# or ##). Telegram does not support Markdown headers.
+2. NO DOUBLE ASTERISKS (**). Use *single asterisks* for bold text.
+3. Base formatting: *bold*, _italic_, and `+"`"+`code`+"`"+`.
+4. Replace section headers with emojis (e.g., 📊 *System Status*, 🐳 *Docker*, ⚠️ *Alerts*).
 
-**Goal:** Useful, readable, short summary.`, sysContext.String(), periodInfo, timeOfDay, lang)
+**REPORT STRUCTURE:**
+- **Greeting:** Friendly but brief (1 sentence max).
+- **System Health:** Only report CPU/RAM/Disk if they exceed 80%% or warrant attention.
+- **Docker Recap:** State X running, Y stopped (mention stopped names).
+- **Events & Alerts:** Summarize anomalies. Say "Quiet period" if none.
+- **Footer:** Brief sign-off.
+
+**Style:** Bullet-point heavy, scannable, direct, and conversational but extremely concise. Skip empty pleasantries.`, sysContext.String(), periodInfo, timeOfDay, lang)
 
 	return callGeminiWithFallback(ctx, prompt, onModelChange)
 }
@@ -220,7 +222,23 @@ func callGeminiAPIWithError(ctx *AppContext, parentCtx context.Context, prompt s
 	}
 
 	if len(result.Candidates) > 0 && len(result.Candidates[0].Content.Parts) > 0 {
-		return strings.TrimSpace(result.Candidates[0].Content.Parts[0].Text), nil
+		text := strings.TrimSpace(result.Candidates[0].Content.Parts[0].Text)
+
+		// Clean up any rogue double asterisks into single ones for Telegram
+		reBold := regexp.MustCompile(`\*\*([^*]+)\*\*`)
+		text = reBold.ReplaceAllString(text, "*$1*")
+
+		// Replace headers (###, ##, #) with bolded text for Telegram
+		reH3 := regexp.MustCompile(`(?m)^###\s+(.*?)\r?$`)
+		text = reH3.ReplaceAllString(text, "*$1*")
+
+		reH2 := regexp.MustCompile(`(?m)^##\s+(.*?)\r?$`)
+		text = reH2.ReplaceAllString(text, "*$1*")
+
+		reH1 := regexp.MustCompile(`(?m)^#\s+(.*?)\r?$`)
+		text = reH1.ReplaceAllString(text, "*$1*")
+
+		return text, nil
 	}
 	return "", fmt.Errorf("empty response")
 }
