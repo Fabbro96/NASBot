@@ -95,6 +95,7 @@ func recordHealthcheckSuccess(ctx *AppContext, bot BotAPI) {
 	ctx.Monitor.Healthchecks.SuccessfulPings++
 	ctx.Monitor.Healthchecks.LastPingTime = time.Now()
 	ctx.Monitor.Healthchecks.LastPingSuccess = true
+	ctx.Monitor.Healthchecks.NetForceRebootTriggered = false // Reset watchdog flag if applicable
 
 	// If we were in downtime, close the event and notify recovery
 	if ctx.Monitor.HealthInDowntime && len(ctx.Monitor.Healthchecks.DowntimeEvents) > 0 {
@@ -105,7 +106,10 @@ func recordHealthcheckSuccess(ctx *AppContext, bot BotAPI) {
 		event.Duration = format.FormatDuration(downtimeDuration)
 		ctx.Monitor.HealthInDowntime = false
 
-		slog.Info("Healthchecks: downtime ended", "duration", event.Duration)
+		slog.Warn("Healthchecks: downtime ended", "duration", event.Duration)
+		// Registrazione persistente dell'evento (sia nel log che nel file di stato).
+		ctx.State.AddEvent("info", fmt.Sprintf("🟢 Healthchecks recovered (down for %s)", downtimeStr))
+
 		shouldNotify = true
 		downtimeStr = event.Duration
 	}
@@ -134,17 +138,21 @@ func recordHealthcheckSuccess(ctx *AppContext, bot BotAPI) {
 			m.ParseMode = "Markdown"
 			safeSend(bot, m)
 		}
+		// Fallback for older code reading AddReportEvent
 		ctx.State.AddReportEvent("info", fmt.Sprintf("🟢 Healthchecks recovered (down for %s)", downtimeStr))
 	}
 
 	// Save state periodically (every 10 pings)
-	if totalPings%10 == 0 {
+	if (totalPings%10 == 0) || shouldNotify {
 		goSafe("save-state-healthcheck", func() { saveState(ctx) })
 	}
 }
 
 // recordHealthcheckFailure records a failed ping
 func recordHealthcheckFailure(ctx *AppContext, bot BotAPI, reason string) {
+	var shouldForceReboot bool
+	var downtimeStr string
+
 	ctx.Monitor.Mu.Lock()
 
 	ctx.Monitor.Healthchecks.TotalPings++
@@ -172,7 +180,10 @@ func recordHealthcheckFailure(ctx *AppContext, bot BotAPI, reason string) {
 		lastPingTime := ctx.Monitor.Healthchecks.LastPingTime
 		totalPings := ctx.Monitor.Healthchecks.TotalPings
 
-		ctx.Monitor.Mu.Unlock() // Unlock before sending message to avoid deadlock if network is slow (though Send is usually fastish, but best practice)
+		ctx.Monitor.Mu.Unlock() // Unlock before sending message to avoid deadlock if network is slow
+
+		// Registrazione persistente dell'evento (sia nel log che nel file di stato).
+		ctx.State.AddEvent("warning", fmt.Sprintf("🔴 Healthchecks down: %s", reason))
 
 		// Notify user (respecting quiet hours)
 		if bot != nil && !ctx.IsQuietHours() {
@@ -202,12 +213,37 @@ func recordHealthcheckFailure(ctx *AppContext, bot BotAPI, reason string) {
 			m.ParseMode = "Markdown"
 			safeSend(bot, m)
 		}
+		// Fallback per vecchi report event
 		ctx.State.AddReportEvent("warning", fmt.Sprintf("🔴 Healthchecks down: %s", reason))
 	} else {
+		// ALREADY IN DOWNTIME - check for force reboot timeout (6 minutes)
+		if len(ctx.Monitor.Healthchecks.DowntimeEvents) > 0 {
+			lastIdx := len(ctx.Monitor.Healthchecks.DowntimeEvents) - 1
+			downFor := time.Since(ctx.Monitor.Healthchecks.DowntimeEvents[lastIdx].StartTime)
+			downtimeStr = format.FormatDuration(downFor)
+
+			if downFor >= 6*time.Minute && !ctx.Monitor.Healthchecks.NetForceRebootTriggered {
+				ctx.Monitor.Healthchecks.NetForceRebootTriggered = true
+				shouldForceReboot = true
+			}
+		}
 		ctx.Monitor.Mu.Unlock()
 	}
 
 	goSafe("save-state-healthcheck-fail", func() { saveState(ctx) })
+
+	if shouldForceReboot {
+		slog.Error("Healthchecks down > 6 minutes. Triggering forced reboot!")
+		msg := fmt.Sprintf("💥 *Force Reboot Triggered*\n\nHealthchecks.io down for %s. Executing panic reboot.", downtimeStr)
+		m := tgbotapi.NewMessage(ctx.Config.AllowedUserID, msg)
+		m.ParseMode = "Markdown"
+		safeSend(bot, m)
+		ctx.State.AddEvent("critical", fmt.Sprintf("Forced reboot triggered: Healthchecks down for %s", downtimeStr))
+		saveState(ctx)
+
+		time.Sleep(1 * time.Second) // gives telegram time to send
+		executeForcedReboot(ctx, bot, ctx.Config.AllowedUserID, 0, "healthchecks-down-timeout")
+	}
 }
 
 // getHealthchecksStats returns formatted stats for the /health command

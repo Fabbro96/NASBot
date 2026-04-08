@@ -10,7 +10,7 @@ func SetupCommandRegistry() *CommandRegistry {
 	r.Register("sysinfo", &SysInfoCmd{})
 	r.Register("temp", &TempCmd{})
 	r.Register("reboot", &PowerCmd{Action: "reboot"})
-	r.Register("forcereboot", &PowerCmd{Action: "reboot"})
+	r.Register("forcereboot", &PowerCmd{Action: "reboot", Force: true})
 	r.Register("shutdown", &PowerCmd{Action: "shutdown"})
 
 	// Docker

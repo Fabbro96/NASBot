@@ -19,13 +19,14 @@ type DockerCache = imodel.DockerCache
 
 // HealthchecksState tracks healthchecks.io metrics and downtime history.
 type HealthchecksState struct {
-	TotalPings      int           `json:"total_pings"`
-	SuccessfulPings int           `json:"successful_pings"`
-	FailedPings     int           `json:"failed_pings"`
-	LastPingTime    time.Time     `json:"last_ping_time"`
-	LastPingSuccess bool          `json:"last_ping_success"`
-	LastFailure     time.Time     `json:"last_failure"`
-	DowntimeEvents  []DowntimeLog `json:"downtime_events"`
+	TotalPings              int           `json:"total_pings"`
+	SuccessfulPings         int           `json:"successful_pings"`
+	FailedPings             int           `json:"failed_pings"`
+	LastPingTime            time.Time     `json:"last_ping_time"`
+	LastPingSuccess         bool          `json:"last_ping_success"`
+	LastFailure             time.Time     `json:"last_failure"`
+	NetForceRebootTriggered bool          `json:"net_force_reboot_triggered"`
+	DowntimeEvents          []DowntimeLog `json:"downtime_events"`
 }
 
 type DowntimeLog struct {

@@ -310,7 +310,7 @@ func restartWithStartScript() error {
 func applyLatestRelease(ctx *AppContext, bot BotAPI, chatID int64, msgID int) {
 	rel, hasUpdate, err := checkForUpdate(ctx)
 	if err != nil {
-		errText := fmt.Sprintf("❌ Update check failed: %v", err)
+		errText := fmt.Sprintf(ctx.Tr("update_check_failed"), err)
 		if msgID > 0 {
 			editMessage(bot, chatID, msgID, errText, nil)
 		} else {
@@ -319,7 +319,7 @@ func applyLatestRelease(ctx *AppContext, bot BotAPI, chatID int64, msgID int) {
 		return
 	}
 	if !hasUpdate {
-		text := fmt.Sprintf("✅ Nessun update disponibile. Versione corrente: *%s*", Version)
+		text := fmt.Sprintf(ctx.Tr("update_none"), Version)
 		if msgID > 0 {
 			editMessage(bot, chatID, msgID, text, nil)
 		} else {
@@ -328,7 +328,7 @@ func applyLatestRelease(ctx *AppContext, bot BotAPI, chatID int64, msgID int) {
 		return
 	}
 
-	statusText := fmt.Sprintf("⏳ Download update %s (%s) in corso...", rel.Tag, rel.AssetName)
+	statusText := fmt.Sprintf(ctx.Tr("update_downloading"), rel.Tag, rel.AssetName)
 	if msgID > 0 {
 		editMessage(bot, chatID, msgID, statusText, nil)
 	} else {
@@ -347,7 +347,7 @@ func applyLatestRelease(ctx *AppContext, bot BotAPI, chatID int64, msgID int) {
 	}
 
 	if _, err := downloadReleaseAsset(ctx, rel); err != nil {
-		errText := fmt.Sprintf("❌ Download update fallito: %v", err)
+		errText := fmt.Sprintf(ctx.Tr("update_download_failed"), err)
 		if msgID > 0 {
 			editMessage(bot, chatID, msgID, errText, nil)
 		} else {
@@ -358,7 +358,7 @@ func applyLatestRelease(ctx *AppContext, bot BotAPI, chatID int64, msgID int) {
 	addPowerLifecycleEvent(ctx, "reboot", false, "command", "scripts/start_bot.sh restart", "post-update-"+rel.Tag)
 	saveState(ctx)
 
-	okText := fmt.Sprintf("✅ Update %s scaricato. Riavvio NASBot in corso...", rel.Tag)
+	okText := fmt.Sprintf(ctx.Tr("update_success"), rel.Tag)
 	if msgID > 0 {
 		editMessage(bot, chatID, msgID, okText, nil)
 	} else {
@@ -369,7 +369,7 @@ func applyLatestRelease(ctx *AppContext, bot BotAPI, chatID int64, msgID int) {
 		time.Sleep(1200 * time.Millisecond)
 		if err := restartWithStartScript(); err != nil {
 			slog.Error("Update restart failed", "err", err)
-			sendMarkdown(bot, chatID, fmt.Sprintf("❌ Restart post-update fallito: %v", err))
+			sendMarkdown(bot, chatID, fmt.Sprintf(ctx.Tr("update_restart_failed"), err))
 		}
 	})
 }

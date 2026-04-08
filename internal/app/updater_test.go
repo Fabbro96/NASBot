@@ -96,8 +96,9 @@ func TestApplyLatestRelease_CapturesMsgID(t *testing.T) {
 		t.Fatalf("expected edit message to target ID 1, got %d", secondMsg.MessageID)
 	}
 
-	expectedPrefix := "❌ Download update fallito"
-	if !strings.Contains(secondMsg.Text, expectedPrefix) && !strings.Contains(strings.ToLower(secondMsg.Text), strings.ToLower(expectedPrefix)) {
-		t.Fatalf("expected text to contain %q, but got %q", expectedPrefix, secondMsg.Text)
+	expectedPrefix := "Update download failed"
+	expectedPrefixIt := "Download update fallito"
+	if !strings.Contains(secondMsg.Text, expectedPrefix) && !strings.Contains(secondMsg.Text, expectedPrefixIt) {
+		t.Fatalf("expected text to contain download error, but got %q", secondMsg.Text)
 	}
 }
