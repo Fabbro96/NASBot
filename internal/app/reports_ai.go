@@ -131,7 +131,7 @@ Your goal is to write a **Daily Report** for the owner.
 }
 
 func callGeminiWithFallback(ctx *AppContext, prompt string, onModelChange func(string)) (string, error) {
-	models := []string{"gemini-3.1-flash-lite", "gemini-3.1-flash", "gemini-3.1-pro"}
+	models := []string{"gemini-3.1-flash-lite-preview", "gemini-3-flash-preview", "gemini-3.1-pro-preview"}
 
 	c, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
