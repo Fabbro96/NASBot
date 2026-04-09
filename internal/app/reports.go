@@ -13,7 +13,7 @@ import (
 //  DAILY REPORTS
 // ═══════════════════════════════════════════════════════════════════
 
-func generateDailyReport(ctx *AppContext, greeting string, isMorning bool, onModelChange func(string)) string {
+func generateDailyReport(ctx *AppContext, greeting string, onModelChange func(string)) string {
 	s, _ := ctx.Stats.Get()
 	now := time.Now().In(ctx.State.TimeLocation)
 
@@ -34,11 +34,7 @@ func generateDailyReport(ctx *AppContext, greeting string, isMorning bool, onMod
 		periodDesc = fmt.Sprintf("%s → %s", midnight.Format("15:04"), now.Format("15:04"))
 	}
 
-	aiReport, aiErr := generateAIReportWithPeriod(ctx, s, events, isMorning, periodDesc, onModelChange)
-	if aiErr == nil && aiReport != "" {
-		resetStressCounters(ctx)
-		return aiReport
-	}
+	aiReport, aiErr := generateAIReportWithPeriod(ctx, events, periodDesc, onModelChange)
 	if aiErr != nil {
 		slog.Error("Gemini AI report error", "err", aiErr)
 	}
@@ -50,7 +46,10 @@ func generateDailyReport(ctx *AppContext, greeting string, isMorning bool, onMod
 	healthIcon, healthText, _ := getHealthStatus(ctx, s)
 	b.WriteString(fmt.Sprintf("📝 %s %s\n\n", healthIcon, healthText))
 
-	if len(events) > 0 {
+	if aiReport != "" {
+		b.WriteString(aiReport)
+		b.WriteString("\n\n")
+	} else if len(events) > 0 {
 		b.WriteString(fmt.Sprintf("*%s*\n", ctx.Tr("report_events")))
 		for _, e := range events {
 			icon := "·"
@@ -149,7 +148,7 @@ func getHealthStatus(ctx *AppContext, s Stats) (icon, text string, hasProblems b
 
 func generateReport(ctx *AppContext, manual bool, onModelChange func(string)) string {
 	if !manual {
-		return generateDailyReport(ctx, "> *NAS Report*", true, onModelChange)
+		return generateDailyReport(ctx, "> *NAS Report*", onModelChange)
 	}
 
 	s, _ := ctx.Stats.Get()
@@ -161,12 +160,8 @@ func generateReport(ctx *AppContext, manual bool, onModelChange func(string)) st
 	filteredEvents := filterSignificantEvents(events)
 
 	periodDesc := fmt.Sprintf("00:00 → %s (today)", now.Format("15:04"))
-	isMorning := now.Hour() < 12
 
-	aiReport, aiErr := generateAIReportWithPeriod(ctx, s, filteredEvents, isMorning, periodDesc, onModelChange)
-	if aiErr == nil && aiReport != "" {
-		return aiReport
-	}
+	aiReport, aiErr := generateAIReportWithPeriod(ctx, filteredEvents, periodDesc, onModelChange)
 
 	var b strings.Builder
 	b.WriteString(ctx.Tr("report_title"))
@@ -177,6 +172,16 @@ func generateReport(ctx *AppContext, manual bool, onModelChange func(string)) st
 
 	if aiErr != nil {
 		b.WriteString(fmt.Sprintf(ctx.Tr("llm_error"), aiErr))
+	}
+
+	if aiReport != "" {
+		b.WriteString(fmt.Sprintf("%s\n\n", aiReport))
+	} else if len(filteredEvents) > 0 {
+		b.WriteString(fmt.Sprintf("*%s*\n", ctx.Tr("report_events")))
+		for _, e := range filteredEvents {
+			b.WriteString(fmt.Sprintf("- %s %s\n", e.Time.In(ctx.State.TimeLocation).Format("15:04"), format.Truncate(e.Message, 64)))
+		}
+		b.WriteString("\n")
 	}
 
 	b.WriteString(fmt.Sprintf("*%s*\n", ctx.Tr("report_resources")))
@@ -197,13 +202,6 @@ func generateReport(ctx *AppContext, manual bool, onModelChange func(string)) st
 		}
 	}
 	b.WriteString(fmt.Sprintf("\n🐳 %d running, %d stopped\n", running, stopped))
-
-	if len(filteredEvents) > 0 {
-		b.WriteString(fmt.Sprintf("\n*%s*\n", ctx.Tr("report_events")))
-		for _, e := range filteredEvents {
-			b.WriteString(fmt.Sprintf("- %s %s\n", e.Time.In(ctx.State.TimeLocation).Format("15:04"), format.Truncate(e.Message, 64)))
-		}
-	}
 
 	b.WriteString(fmt.Sprintf("\n_⏱ Up for %s_", format.FormatUptime(s.Uptime)))
 

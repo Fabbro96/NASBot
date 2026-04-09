@@ -130,7 +130,7 @@ func periodicReport(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 			return
 		}
 
-		report := generateDailyReport(ctx, greeting, isMorning, nil)
+		report := generateDailyReport(ctx, greeting, nil)
 		if err := sendScheduledReport(bot, ctx.Config.AllowedUserID, report); err != nil {
 			slog.Error("Failed to send scheduled report", "err", err)
 		} else {

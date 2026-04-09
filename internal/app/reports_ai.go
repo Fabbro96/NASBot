@@ -11,79 +11,29 @@ import (
 	"regexp"
 	"strings"
 	"time"
-
-	"nasbot/internal/format"
 )
 
-func generateAIReport(ctx *AppContext, s Stats, events []ReportEvent, isMorning bool, onModelChange func(string)) (string, error) {
-	return generateAIReportWithPeriod(ctx, s, events, isMorning, "", onModelChange)
+func generateAIReport(ctx *AppContext, events []ReportEvent, onModelChange func(string)) (string, error) {
+	return generateAIReportWithPeriod(ctx, events, "", onModelChange)
 }
 
-func generateAIReportWithPeriod(ctx *AppContext, s Stats, events []ReportEvent, isMorning bool, periodDesc string, onModelChange func(string)) (string, error) {
+func generateAIReportWithPeriod(ctx *AppContext, events []ReportEvent, periodDesc string, onModelChange func(string)) (string, error) {
 	if ctx.Config.GeminiAPIKey == "" {
 		return "", nil
 	}
 
+	if len(events) == 0 {
+		return "- No noteworthy events recorded.", nil
+	}
+
 	var sysContext strings.Builder
-	sysContext.WriteString("NAS System Status:\n")
-	sysContext.WriteString(fmt.Sprintf("- CPU: %.1f%%\n", s.CPU))
-	sysContext.WriteString(fmt.Sprintf("- RAM: %.1f%%\n", s.RAM))
-	if s.Swap > 5 {
-		sysContext.WriteString(fmt.Sprintf("- Swap: %.1f%%\n", s.Swap))
-	}
-	sysContext.WriteString(fmt.Sprintf("- SSD: %.1f%% used, %s free\n", s.VolSSD.Used, format.FormatBytes(s.VolSSD.Free)))
-	sysContext.WriteString(fmt.Sprintf("- HDD: %.1f%% used, %s free\n", s.VolHDD.Used, format.FormatBytes(s.VolHDD.Free)))
-	sysContext.WriteString(fmt.Sprintf("- Uptime: %s\n", format.FormatUptime(s.Uptime)))
 
-	containers := getCachedContainerList(ctx)
-	running, stopped := 0, 0
-	stoppedList := []string{}
-	for _, c := range containers {
-		if c.Running {
-			running++
-		} else {
-			stopped++
-			stoppedList = append(stoppedList, c.Name)
-		}
+	eventsInfo := fmt.Sprintf("%d events recorded:\n", len(events))
+	loc := ctx.State.TimeLocation
+	for _, e := range events {
+		eventsInfo += fmt.Sprintf("- [%s] %s: %s\n", e.Time.In(loc).Format("15:04"), e.Type, e.Message)
 	}
-	if ctx.Config.Healthchecks.Enabled {
-		hc := ctx.Monitor.Healthchecks
-		status := "Offline"
-		if hc.LastPingSuccess {
-			status = "Online"
-		}
-		sysContext.WriteString(fmt.Sprintf("- Healthchecks.io: %s (%.1f%% success rate)\n", status, float64(hc.SuccessfulPings)/float64(maxInt(hc.TotalPings, 1))*100))
-		if len(hc.DowntimeEvents) > 0 {
-			sysContext.WriteString("  Recent Healthchecks downtimes:\n")
-			ctx.State.Mu.Lock()
-			lastReportTime := ctx.State.LastReport
-			ctx.State.Mu.Unlock()
-			for _, e := range hc.DowntimeEvents {
-				if e.StartTime.After(lastReportTime) {
-					sysContext.WriteString(fmt.Sprintf("  - %s: %s (%s)\n", e.StartTime.Format("15:04"), e.Reason, e.Duration))
-				}
-			}
-		}
-	}
-	sysContext.WriteString(fmt.Sprintf("- Docker: %d running, %d stopped\n", running, stopped))
-	if len(stoppedList) > 0 {
-		sysContext.WriteString(fmt.Sprintf("- Stopped containers: %s\n", strings.Join(stoppedList, ", ")))
-	}
-
-	eventsInfo := "No events recorded in this period."
-	if len(events) > 0 {
-		eventsInfo = fmt.Sprintf("%d events recorded:\n", len(events))
-		loc := ctx.State.TimeLocation
-		for _, e := range events {
-			eventsInfo += fmt.Sprintf("- [%s] %s: %s\n", e.Time.In(loc).Format("15:04"), e.Type, e.Message)
-		}
-	}
-	sysContext.WriteString(fmt.Sprintf("\nEvents: %s", eventsInfo))
-
-	timeOfDay := "morning"
-	if !isMorning {
-		timeOfDay = "evening"
-	}
+	sysContext.WriteString(fmt.Sprintf("Events:\n%s", eventsInfo))
 
 	lang := "English"
 	switch ctx.Settings.GetLanguage() {
@@ -101,33 +51,32 @@ func generateAIReportWithPeriod(ctx *AppContext, s Stats, events []ReportEvent, 
 
 	periodInfo := ""
 	if periodDesc != "" {
-		periodInfo = fmt.Sprintf("\n**Report Period:** %s", periodDesc)
+		periodInfo = fmt.Sprintf("🗓️ *Report Period:* %s\n\n", periodDesc)
 	}
 
 	prompt := fmt.Sprintf(`You are "NasBot", an intelligent home NAS assistant.
-Generate a system status report for the owner.
+A system report is being generated and I need you to summarize the recent system events.
 
-**Status Data:**
-%s%s
+**Events Data:**
+%s
 
 **Context:**
-- Time: %s
 - Language: %s
 
 **CRITICAL TELEGRAM FORMATTING RULES:**
 1. NO HEADERS (# or ##). Telegram does not support Markdown headers.
 2. NO DOUBLE ASTERISKS (**). Use *single asterisks* for bold text.
 3. Base formatting: *bold*, _italic_, and `+"`"+`code`+"`"+`.
-4. Replace section headers with emojis (e.g., 📊 *System Status*, 🐳 *Docker*, ⚠️ *Alerts*).
+4. Keep the output as a bullet-point list.
 
-**REPORT STRUCTURE:**
-- **Greeting:** Friendly but brief (1 sentence max).
-- **System Health:** Only report CPU/RAM/Disk if they exceed 80%% or warrant attention.
-- **Docker Recap:** State X running, Y stopped (mention stopped names).
-- **Events & Alerts:** Summarize anomalies. Say "Quiet period" if none.
-- **Footer:** Brief sign-off.
+**REQUIRED REPORT STRUCTURE:**
+(Do not add a greeting or footer)
 
-**Style:** Bullet-point heavy, scannable, direct, and conversational but extremely concise. Skip empty pleasantries.`, sysContext.String(), periodInfo, timeOfDay, lang)
+%s⚠️ *Events & Alerts*
+- Categorize events (e.g., - Critical:, - Network:, - Maintenance:).
+- Summarize anomalies accurately. Do not invent details.
+
+**Style:** Bullet-point heavy, scannable, rigorous, direct, and extremely concise.`, sysContext.String(), lang, periodInfo)
 
 	return callGeminiWithFallback(ctx, prompt, onModelChange)
 }
