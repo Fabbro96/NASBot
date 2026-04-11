@@ -43,9 +43,6 @@ func generateDailyReport(ctx *AppContext, greeting string, onModelChange func(st
 	b.WriteString(fmt.Sprintf("*%s*\n", greeting))
 	b.WriteString(fmt.Sprintf("_%s_\n\n", now.Format("Mon 02/01")))
 
-	healthIcon, healthText, _ := getHealthStatus(ctx, s)
-	b.WriteString(fmt.Sprintf("📝 %s %s\n\n", healthIcon, healthText))
-
 	if aiReport != "" {
 		b.WriteString(aiReport)
 		b.WriteString("\n\n")
