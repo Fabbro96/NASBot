@@ -13,10 +13,12 @@ import (
 	"time"
 )
 
+// generateAIReport summarizes recent system events, without specifying a descriptive timeframe period.
 func generateAIReport(ctx *AppContext, events []ReportEvent, onModelChange func(string)) (string, error) {
 	return generateAIReportWithPeriod(ctx, events, "", onModelChange)
 }
 
+// generateAIReportWithPeriod triggers an API call yielding a conversational model readout for NAS events.
 func generateAIReportWithPeriod(ctx *AppContext, events []ReportEvent, periodDesc string, onModelChange func(string)) (string, error) {
 	if ctx.Config.GeminiAPIKey == "" {
 		return "", nil
