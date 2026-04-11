@@ -43,6 +43,9 @@ func generateDailyReport(ctx *AppContext, greeting string, onModelChange func(st
 	b.WriteString(fmt.Sprintf("*%s*\n", greeting))
 	b.WriteString(fmt.Sprintf("_%s_\n\n", now.Format("Mon 02/01")))
 
+	healthIcon, healthText, _ := getHealthStatus(ctx, s)
+	b.WriteString(fmt.Sprintf("📝 %s %s\n\n", healthIcon, healthText))
+
 	if aiReport != "" {
 		b.WriteString(aiReport)
 		b.WriteString("\n\n")
@@ -144,6 +147,13 @@ func generateReport(ctx *AppContext, manual bool, onModelChange func(string)) st
 		b.WriteString("\n")
 	}
 
+	b.WriteString(fmt.Sprintf("*%s*\n", ctx.Tr("report_resources")))
+	b.WriteString(fmt.Sprintf("🧠 CPU %s %.1f%%\n", format.MakeProgressBar(s.CPU), s.CPU))
+	b.WriteString(fmt.Sprintf("💾 RAM %s %.1f%%\n", format.MakeProgressBar(s.RAM), s.RAM))
+	if s.Swap > 0 {
+		b.WriteString(fmt.Sprintf("🔄 Swap %s %.1f%%\n", format.MakeProgressBar(s.Swap), s.Swap))
+	}
+
 	running, stopped := 0, 0
 	for _, c := range getCachedContainerList(ctx) {
 		if c.Running {
@@ -154,10 +164,7 @@ func generateReport(ctx *AppContext, manual bool, onModelChange func(string)) st
 	}
 	b.WriteString(fmt.Sprintf("\nContainers: %d running, %d stopped\n", running, stopped))
 
-	b.WriteString(fmt.Sprintf("\n_Up for %s_\n", format.FormatUptime(s.Uptime)))
-	if periodDesc != "" {
-		b.WriteString(fmt.Sprintf("_Period: %s_", periodDesc))
-	}
+	b.WriteString(fmt.Sprintf("\n_⏱ Up for %s_", format.FormatUptime(s.Uptime)))
 
 	return b.String()
 }

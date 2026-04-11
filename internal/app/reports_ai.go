@@ -49,6 +49,11 @@ func generateAIReportWithPeriod(ctx *AppContext, events []ReportEvent, periodDes
 		lang = "Ukrainian"
 	}
 
+	periodInfo := ""
+	if periodDesc != "" {
+		periodInfo = fmt.Sprintf("🗓️ *Report Period:* %s\n\n", periodDesc)
+	}
+
 	prompt := fmt.Sprintf(`You are "NasBot", an intelligent home NAS assistant.
 A system report is being generated and I need you to summarize the recent system events.
 
@@ -67,11 +72,11 @@ A system report is being generated and I need you to summarize the recent system
 **REQUIRED REPORT STRUCTURE:**
 (Do not add a greeting or footer)
 
-⚠️ *Events & Alerts*
+%s⚠️ *Events & Alerts*
 - Categorize events (e.g., - Critical:, - Network:, - Maintenance:).
 - Summarize anomalies accurately. Do not invent details.
 
-**Style:** Bullet-point heavy, scannable, rigorous, direct, and extremely concise.`, sysContext.String(), lang)
+**Style:** Bullet-point heavy, scannable, rigorous, direct, and extremely concise.`, sysContext.String(), lang, periodInfo)
 
 	return callGeminiWithFallback(ctx, prompt, onModelChange)
 }
