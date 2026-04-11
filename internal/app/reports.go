@@ -13,6 +13,8 @@ import (
 //  DAILY REPORTS
 // ═══════════════════════════════════════════════════════════════════
 
+// generateDailyReport compiles the daily periodic report with events, AI summaries
+// and concise service stats (e.g., containers, healthchecks, uptime).
 func generateDailyReport(ctx *AppContext, greeting string, onModelChange func(string)) string {
 	s, _ := ctx.Stats.Get()
 	now := time.Now().In(ctx.State.TimeLocation)
@@ -109,6 +111,8 @@ func generateDailyReport(ctx *AppContext, greeting string, onModelChange func(st
 	return b.String()
 }
 
+// generateReport generates an on-demand, explicit NAS snapshot, typically triggered
+// by direct commands like /report. Reuses daily routines to fetch events and queries the AI.
 func generateReport(ctx *AppContext, manual bool, onModelChange func(string)) string {
 	if !manual {
 		return generateDailyReport(ctx, "> *NAS Report*", onModelChange)
@@ -144,13 +148,6 @@ func generateReport(ctx *AppContext, manual bool, onModelChange func(string)) st
 		b.WriteString("\n")
 	}
 
-	b.WriteString(fmt.Sprintf("*%s*\n", ctx.Tr("report_resources")))
-	b.WriteString(fmt.Sprintf("🧠 CPU %s %.1f%%\n", format.MakeProgressBar(s.CPU), s.CPU))
-	b.WriteString(fmt.Sprintf("💾 RAM %s %.1f%%\n", format.MakeProgressBar(s.RAM), s.RAM))
-	if s.Swap > 0 {
-		b.WriteString(fmt.Sprintf("🔄 Swap %s %.1f%%\n", format.MakeProgressBar(s.Swap), s.Swap))
-	}
-
 	running, stopped := 0, 0
 	for _, c := range getCachedContainerList(ctx) {
 		if c.Running {
@@ -159,13 +156,17 @@ func generateReport(ctx *AppContext, manual bool, onModelChange func(string)) st
 			stopped++
 		}
 	}
-	b.WriteString(fmt.Sprintf("\nContainers: %d running, %d stopped\n", running, stopped))
+	b.WriteString(fmt.Sprintf("Containers: %d running, %d stopped\n", running, stopped))
 
-	b.WriteString(fmt.Sprintf("\n_⏱ Up for %s_", format.FormatUptime(s.Uptime)))
+	b.WriteString(fmt.Sprintf("\n_Up for %s_\n", format.FormatUptime(s.Uptime)))
+	if periodDesc != "" {
+		b.WriteString(fmt.Sprintf("_Period: %s_", periodDesc))
+	}
 
 	return b.String()
 }
 
+// filterSignificantEvents strips out minor system logs taking up prompt space to save tokens and noise.
 func filterSignificantEvents(events []ReportEvent) []ReportEvent {
 	var filtered []ReportEvent
 	for _, e := range events {
@@ -179,6 +180,7 @@ func filterSignificantEvents(events []ReportEvent) []ReportEvent {
 	return filtered
 }
 
+// filterEventsSince preserves only memory events recorded past a specific timeframe threshold.
 func filterEventsSince(events []ReportEvent, since time.Time) []ReportEvent {
 	var filtered []ReportEvent
 	for _, e := range events {
