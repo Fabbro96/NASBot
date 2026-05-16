@@ -111,6 +111,7 @@ var translations = map[string]map[string]string{
 		"power_shutdown":       "🛑 Shutdown NAS",
 		"power_force_reboot":   "💥 Force Reboot",
 		"docker_no_containers": "_No containers found. Is Docker running?_",
+		"docker_stats_title":   "Container Resources",
 
 		// New additions
 		"temp_title":        "🌡 *Temperatures*\n\n",
@@ -393,6 +394,7 @@ var translations = map[string]map[string]string{
 		"power_shutdown":       "🛑 Spegni NAS",
 		"power_force_reboot":   "💥 Riavvio Forzato",
 		"docker_no_containers": "_Nessun container trovato. Docker è attivo?_",
+		"docker_stats_title":   "Risorse container",
 
 		// Nuove aggiunte
 		"temp_title":        "🌡 *Temperature*\n\n",
