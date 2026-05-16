@@ -255,9 +255,6 @@ func (rs *RuntimeState) ClearEvents() {
 	rs.ReportEvents = []ReportEvent{}
 }
 
-
-
-
 // BotContext Methods
 func (b *BotContext) SetPendingAction(action string) {
 	b.Mu.Lock()
