@@ -13,6 +13,15 @@ import (
 	"time"
 )
 
+// Pre-compiled regex for Telegram formatting cleanup.
+// Compiled once at package init rather than per-call.
+var (
+	reBold = regexp.MustCompile(`\*\*([^*]+)\*\*`)
+	reH3   = regexp.MustCompile(`(?m)^###\s+(.*?)\r?$`)
+	reH2   = regexp.MustCompile(`(?m)^##\s+(.*?)\r?$`)
+	reH1   = regexp.MustCompile(`(?m)^#\s+(.*?)\r?$`)
+)
+
 // generateAIReport summarizes recent system events, without specifying a descriptive timeframe period.
 func generateAIReport(ctx *AppContext, events []ReportEvent, onModelChange func(string)) (string, error) {
 	return generateAIReportWithPeriod(ctx, events, "", onModelChange)
@@ -185,17 +194,11 @@ func callGeminiAPIWithError(ctx *AppContext, parentCtx context.Context, prompt s
 		text := strings.TrimSpace(result.Candidates[0].Content.Parts[0].Text)
 
 		// Clean up any rogue double asterisks into single ones for Telegram
-		reBold := regexp.MustCompile(`\*\*([^*]+)\*\*`)
 		text = reBold.ReplaceAllString(text, "*$1*")
 
 		// Replace headers (###, ##, #) with bolded text for Telegram
-		reH3 := regexp.MustCompile(`(?m)^###\s+(.*?)\r?$`)
 		text = reH3.ReplaceAllString(text, "*$1*")
-
-		reH2 := regexp.MustCompile(`(?m)^##\s+(.*?)\r?$`)
 		text = reH2.ReplaceAllString(text, "*$1*")
-
-		reH1 := regexp.MustCompile(`(?m)^#\s+(.*?)\r?$`)
 		text = reH1.ReplaceAllString(text, "*$1*")
 
 		return text, nil

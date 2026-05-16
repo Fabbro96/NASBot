@@ -173,10 +173,10 @@ func notifyUpdateAvailable(ctx *AppContext, bot BotAPI, rel releaseCandidate) {
 	}
 	ctx.State.Mu.Unlock()
 
-	text := fmt.Sprintf("🆕 Nuova versione disponibile: *%s*\nVersione attuale: *%s*\nAsset per questa architettura: `%s`", rel.Tag, Version, rel.AssetName)
+	text := fmt.Sprintf(ctx.Tr("update_available"), rel.Tag, Version, rel.AssetName)
 	kb := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("⬇️ Aggiorna ora", "update_apply_latest"),
+			tgbotapi.NewInlineKeyboardButtonData("⬇️ "+ctx.Tr("update_apply_now"), "update_apply_latest"),
 			tgbotapi.NewInlineKeyboardButtonURL("📦 Release", rel.URL),
 		),
 	)
@@ -271,7 +271,7 @@ func downloadReleaseAsset(ctx *AppContext, rel releaseCandidate) (string, error)
 	if err != nil {
 		return "", err
 	}
-	if _, err := io.Copy(f, resp.Body); err != nil {
+	if _, err := io.Copy(f, io.LimitReader(resp.Body, 50<<20)); err != nil { // 50MB max
 		_ = f.Close()
 		return "", err
 	}
@@ -332,7 +332,7 @@ func applyLatestRelease(ctx *AppContext, bot BotAPI, chatID int64, msgID int) {
 	if msgID > 0 {
 		editMessage(bot, chatID, msgID, statusText, nil)
 	} else {
-		// INIZIO FIX: Catturiamo l'ID del messaggio appena inviato per aggiornarlo in tempo reale
+		// FIX: Capture the sent message ID so we can update it in real-time
 		msg := tgbotapi.NewMessage(chatID, statusText)
 		msg.ParseMode = "Markdown"
 		sentMsg, err := bot.Send(msg)
@@ -341,9 +341,9 @@ func applyLatestRelease(ctx *AppContext, bot BotAPI, chatID int64, msgID int) {
 			sentMsg, _ = bot.Send(msg)
 		}
 		if sentMsg.MessageID != 0 {
-			msgID = sentMsg.MessageID // Assegniamo l'ID ai prossimi step (successo o fallimento!)
+			msgID = sentMsg.MessageID // Assign the ID for subsequent steps (success or failure)
 		}
-		// FINE FIX
+		// END FIX
 	}
 
 	if _, err := downloadReleaseAsset(ctx, rel); err != nil {

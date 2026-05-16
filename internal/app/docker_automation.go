@@ -78,25 +78,32 @@ func checkContainerStates(ctx *AppContext, bot BotAPI) {
 
 // handleCriticalRAM handles critical RAM situations
 func handleCriticalRAM(ctx *AppContext, bot BotAPI, s Stats) {
-	containers := getCachedContainerList(ctx)
-
 	type containerMem struct {
 		name   string
 		memPct float64
 	}
 
+	// Single batch call instead of N sequential calls (one per container).
+	// This reduces O(N × 2s) to O(1 × 5s) for the docker stats query.
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	out, err := runCommandStdout(timeoutCtx, "docker", "stats", "--no-stream", "--format", "{{.Name}}|{{.MemPerc}}")
+	cancel()
+
+	if err != nil {
+		slog.Warn("handleCriticalRAM: docker stats failed", "err", err)
+		return
+	}
+
 	var heavyContainers []containerMem
-	for _, c := range containers {
-		if !c.Running {
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		parts := strings.SplitN(line, "|", 2)
+		if len(parts) < 2 {
 			continue
 		}
-		timeoutCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		out, _ := runCommandStdout(timeoutCtx, "docker", "stats", "--no-stream", "--format", "{{.MemPerc}}", c.Name)
-		cancel()
-
-		memStr := strings.TrimSuffix(strings.TrimSpace(string(out)), "%")
-		if memPct, err := strconv.ParseFloat(memStr, 64); err == nil && memPct > 20 {
-			heavyContainers = append(heavyContainers, containerMem{c.Name, memPct})
+		name := strings.TrimSpace(parts[0])
+		memStr := strings.TrimSuffix(strings.TrimSpace(parts[1]), "%")
+		if memPct, parseErr := strconv.ParseFloat(memStr, 64); parseErr == nil && memPct > 20 {
+			heavyContainers = append(heavyContainers, containerMem{name, memPct})
 		}
 	}
 
@@ -106,30 +113,38 @@ func handleCriticalRAM(ctx *AppContext, bot BotAPI, s Stats) {
 			return heavyContainers[i].memPct > heavyContainers[j].memPct
 		})
 
-		target := heavyContainers[0]
-		if canAutoRestart(ctx, target.name) {
-			slog.Warn("RAM critical, auto-restart", "ram", s.RAM, "container", target.name, "mem_pct", target.memPct)
+		var restarted bool
+		for _, target := range heavyContainers {
+			if canAutoRestart(ctx, target.name) {
+				slog.Warn("RAM critical, auto-restart", "ram", s.RAM, "container", target.name, "mem_pct", target.memPct)
 
-			timeoutCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			err := runCommand(timeoutCtx, "docker", "restart", target.name)
-			cancel()
+				timeoutCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				err := runCommand(timeoutCtx, "docker", "restart", target.name)
+				cancel()
 
-			recordAutoRestart(ctx, target.name)
+				recordAutoRestart(ctx, target.name)
 
-			var msgText string
-			if err != nil {
-				msgText = fmt.Sprintf("❌ *Auto-restart failed*\n\nRAM critical: `%.1f%%`\nContainer: `%s`\nError: %v", s.RAM, target.name, err)
-				ctx.State.AddEvent("critical", fmt.Sprintf("Auto-restart failed: %s (%v)", target.name, err))
-			} else {
-				msgText = fmt.Sprintf("🔄 *Auto-restart done*\n\nRAM was critical: `%.1f%%`\nRestarted: `%s` (`%.1f%%` mem)\n\n_Watching..._", s.RAM, target.name, target.memPct)
-				ctx.State.AddEvent("action", fmt.Sprintf("Auto-restart: %s (RAM %.1f%%)", target.name, s.RAM))
+				var msgText string
+				if err != nil {
+					msgText = fmt.Sprintf("❌ *Auto-restart failed*\n\nRAM critical: `%.1f%%`\nContainer: `%s`\nError: %v", s.RAM, target.name, err)
+					ctx.State.AddEvent("critical", fmt.Sprintf("Auto-restart failed: %s (%v)", target.name, err))
+				} else {
+					msgText = fmt.Sprintf("🔄 *Auto-restart done*\n\nRAM was critical: `%.1f%%`\nRestarted: `%s` (`%.1f%%` mem)\n\n_Watching..._", s.RAM, target.name, target.memPct)
+					ctx.State.AddEvent("action", fmt.Sprintf("Auto-restart: %s (RAM %.1f%%)", target.name, s.RAM))
+				}
+
+				if !ctx.IsQuietHours() {
+					msg := tgbotapi.NewMessage(ctx.Config.AllowedUserID, msgText)
+					msg.ParseMode = "Markdown"
+					safeSend(bot, msg)
+				}
+				restarted = true
+				break // Only restart one container per tick
 			}
+		}
 
-			if !ctx.IsQuietHours() {
-				msg := tgbotapi.NewMessage(ctx.Config.AllowedUserID, msgText)
-				msg.ParseMode = "Markdown"
-				safeSend(bot, msg)
-			}
+		if !restarted {
+			slog.Warn("RAM critical, but all heavy containers are throttled from auto-restarting")
 		}
 	}
 }

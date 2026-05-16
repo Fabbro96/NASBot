@@ -179,7 +179,7 @@ func recordHealthcheckFailure(ctx *AppContext, bot BotAPI, reason string) {
 
 		ctx.Monitor.Mu.Unlock() // Unlock before sending message to avoid deadlock if network is slow
 
-		// Registrazione persistente dell'evento (sia nel log che nel file di stato).
+		// Persist the event in both the log and the state file.
 		ctx.State.AddEvent("warning", fmt.Sprintf("🔴 Healthchecks down: %s", reason))
 
 		// Notify user (respecting quiet hours)
@@ -564,8 +564,6 @@ func pingHealthchecksStart(ctx *AppContext) {
 	if err != nil {
 		return
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
 	slog.Info("Healthchecks.io /start signal sent")
 }
-
-// maxInt used to be here, now using utils.go version or removing dup
