@@ -57,12 +57,13 @@ ensure_binary_permissions() {
 
 get_file_size() {
 	local path="$1"
-	if stat -c%s "$path" >/dev/null 2>&1; then
-		stat -c%s "$path"
+	local size
+	if size=$(stat -c%s "$path" 2>/dev/null); then
+		echo "$size"
 		return
 	fi
-	if stat -f%z "$path" >/dev/null 2>&1; then
-		stat -f%z "$path"
+	if size=$(stat -f%z "$path" 2>/dev/null); then
+		echo "$size"
 		return
 	fi
 	echo 0
@@ -141,7 +142,7 @@ stop_bot() {
 	echo "⏳ Stopping bot (PID: $pid)..."
 	kill -TERM "$pid" 2>/dev/null || true
 
-	for _ in $(seq 1 10); do
+	for ((i=1; i<=10; i++)); do
 		if ! is_running; then
 			echo "✅ Bot stopped"
 			rm -f "$PID_FILE"
