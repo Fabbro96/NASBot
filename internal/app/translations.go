@@ -286,17 +286,17 @@ var translations = map[string]map[string]string{
 		"health_ai_prompt":            "Analyze this monitoring data. Be EXTREMELY concise. Max 10-15 lines. No fluff. Data:\n\n%s\n\nProvide:\n1. 1-sentence reliability summary\n2. Key patterns (bullet points)\n3. Quick recommendations",
 
 		// Power management
-		"power_confirm_reboot":        "🔄 *Reboot* the NAS?\n\n_Are you sure?_",
-		"power_confirm_shutdown":      "⚠️ *Shut down* the NAS?\n\n_Are you sure?_",
-		"power_rebooting":             "Rebooting now...",
-		"power_shutting_down":         "Shutting down... See you later!",
+		"power_confirm_reboot":   "🔄 *Reboot* the NAS?\n\n_Are you sure?_",
+		"power_confirm_shutdown": "⚠️ *Shut down* the NAS?\n\n_Are you sure?_",
+		"power_rebooting":        "Rebooting now...",
+		"power_shutting_down":    "Shutting down... See you later!",
 
 		// Docker buttons
 		"docker_menu_home_containers": "Containers",
 
 		// Update notifications
-		"update_available":            "🆕 New version available: *%s*\nCurrent version: *%s*\nAsset: `%s`",
-		"update_apply_now":            "Update now",
+		"update_available": "🆕 New version available: *%s*\nCurrent version: *%s*\nAsset: `%s`",
+		"update_apply_now": "Update now",
 	},
 	"it": {
 		"status_title": "🖥 *NAS* alle %s\n\n",
@@ -586,17 +586,17 @@ var translations = map[string]map[string]string{
 		"health_ai_prompt":            "Analizza questi dati. Sii ESTREMAMENTE conciso. Massimo 10-15 righe. Niente giri di parole. Rispondi in italiano. Dati:\n\n%s\n\nFornisci:\n1. Riepilogo affidabilità (1 frase)\n2. Pattern principali (punti elenco)\n3. Raccomandazioni rapide",
 
 		// Gestione alimentazione
-		"power_confirm_reboot":        "🔄 *Riavviare* il NAS?\n\n_Sei sicuro?_",
-		"power_confirm_shutdown":      "⚠️ *Spegnere* il NAS?\n\n_Sei sicuro?_",
-		"power_rebooting":             "Riavvio in corso...",
-		"power_shutting_down":         "Spegnimento in corso... A dopo!",
+		"power_confirm_reboot":   "🔄 *Riavviare* il NAS?\n\n_Sei sicuro?_",
+		"power_confirm_shutdown": "⚠️ *Spegnere* il NAS?\n\n_Sei sicuro?_",
+		"power_rebooting":        "Riavvio in corso...",
+		"power_shutting_down":    "Spegnimento in corso... A dopo!",
 
 		// Pulsanti Docker
 		"docker_menu_home_containers": "Container",
 
 		// Notifiche aggiornamento
-		"update_available":            "🆕 Nuova versione disponibile: *%s*\nVersione attuale: *%s*\nAsset: `%s`",
-		"update_apply_now":            "Aggiorna ora",
+		"update_available": "🆕 Nuova versione disponibile: *%s*\nVersione attuale: *%s*\nAsset: `%s`",
+		"update_apply_now": "Aggiorna ora",
 	},
 	"es": {
 		"status_title":     "🖥 *NAS* a las %s\n\n",
