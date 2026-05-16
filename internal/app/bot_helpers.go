@@ -74,18 +74,18 @@ func handleSpeedtest(_ *AppContext, bot BotAPI, chatID int64) {
 //  POWER MANAGEMENT
 // ═══════════════════════════════════════════════════════════════════
 
-func getPowerMenuText(_ *AppContext) (string, *tgbotapi.InlineKeyboardMarkup) {
-	text := "⚡ *Power Management*\n\nBe careful, these actions affect the physical system."
+func getPowerMenuText(ctx *AppContext) (string, *tgbotapi.InlineKeyboardMarkup) {
+	text := ctx.Tr("power_title")
 	kb := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔄 Reboot NAS", "pre_confirm_reboot"),
-			tgbotapi.NewInlineKeyboardButtonData("🛑 Shutdown NAS", "pre_confirm_shutdown"),
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("power_reboot"), "pre_confirm_reboot"),
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("power_shutdown"), "pre_confirm_shutdown"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("💥 Force Reboot", "force_reboot_now"),
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("power_force_reboot"), "force_reboot_now"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("⬅️ Back", "back_main"),
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("back"), "back_main"),
 		),
 	)
 	return text, &kb
@@ -217,21 +217,20 @@ func editMessage(bot BotAPI, chatID int64, msgID int, text string, keyboard *tgb
 	}
 }
 
-func getMainKeyboard(_ *AppContext) tgbotapi.InlineKeyboardMarkup {
-	// Future: use ctx.Tr for button labels
+func getMainKeyboard(ctx *AppContext) tgbotapi.InlineKeyboardMarkup {
 	return tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔄 Refresh", "refresh_status"),
-			tgbotapi.NewInlineKeyboardButtonData("🌡 Temp", "show_temp"),
-			tgbotapi.NewInlineKeyboardButtonData("🌐 Net", "show_net"),
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("btn_refresh"), "refresh_status"),
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("btn_temp"), "show_temp"),
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("btn_net"), "show_net"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🐳 Docker", "show_docker"),
-			tgbotapi.NewInlineKeyboardButtonData("📊 D-Stats", "show_dstats"),
-			tgbotapi.NewInlineKeyboardButtonData("🔥 Top Proc", "show_top"),
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("btn_docker"), "show_docker"),
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("btn_dstats"), "show_dstats"),
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("btn_top"), "show_top"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("⚡ Power Actions", "show_power"),
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("btn_power"), "show_power"),
 		),
 	)
 }

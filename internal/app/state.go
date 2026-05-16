@@ -170,7 +170,21 @@ func saveState(ctx *AppContext) {
 
 	statePath := stateFilePath()
 	ensureParentDir(statePath)
-	if err := os.WriteFile(statePath, data, 0644); err != nil {
-		slog.Error("State save error", "err", err)
+
+	// Atomic write: write to temp file then rename to prevent corruption on crash
+	tmpPath := statePath + ".tmp"
+	mode := os.FileMode(0o644)
+	if st, statErr := os.Stat(statePath); statErr == nil {
+		mode = st.Mode().Perm()
+	} else if !os.IsNotExist(statErr) {
+		slog.Warn("State save warning (stat existing file)", "err", statErr)
+	}
+	if err := os.WriteFile(tmpPath, data, mode); err != nil {
+		slog.Error("State save error (tmp write)", "err", err)
+		return
+	}
+	if err := os.Rename(tmpPath, statePath); err != nil {
+		slog.Error("State save error (rename)", "err", err)
+		_ = os.Remove(tmpPath)
 	}
 }

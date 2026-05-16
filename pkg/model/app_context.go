@@ -255,11 +255,6 @@ func (rs *RuntimeState) ClearEvents() {
 	rs.ReportEvents = []ReportEvent{}
 }
 
-// AddReportEvent preserves the legacy API used by older call sites.
-func (rs *RuntimeState) AddReportEvent(eventType, message string) {
-	rs.AddEvent(eventType, message)
-}
-
 // BotContext Methods
 func (b *BotContext) SetPendingAction(action string) {
 	b.Mu.Lock()

@@ -138,9 +138,9 @@ func callGeminiAPIWithError(ctx *AppContext, parentCtx context.Context, prompt s
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := http.DefaultClient
-	if ctx.HTTP != nil {
-		client = ctx.HTTP
+	client := ctx.HTTP
+	if client == nil {
+		client = &http.Client{Timeout: 15 * time.Second}
 	}
 
 	resp, err := client.Do(req)
@@ -149,13 +149,22 @@ func callGeminiAPIWithError(ctx *AppContext, parentCtx context.Context, prompt s
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	// Limit response body to 1MB to prevent memory exhaustion on low-RAM systems
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return "", err
 	}
 
+	if resp.StatusCode == 429 {
+		return "", fmt.Errorf("rate limited (429)")
+	}
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
+		// Truncate error body to avoid flooding logs
+		errBody := string(body)
+		if len(errBody) > 200 {
+			errBody = errBody[:200] + "..."
+		}
+		return "", fmt.Errorf("API error %d: %s", resp.StatusCode, errBody)
 	}
 
 	var result struct {

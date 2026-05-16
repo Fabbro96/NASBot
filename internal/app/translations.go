@@ -35,6 +35,7 @@ var translations = map[string]map[string]string{
 		"no":                    "❌ No",
 		"confirm_action":        "%s *%s*?",
 		"kill_warn":             "\n\n⚠️ _This will forcefully terminate the container!_",
+		"kill_usage":            "Usage: `/kill container_name`\n\nThis will forcefully terminate the container (SIGKILL)",
 		"back":                  "⬅️ Back",
 		"settings_title":        "⚙️ *Settings*",
 		"settings_lang":         "🌐 Language",
@@ -96,6 +97,21 @@ var translations = map[string]map[string]string{
 		"configset_corrected":   "Corrected values: %s",
 		"configjson_title":      "🧾 *config.json* (bot credentials redacted)",
 		"generating_report":     "⏳ Generating report using *%s*...",
+
+		// Main keyboard buttons
+		"btn_refresh":          "🔄 Refresh",
+		"btn_temp":             "🌡 Temp",
+		"btn_net":              "🌐 Net",
+		"btn_docker":           "🐳 Docker",
+		"btn_dstats":           "📊 D-Stats",
+		"btn_top":              "🔥 Top",
+		"btn_power":            "⚡ Power",
+		"power_title":          "⚡ *Power Management*\n\nBe careful, these actions affect the physical system.",
+		"power_reboot":         "🔄 Reboot NAS",
+		"power_shutdown":       "🛑 Shutdown NAS",
+		"power_force_reboot":   "💥 Force Reboot",
+		"docker_no_containers": "_No containers found. Is Docker running?_",
+		"docker_stats_title":   "Container Resources",
 
 		// New additions
 		"temp_title":        "🌡 *Temperatures*\n\n",
@@ -302,6 +318,7 @@ var translations = map[string]map[string]string{
 		"no":                    "❌ No",
 		"confirm_action":        "%s *%s*?",
 		"kill_warn":             "\n\n⚠️ _Questo terminerà forzatamente il container!_",
+		"kill_usage":            "Uso: `/kill nome_container`\n\nQuesto terminerà forzatamente il container (SIGKILL)",
 		"back":                  "⬅️ Indietro",
 		"settings_title":        "⚙️ *Impostazioni*",
 		"settings_lang":         "🌐 Lingua",
@@ -363,6 +380,22 @@ var translations = map[string]map[string]string{
 		"configset_corrected":   "Valori corretti: %s",
 		"configjson_title":      "🧾 *config.json* (credenziali bot rimosse)",
 		"generating_report":     "⏳ Generazione report con *%s* in corso...",
+
+		// Pulsanti interfaccia principale
+		"btn_refresh":          "🔄 Aggiorna",
+		"btn_temp":             "🌡 Temp",
+		"btn_net":              "🌐 Rete",
+		"btn_docker":           "🐳 Docker",
+		"btn_dstats":           "📊 D-Stats",
+		"btn_top":              "🔥 Top",
+		"btn_power":            "⚡ Power",
+		"power_title":          "⚡ *Gestione Alimentazione*\n\nAttenzione, queste azioni hanno effetto sul sistema fisico.",
+		"power_reboot":         "🔄 Riavvia NAS",
+		"power_shutdown":       "🛑 Spegni NAS",
+		"power_force_reboot":   "💥 Riavvio Forzato",
+		"docker_no_containers": "_Nessun container trovato. Docker è attivo?_",
+		"docker_stats_title":   "Risorse container",
+
 		// Nuove aggiunte
 		"temp_title":        "🌡 *Temperature*\n\n",
 		"temp_cpu":          "%s CPU: %.0f°C — %s\n\n",
