@@ -35,7 +35,9 @@ func handleCallback(bot BotAPI, query *tgbotapi.CallbackQuery) {
 		slog.Warn("Invalid callback payload")
 		return
 	}
-	bot.Request(tgbotapi.NewCallback(query.ID, ""))
+	if _, err := bot.Request(tgbotapi.NewCallback(query.ID, "")); err != nil {
+		slog.Warn("Failed to acknowledge callback", "err", err)
+	}
 	if query.From == nil || query.From.ID != int64(app.Config.AllowedUserID) {
 		slog.Warn("Unauthorized callback ignored")
 		return

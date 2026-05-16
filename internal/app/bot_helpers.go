@@ -94,11 +94,10 @@ func getPowerMenuText(ctx *AppContext) (string, *tgbotapi.InlineKeyboardMarkup) 
 func askPowerConfirmation(ctx *AppContext, bot BotAPI, chatID int64, msgID int, action string) {
 	ctx.Bot.SetPendingAction(action)
 
-	question := "🔄 *Reboot* the NAS?"
+	question := ctx.Tr("power_confirm_reboot")
 	if action == "shutdown" {
-		question = "⚠️ *Shut down* the NAS?"
+		question = ctx.Tr("power_confirm_shutdown")
 	}
-	question += "\n\n_Are you sure?_"
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
@@ -128,10 +127,10 @@ func handlePowerConfirm(ctx *AppContext, bot BotAPI, chatID int64, msgID int, da
 	}
 
 	cmd := "reboot"
-	actionMsg := "Rebooting now..."
+	actionMsg := ctx.Tr("power_rebooting")
 	if action == "shutdown" {
 		cmd = "poweroff"
-		actionMsg = "Shutting down... See you later!"
+		actionMsg = ctx.Tr("power_shutting_down")
 	}
 
 	addPowerLifecycleEvent(ctx, action, false, "command", cmd, "user-confirmation")

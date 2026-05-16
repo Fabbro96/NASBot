@@ -65,6 +65,11 @@ func getLogSearchText(ctx *AppContext, args string) string {
 	container := parts[0]
 	keyword := parts[1]
 
+	// Sanitize container name to prevent injection
+	if strings.ContainsAny(container, ";|&$`\\\"'") {
+		return "❌ Invalid container name"
+	}
+
 	// Search logs
 	reqCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -94,13 +99,14 @@ func getLogSearchText(ctx *AppContext, args string) string {
 	}
 
 	// Limit to last 10 matches
+	totalFound := len(matches)
 	if len(matches) > 10 {
 		matches = matches[len(matches)-10:]
 	}
 
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("🔍 *Log Search*: `%s` in `%s`\n\n", keyword, container))
-	b.WriteString(fmt.Sprintf("Found %d matches (showing last %d):\n\n", len(matches), len(matches)))
+	b.WriteString(fmt.Sprintf("Found %d matches (showing last %d):\n\n", totalFound, len(matches)))
 	b.WriteString("```\n")
 	for _, m := range matches {
 		b.WriteString(m + "\n")
