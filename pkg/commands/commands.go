@@ -25,17 +25,7 @@ const (
 )
 
 var (
-	reportMode          int
-	reportMorningHour   int
-	reportMorningMinute int
-	reportEveningHour   int
-	reportEveningMinute int
-	quietHoursEnabled   bool
-	quietStartHour      int
-	quietStartMinute    int
-	quietEndHour        int
-	quietEndMinute      int
-	httpClient          = &http.Client{Timeout: netTimeout}
+	httpClient = &http.Client{Timeout: netTimeout}
 )
 
 func cpuTempStatus(ctx *AppContext, temp float64) (icon, status string) {

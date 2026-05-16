@@ -32,8 +32,21 @@ func getStatusText(ctx *AppContext) string {
 
 	b.WriteString(fmt.Sprintf(tr("status_title"), now.Format("15:04")))
 
-	b.WriteString(fmt.Sprintf(tr("cpu_fmt"), format.MakeProgressBar(s.CPU), s.CPU))
-	b.WriteString(fmt.Sprintf(tr("ram_fmt"), format.MakeProgressBar(s.RAM), s.RAM))
+	// CPU with trend sparkline
+	cpuLine := fmt.Sprintf(tr("cpu_fmt"), format.MakeProgressBar(s.CPU), s.CPU)
+	cpuGraph, ramGraph := getTrendSummary(ctx)
+	if cpuGraph != "" {
+		cpuLine = strings.TrimRight(cpuLine, "\n") + "  `" + cpuGraph + "`\n"
+	}
+	b.WriteString(cpuLine)
+
+	// RAM with trend sparkline
+	ramLine := fmt.Sprintf(tr("ram_fmt"), format.MakeProgressBar(s.RAM), s.RAM)
+	if ramGraph != "" {
+		ramLine = strings.TrimRight(ramLine, "\n") + "  `" + ramGraph + "`\n"
+	}
+	b.WriteString(ramLine)
+
 	if s.Swap > 5 {
 		b.WriteString(fmt.Sprintf(tr("swap_fmt"), format.MakeProgressBar(s.Swap), s.Swap))
 	}
@@ -47,6 +60,28 @@ func getStatusText(ctx *AppContext) string {
 			b.WriteString(fmt.Sprintf(tr("disk_rw_fmt"), s.ReadMBs, s.WriteMBs))
 		}
 		b.WriteString("\n")
+	}
+
+	// Docker container summary
+	containers := getCachedContainerList(ctx)
+	if len(containers) > 0 {
+		running, stopped := 0, 0
+		for _, c := range containers {
+			if c.Running {
+				running++
+			} else {
+				stopped++
+			}
+		}
+		containerLabel := tr("containers_running")
+		if running == 1 {
+			containerLabel = tr("container_running")
+		}
+		if stopped > 0 {
+			b.WriteString(fmt.Sprintf("\n🐳 %d %s · %d %s", running, containerLabel, stopped, tr("containers_stopped")))
+		} else {
+			b.WriteString(fmt.Sprintf("\n🐳 %d %s", running, containerLabel))
+		}
 	}
 
 	b.WriteString(fmt.Sprintf(tr("uptime_fmt"), format.FormatUptime(s.Uptime)))

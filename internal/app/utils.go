@@ -14,17 +14,8 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-// Wrappers for format package (kept for backward compatibility)
-func formatUptime(seconds uint64) string           { return format.FormatUptime(seconds) }
-func formatBytes(bytes uint64) string              { return format.FormatBytes(bytes) }
-func formatRAM(mb uint64) string                   { return format.FormatRAM(mb) }
-func formatDuration(d time.Duration) string        { return format.FormatDuration(d) }
-func formatPeriod(seconds int) string              { return format.FormatPeriod(seconds) }
-func truncate(s string, max int) string            { return format.Truncate(s, max) }
-func safeFloat(arr []float64, def float64) float64 { return format.SafeFloat(arr, def) }
-func boolToEmoji(b bool) string                    { return format.BoolToEmoji(b) }
-func makeProgressBar(percent float64) string       { return format.MakeProgressBar(percent) }
-func titleCaseWord(s string) string                { return format.TitleCaseWord(s) }
+// truncate is a convenience alias kept for readability in call sites (e.g. docker.go).
+func truncate(s string, max int) string { return format.Truncate(s, max) }
 
 // readCPUTemp reads CPU temperature from thermal zone
 func readCPUTemp() float64 {

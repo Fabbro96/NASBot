@@ -16,7 +16,7 @@ import (
 
 // checkContainerStates monitors for container state changes (down/up)
 func checkContainerStates(ctx *AppContext, bot BotAPI) {
-	containers := getContainerList()
+	containers := getCachedContainerList(ctx)
 	if containers == nil {
 		return
 	}
@@ -47,7 +47,7 @@ func checkContainerStates(ctx *AppContext, bot BotAPI) {
 				m.ParseMode = "Markdown"
 				safeSend(bot, m)
 			}
-			ctx.State.AddReportEvent("warning", fmt.Sprintf("🔴 Container stopped: %s", name))
+			ctx.State.AddEvent("warning", fmt.Sprintf("🔴 Container stopped: %s", name))
 		}
 	}
 
@@ -59,9 +59,9 @@ func checkContainerStates(ctx *AppContext, bot BotAPI) {
 				duration := time.Since(downStart)
 				downtimeMsg = fmt.Sprintf("\n⏱ Downtime: `%s`", format.FormatDuration(duration))
 				delete(ctx.Docker.ContainerDowntime, name)
-				ctx.State.AddReportEvent("info", fmt.Sprintf("🟢 Container recovered: %s (down for %s)", name, format.FormatDuration(duration)))
+				ctx.State.AddEvent("info", fmt.Sprintf("🟢 Container recovered: %s (down for %s)", name, format.FormatDuration(duration)))
 			} else {
-				ctx.State.AddReportEvent("info", fmt.Sprintf("🟢 Container started: %s", name))
+				ctx.State.AddEvent("info", fmt.Sprintf("🟢 Container started: %s", name))
 			}
 
 			if !ctx.IsQuietHours() {
@@ -78,7 +78,7 @@ func checkContainerStates(ctx *AppContext, bot BotAPI) {
 
 // handleCriticalRAM handles critical RAM situations
 func handleCriticalRAM(ctx *AppContext, bot BotAPI, s Stats) {
-	containers := getContainerList()
+	containers := getCachedContainerList(ctx)
 
 	type containerMem struct {
 		name   string
@@ -119,10 +119,10 @@ func handleCriticalRAM(ctx *AppContext, bot BotAPI, s Stats) {
 			var msgText string
 			if err != nil {
 				msgText = fmt.Sprintf("❌ *Auto-restart failed*\n\nRAM critical: `%.1f%%`\nContainer: `%s`\nError: %v", s.RAM, target.name, err)
-				ctx.State.AddReportEvent("critical", fmt.Sprintf("Auto-restart failed: %s (%v)", target.name, err))
+				ctx.State.AddEvent("critical", fmt.Sprintf("Auto-restart failed: %s (%v)", target.name, err))
 			} else {
 				msgText = fmt.Sprintf("🔄 *Auto-restart done*\n\nRAM was critical: `%.1f%%`\nRestarted: `%s` (`%.1f%%` mem)\n\n_Watching..._", s.RAM, target.name, target.memPct)
-				ctx.State.AddReportEvent("action", fmt.Sprintf("Auto-restart: %s (RAM %.1f%%)", target.name, s.RAM))
+				ctx.State.AddEvent("action", fmt.Sprintf("Auto-restart: %s (RAM %.1f%%)", target.name, s.RAM))
 			}
 
 			if !ctx.IsQuietHours() {
@@ -164,13 +164,13 @@ func canAutoRestart(ctx *AppContext, containerName string) bool {
 // recordAutoRestart records an auto-restart
 func recordAutoRestart(ctx *AppContext, containerName string) {
 	ctx.Docker.Mu.Lock()
-	defer ctx.Docker.Mu.Unlock()
-
 	if ctx.Docker.AutoRestarts == nil {
 		ctx.Docker.AutoRestarts = make(map[string][]time.Time)
 	}
-
 	ctx.Docker.AutoRestarts[containerName] = append(ctx.Docker.AutoRestarts[containerName], time.Now())
+	ctx.Docker.Mu.Unlock()
+
+	// saveState acquires Docker.Mu.RLock internally — must be called outside the lock
 	saveState(ctx)
 }
 

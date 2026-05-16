@@ -51,17 +51,17 @@ func generateDailyReport(ctx *AppContext, greeting string, onModelChange func(st
 	} else if len(events) > 0 {
 		b.WriteString(fmt.Sprintf("*%s*\n", ctx.Tr("report_events")))
 		for _, e := range events {
-			icon := "·"
+			icon := "ℹ️"
 			switch e.Type {
 			case "warning":
-				icon = "~"
+				icon = "⚠️"
 			case "critical":
-				icon = "!"
+				icon = "🔴"
 			case "action":
-				icon = ">"
+				icon = "⚙️"
 			}
 			timeStr := e.Time.In(ctx.State.TimeLocation).Format("15:04")
-			b.WriteString(fmt.Sprintf("%s %s %s\n", icon, timeStr, format.Truncate(e.Message, 28)))
+			b.WriteString(fmt.Sprintf("%s %s %s\n", icon, timeStr, format.Truncate(e.Message, 35)))
 		}
 		b.WriteString("\n")
 	}
@@ -89,7 +89,7 @@ func generateDailyReport(ctx *AppContext, greeting string, onModelChange func(st
 		if hc.LastPingSuccess {
 			status = "✅"
 		}
-		b.WriteString(fmt.Sprintf("\nHealthchecks: %s (%.1f%%)", status, float64(hc.SuccessfulPings)/float64(maxInt(hc.TotalPings, 1))*100))
+		b.WriteString(fmt.Sprintf("\nHealthchecks: %s (%.1f%%)", status, float64(hc.SuccessfulPings)/float64(max(hc.TotalPings, 1))*100))
 	}
 	b.WriteString(fmt.Sprintf("\nContainers: %d %s", running, containerLabel))
 	if stopped > 0 {

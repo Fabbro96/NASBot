@@ -105,13 +105,12 @@ func recordHealthcheckSuccess(ctx *AppContext, bot BotAPI) {
 		downtimeDuration := event.EndTime.Sub(event.StartTime)
 		event.Duration = format.FormatDuration(downtimeDuration)
 		ctx.Monitor.HealthInDowntime = false
+		downtimeStr = event.Duration
 
 		slog.Warn("Healthchecks: downtime ended", "duration", event.Duration)
-		// Registrazione persistente dell'evento (sia nel log che nel file di stato).
 		ctx.State.AddEvent("info", fmt.Sprintf("🟢 Healthchecks recovered (down for %s)", downtimeStr))
 
 		shouldNotify = true
-		downtimeStr = event.Duration
 	}
 
 	totalPings = ctx.Monitor.Healthchecks.TotalPings
@@ -139,7 +138,7 @@ func recordHealthcheckSuccess(ctx *AppContext, bot BotAPI) {
 			safeSend(bot, m)
 		}
 		// Fallback for older code reading AddReportEvent
-		ctx.State.AddReportEvent("info", fmt.Sprintf("🟢 Healthchecks recovered (down for %s)", downtimeStr))
+		ctx.State.AddEvent("info", fmt.Sprintf("🟢 Healthchecks recovered (down for %s)", downtimeStr))
 	}
 
 	// Save state periodically (every 10 pings)
@@ -214,7 +213,7 @@ func recordHealthcheckFailure(ctx *AppContext, bot BotAPI, reason string) {
 			safeSend(bot, m)
 		}
 		// Fallback per vecchi report event
-		ctx.State.AddReportEvent("warning", fmt.Sprintf("🔴 Healthchecks down: %s", reason))
+		ctx.State.AddEvent("warning", fmt.Sprintf("🔴 Healthchecks down: %s", reason))
 	} else {
 		// ALREADY IN DOWNTIME - check for force reboot timeout (6 minutes)
 		if len(ctx.Monitor.Healthchecks.DowntimeEvents) > 0 {
@@ -373,7 +372,7 @@ func getHealthchecksAISummary(ctx *AppContext) string {
 	sb.WriteString(fmt.Sprintf("- Total pings: %d\n", ctx.Monitor.Healthchecks.TotalPings))
 	sb.WriteString(fmt.Sprintf("- Successful: %d\n", ctx.Monitor.Healthchecks.SuccessfulPings))
 	sb.WriteString(fmt.Sprintf("- Failed: %d\n", ctx.Monitor.Healthchecks.FailedPings))
-	sb.WriteString(fmt.Sprintf("- Success rate: %.1f%%\n", float64(ctx.Monitor.Healthchecks.SuccessfulPings)/float64(maxInt(ctx.Monitor.Healthchecks.TotalPings, 1))*100))
+	sb.WriteString(fmt.Sprintf("- Success rate: %.1f%%\n", float64(ctx.Monitor.Healthchecks.SuccessfulPings)/float64(max(ctx.Monitor.Healthchecks.TotalPings, 1))*100))
 	sb.WriteString("\nDowntime events:\n")
 
 	for _, event := range ctx.Monitor.Healthchecks.DowntimeEvents {
