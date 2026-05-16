@@ -36,7 +36,7 @@ func generateDailyReport(ctx *AppContext, greeting string, onModelChange func(st
 		periodDesc = fmt.Sprintf("%s → %s", midnight.Format("15:04"), now.Format("15:04"))
 	}
 
-	aiReport, aiErr := generateAIReportWithPeriod(ctx, events, periodDesc, onModelChange)
+	aiReport, aiErr := generateAIReport(ctx, events, onModelChange)
 	if aiErr != nil {
 		slog.Error("Gemini AI report error", "err", aiErr)
 	}
@@ -128,7 +128,7 @@ func generateReport(ctx *AppContext, manual bool, onModelChange func(string)) st
 
 	periodDesc := fmt.Sprintf("00:00 → %s (today)", now.Format("15:04"))
 
-	aiReport, aiErr := generateAIReportWithPeriod(ctx, filteredEvents, periodDesc, onModelChange)
+	aiReport, aiErr := generateAIReport(ctx, filteredEvents, onModelChange)
 
 	var b strings.Builder
 	b.WriteString(ctx.Tr("report_title"))
