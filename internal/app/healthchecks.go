@@ -137,8 +137,6 @@ func recordHealthcheckSuccess(ctx *AppContext, bot BotAPI) {
 			m.ParseMode = "Markdown"
 			safeSend(bot, m)
 		}
-		// Fallback for older code reading AddReportEvent
-		ctx.State.AddEvent("info", fmt.Sprintf("🟢 Healthchecks recovered (down for %s)", downtimeStr))
 	}
 
 	// Save state periodically (every 10 pings)
@@ -212,8 +210,6 @@ func recordHealthcheckFailure(ctx *AppContext, bot BotAPI, reason string) {
 			m.ParseMode = "Markdown"
 			safeSend(bot, m)
 		}
-		// Fallback per vecchi report event
-		ctx.State.AddEvent("warning", fmt.Sprintf("🔴 Healthchecks down: %s", reason))
 	} else {
 		// ALREADY IN DOWNTIME - check for force reboot timeout (6 minutes)
 		if len(ctx.Monitor.Healthchecks.DowntimeEvents) > 0 {

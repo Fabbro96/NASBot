@@ -141,7 +141,7 @@ func getDockerMenuText(ctx *AppContext) (string, *tgbotapi.InlineKeyboardMarkup)
 }
 
 // getDockerStatsText returns container resource usage stats
-func getDockerStatsText(_ *AppContext) string {
+func getDockerStatsText(ctx *AppContext) string {
 	timeoutCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
@@ -159,7 +159,7 @@ func getDockerStatsText(_ *AppContext) string {
 	}
 
 	var b strings.Builder
-	b.WriteString("📊 *" + "Container Resources" + "*\n```\n")
+	b.WriteString("📊 *" + ctx.Tr("docker_stats_title") + "*\n```\n")
 	b.WriteString(fmt.Sprintf("%-12s %5s %5s %s\n", "NAME", "CPU", "MEM%", "MEM"))
 	b.WriteString("─────────────────────────────\n")
 
