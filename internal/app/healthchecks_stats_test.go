@@ -32,10 +32,10 @@ func TestGetHealthchecksStatsIncludesWatchdogs(t *testing.T) {
 
 func TestGetHealthchecksPeriodRate(t *testing.T) {
 	tests := []struct {
-		name         string
-		hc           HealthchecksState
-		wantRate     float64
-		wantTotal    int
+		name      string
+		hc        HealthchecksState
+		wantRate  float64
+		wantTotal int
 	}{
 		{
 			name: "normal period 100%",

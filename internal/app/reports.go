@@ -84,19 +84,19 @@ func generateDailyReport(ctx *AppContext, greeting string, onModelChange func(st
 	if ctx.Config.Healthchecks.Enabled {
 		ctx.Monitor.Mu.Lock()
 		hc := ctx.Monitor.Healthchecks
-		
+
 		// Update the snapshot for the next report period
 		ctx.Monitor.Healthchecks.ReportBaseTotal = ctx.Monitor.Healthchecks.TotalPings
 		ctx.Monitor.Healthchecks.ReportBaseSuccessful = ctx.Monitor.Healthchecks.SuccessfulPings
 		ctx.Monitor.Mu.Unlock()
-		
+
 		goSafe("save-state-healthcheck-snapshot", func() { saveState(ctx) })
 
 		status := "❌"
 		if hc.LastPingSuccess {
 			status = "✅"
 		}
-		
+
 		rate, _ := getHealthchecksPeriodRate(hc)
 		b.WriteString(fmt.Sprintf("\nHealthchecks: %s (%.1f%%)", status, rate))
 	}
