@@ -241,6 +241,22 @@ func recordHealthcheckFailure(ctx *AppContext, bot BotAPI, reason string) {
 	}
 }
 
+// getHealthchecksPeriodRate calculates the success rate for the current report period
+func getHealthchecksPeriodRate(hc HealthchecksState) (rate float64, periodTotal int) {
+	periodTotal = hc.TotalPings - hc.ReportBaseTotal
+	periodSuccess := hc.SuccessfulPings - hc.ReportBaseSuccessful
+
+	// If no pings occurred in this period, assume 100% healthy based on last status
+	if periodTotal <= 0 {
+		if hc.LastPingSuccess {
+			return 100.0, 0
+		}
+		return 0.0, 0
+	}
+
+	return float64(periodSuccess) / float64(periodTotal) * 100, periodTotal
+}
+
 // getHealthchecksStats returns formatted stats for the /health command
 func getHealthchecksStats(ctx *AppContext) string {
 	ctx.Monitor.Mu.Lock()
