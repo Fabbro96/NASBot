@@ -22,6 +22,8 @@ type HealthchecksState struct {
 	TotalPings              int           `json:"total_pings"`
 	SuccessfulPings         int           `json:"successful_pings"`
 	FailedPings             int           `json:"failed_pings"`
+	ReportBaseTotal         int           `json:"report_base_total"`
+	ReportBaseSuccessful    int           `json:"report_base_successful"`
 	LastPingTime            time.Time     `json:"last_ping_time"`
 	LastPingSuccess         bool          `json:"last_ping_success"`
 	LastFailure             time.Time     `json:"last_failure"`
