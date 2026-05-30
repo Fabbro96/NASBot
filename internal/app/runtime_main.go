@@ -235,14 +235,14 @@ func sendStartupNotification(ctx *AppContext, bot BotAPI) {
 
 func registerBotCommands(ctx *AppContext, bot BotAPI) {
 	cmds := []tgbotapi.BotCommand{
-		{Command: "status", Description: "Stato generale del sistema"},
-		{Command: "quick", Description: "Sommario rapido (CPU, RAM, Disks)"},
-		{Command: "docker", Description: "Gestione container Docker"},
-		{Command: "reboot", Description: "Riavvia il server NAS"},
-		{Command: "top", Description: "Monitoraggio dei processi attivi"},
-		{Command: "temp", Description: "Mostra le temperature hardware"},
-		{Command: "report", Description: "Genera report diagnostico completo"},
-		{Command: "settings", Description: "Impostazioni e preferenze del bot"},
+		{Command: "status", Description: ctx.Tr("cmd_status_desc")},
+		{Command: "quick", Description: ctx.Tr("cmd_quick_desc")},
+		{Command: "docker", Description: ctx.Tr("cmd_docker_desc")},
+		{Command: "reboot", Description: ctx.Tr("cmd_reboot_desc")},
+		{Command: "top", Description: ctx.Tr("cmd_top_desc")},
+		{Command: "temp", Description: ctx.Tr("cmd_temp_desc")},
+		{Command: "report", Description: ctx.Tr("cmd_report_desc")},
+		{Command: "settings", Description: ctx.Tr("cmd_settings_desc")},
 	}
 
 	req := tgbotapi.NewSetMyCommands(cmds...)

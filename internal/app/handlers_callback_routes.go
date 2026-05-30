@@ -12,6 +12,7 @@ import (
 func handleSettingsCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int, data string) bool {
 	if lang, fromSettings, ok := parseLanguageCallbackData(data); ok {
 		ctx.Settings.SetLanguage(lang)
+		registerBotCommands(ctx, bot)
 		saveState(ctx)
 		if fromSettings {
 			text, kb := getSettingsMenuText(ctx)
