@@ -244,7 +244,7 @@ func registerBotCommands(ctx *AppContext, bot BotAPI) {
 		{Command: "report", Description: "Genera report diagnostico completo"},
 		{Command: "settings", Description: "Impostazioni e preferenze del bot"},
 	}
-	
+
 	req := tgbotapi.NewSetMyCommands(cmds...)
 	if _, err := bot.Request(req); err != nil {
 		slog.Warn("Failed to register bot commands", "err", err)
