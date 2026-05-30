@@ -71,6 +71,9 @@ func RunBot() {
 		slog.Error("Delete webhook failed", "err", err)
 	}
 
+	// Register Bot Commands
+	registerBotCommands(app, bot)
+
 	// Startup Notification
 	sendStartupNotification(app, bot)
 
@@ -228,6 +231,26 @@ func sendStartupNotification(ctx *AppContext, bot BotAPI) {
 	msg := tgbotapi.NewMessage(int64(ctx.Config.AllowedUserID), startupText)
 	msg.ParseMode = "Markdown"
 	safeSend(bot, msg)
+}
+
+func registerBotCommands(ctx *AppContext, bot BotAPI) {
+	cmds := []tgbotapi.BotCommand{
+		{Command: "status", Description: "Stato generale del sistema"},
+		{Command: "quick", Description: "Sommario rapido (CPU, RAM, Disks)"},
+		{Command: "docker", Description: "Gestione container Docker"},
+		{Command: "reboot", Description: "Riavvia il server NAS"},
+		{Command: "top", Description: "Monitoraggio dei processi attivi"},
+		{Command: "temp", Description: "Mostra le temperature hardware"},
+		{Command: "report", Description: "Genera report diagnostico completo"},
+		{Command: "settings", Description: "Impostazioni e preferenze del bot"},
+	}
+
+	req := tgbotapi.NewSetMyCommands(cmds...)
+	if _, err := bot.Request(req); err != nil {
+		slog.Warn("Failed to register bot commands", "err", err)
+	} else {
+		slog.Debug("Bot commands registered successfully")
+	}
 }
 
 // Global PID file variable

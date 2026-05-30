@@ -98,13 +98,21 @@ func getTempText(ctx *AppContext) string {
 
 	cpuTemp := readCPUTemp()
 	cpuIcon, cpuStatus := cpuTempStatus(ctx, cpuTemp)
-	b.WriteString(fmt.Sprintf(tr("temp_cpu"), cpuIcon, cpuTemp, cpuStatus))
+	if cpuTemp <= 0 {
+		b.WriteString(fmt.Sprintf("%s CPU: N/A — %s\n\n", cpuIcon, cpuStatus))
+	} else {
+		b.WriteString(fmt.Sprintf(tr("temp_cpu"), cpuIcon, cpuTemp, cpuStatus))
+	}
 
 	b.WriteString(tr("temp_disks"))
 	for _, dev := range getSmartDevices(ctx) {
 		temp, health := readDiskSMART(dev)
 		icon, status := diskTempStatus(ctx, temp, health)
-		b.WriteString(fmt.Sprintf("%s %s: %d°C — %s\n", icon, dev, temp, status))
+		if temp < 0 {
+			b.WriteString(fmt.Sprintf("%s %s: N/A — %s\n", icon, dev, status))
+		} else {
+			b.WriteString(fmt.Sprintf("%s %s: %d°C — %s\n", icon, dev, temp, status))
+		}
 	}
 	return b.String()
 }

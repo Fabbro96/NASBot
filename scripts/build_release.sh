@@ -55,8 +55,8 @@ if [[ "$clean" == "true" ]]; then
     rm -f nasbot nasbot-arm64
 fi
 
-echo -e "${YELLOW}Building for current architecture...${NC}"
-go build -ldflags "-X main.Version=${VERSION}" -o nasbot .
+echo -e "${YELLOW}Building for generic AMD64 (Linux)...${NC}"
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.Version=${VERSION}" -o nasbot .
 echo -e "${GREEN}✅ Success: nasbot${NC}"
 
 echo -e "${YELLOW}Building for generic ARM64 (Linux)...${NC}"
