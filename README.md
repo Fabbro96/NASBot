@@ -69,13 +69,22 @@ All scripts (package, deploy, runtime) use a hierarchical configuration system w
 - 📋 **Examples**: [nasbot.config.example](nasbot.config.example) - Real-world scenarios
 
 ### 1. Download & Install
-Run the installer script (works on most Linux ARM64/AMD64 systems):
+
+The official and **recommended** method to install, run, and maintain the bot is using the provided `start_bot.sh` script.
 
 ```bash
-# Upload nasbot-arm64, config.json and install.sh to a folder
-chmod +x install.sh
-sudo ./install.sh
+chmod +x scripts/start_bot.sh
+./scripts/start_bot.sh install
 ```
+
+> [!WARNING]
+> **Do not use `systemd` to run NASBot.**
+> Using `systemd` conflicts with the bot's internal auto-update architecture. When the bot attempts to restart itself after an update via `start_bot.sh restart`, `systemd` will detect the killed process and try to restart it simultaneously, resulting in parallel conflicting instances.
+
+Running `./scripts/start_bot.sh install` will automatically:
+- Setup a watchdog via `crontab` (runs every 5 minutes to ensure the bot is alive).
+- Manage log rotation.
+- Start the process cleanly in the background.
 
 ### Minimal NAS Runtime (No Source Files)
 
@@ -86,24 +95,11 @@ If you want a clean NAS folder with only runtime essentials (no Go source), buil
 ```
 
 This creates `dist/runtime` with only:
-
 - `nasbot`
 - `start_bot.sh`
 - `config.example.json`
 
 On NAS, keep just these plus runtime-generated files (`nasbot.log`, `nasbot.pid`, `nasbot_state.json`).
-
-Optional deploy with rsync:
-
-```bash
-./scripts/deploy_runtime_rsync.sh --target user@nas:/Volume1/public --arch arm64
-```
-
-Preview only:
-
-```bash
-./scripts/deploy_runtime_rsync.sh --target user@nas:/Volume1/public --arch arm64 --dry-run
-```
 
 ### 2. Configuration (`config.json`)
 Edit `config.json` with your details.
@@ -123,47 +119,42 @@ Edit `config.json` with your details.
 
 ## 🎮 Commands
 
-### 📊 Monitoring
+### 📊 Status & Info
 | Command | Action |
 |:--------|--------|
-| `/status` | 🖥 Main dashboard (CPU, RAM, Disk, I/O) |
-| `/quick` | ⚡ Ultra-compact one-line summary |
-| `/temp` | 🌡 CPU & disk temperatures |
-| `/top` | 🔥 Top processes by CPU |
-| `/sysinfo` | 🖥 Detailed system info |
-| `/diskpred` | 📈 Disk space prediction |
+| `/status`, `/start` | Stato generale e riepilogo del sistema |
+| `/top` | Monitoraggio delle risorse e dei processi |
+| `/sysinfo` | Informazioni dettagliate sull'hardware |
+| `/temp` | Temperature hardware (CPU, dischi, ecc.) |
 
 ### 🐳 Docker
 | Command | Action |
 |:--------|--------|
-| `/docker` | Manage containers (start/stop/restart/kill/logs) |
-| `/dstats` | Container resource usage |
-| `/kill <name>` | Force kill a container |
-| `/logsearch <name> <keyword>` | Search container logs |
-| `/restartdocker` | Restart the Docker daemon |
+| `/docker` | Menu interattivo di gestione Docker |
+| `/dstats`, `/container`, `/restartdocker`, `/kill` | Comandi rapidi per gestione container |
 
-### 🌐 Network
+### ⚡ System & Power
 | Command | Action |
 |:--------|--------|
-| `/net` | Local & public IP |
-| `/speedtest` | Run a speed test |
+| `/reboot`, `/shutdown`, `/forcereboot` | Gestione alimentazione NAS |
+| `/diskpred` (o `/prediction`) | Previsione esaurimento spazio su disco |
+| `/health` (o `/healthchecks`) | Stato dei controlli di salute automatici |
+| `/update` | Aggiorna automaticamente il bot scaricando l'ultima release |
 
-### ⚙️ Settings & System
+### 🌐 Network & Logs
 | Command | Action |
 |:--------|--------|
-| `/settings` | Configure language, reports, quiet hours |
-| `/report` | Generate full status report now |
-| `/ping` | Check if bot is alive |
-| `/version` | Show bot version, Go runtime, architecture |
-| `/health` | Healthchecks.io status & uptime |
-| `/config` | Show current config summary |
-| `/configjson` | Show full config.json (redacted) |
-| `/configset <json>` | Update config.json live |
-| `/logs` | Recent system logs |
-| `/ask <question>` | Ask AI about recent logs |
-| `/update` | Install latest GitHub release |
-| `/reboot` / `/shutdown` | Power control (with confirmation) |
-| `/forcereboot` | Forced reboot (no confirmation) |
+| `/net`, `/speedtest` | Stato della rete ed esecuzione speedtest |
+| `/ping` | Verifica latenza |
+| `/logs`, `/logsearch` | Lettura e ricerca nei log di sistema o del bot |
+
+### 🤖 AI, Config & Tools
+| Command | Action |
+|:--------|--------|
+| `/ask` | Assistente AI (Gemini) per chiedere informazioni |
+| `/quick` (o `/q`) | Menu comandi rapidi personalizzati |
+| `/report` | Genera un report diagnostico completo del NAS |
+| `/config`, `/settings`, `/language` | Gestione delle impostazioni e della lingua |
 
 ---
 
