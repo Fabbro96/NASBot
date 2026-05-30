@@ -17,14 +17,29 @@ import (
 // truncate is a convenience alias kept for readability in call sites (e.g. docker.go).
 func truncate(s string, max int) string { return format.Truncate(s, max) }
 
-// readCPUTemp reads CPU temperature from thermal zone
+// readCPUTemp reads CPU temperature from thermal zone or hwmon
 func readCPUTemp() float64 {
-	raw, err := os.ReadFile("/sys/class/thermal/thermal_zone0/temp")
-	if err != nil {
-		return 0
+	candidates := []string{
+		"/sys/class/thermal/thermal_zone0/temp",
+		"/sys/class/thermal/thermal_zone1/temp",
+		"/sys/class/hwmon/hwmon0/temp1_input",
+		"/sys/class/hwmon/hwmon1/temp1_input",
+		"/sys/class/hwmon/hwmon2/temp1_input",
 	}
-	val, _ := strconv.Atoi(strings.TrimSpace(string(raw)))
-	return float64(val) / 1000.0
+
+	for _, path := range candidates {
+		raw, err := os.ReadFile(path)
+		if err == nil {
+			val, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+			if err == nil {
+				temp := float64(val) / 1000.0
+				if temp > -50 && temp < 150 {
+					return temp
+				}
+			}
+		}
+	}
+	return 0
 }
 
 // readDiskSMART reads disk SMART data
@@ -32,14 +47,27 @@ func readDiskSMART(device string) (temp int, health string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
+	temp = -1
 	health = "UNKNOWN"
 
 	out, attrErr := runCommandStdout(ctx, "smartctl", "-A", "/dev/"+device)
 	for _, line := range strings.Split(string(out), "\n") {
+		trimmed := strings.TrimSpace(line)
 		if strings.Contains(line, "Temperature_Celsius") || strings.Contains(line, "Temperature_Internal") {
 			fields := strings.Fields(line)
 			if len(fields) >= 10 {
-				temp, _ = strconv.Atoi(fields[9])
+				t, _ := strconv.Atoi(fields[9])
+				if t > 0 {
+					temp = t
+				}
+			}
+		} else if strings.HasPrefix(trimmed, "Temperature:") {
+			fields := strings.Fields(trimmed)
+			if len(fields) >= 2 {
+				t, _ := strconv.Atoi(fields[1])
+				if t > 0 {
+					temp = t
+				}
 			}
 		}
 	}
