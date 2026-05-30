@@ -293,6 +293,8 @@ func restartWithStartScript() error {
 	candidates := []string{
 		filepath.Join(base, "scripts", "start_bot.sh"),
 		filepath.Join(base, "start_bot.sh"),
+		filepath.Join(filepath.Dir(base), "scripts", "start_bot.sh"),
+		filepath.Join(filepath.Dir(base), "start_bot.sh"),
 	}
 	var script string
 	for _, c := range candidates {
