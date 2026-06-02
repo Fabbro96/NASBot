@@ -20,7 +20,7 @@ func (c *WolCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, arg
 
 	macClean := strings.ReplaceAll(macStr, ":", "")
 	macClean = strings.ReplaceAll(macClean, "-", "")
-	
+
 	if len(macClean) != 12 {
 		sendMarkdown(bot, msg.Chat.ID, fmt.Sprintf(ctx.Tr("wol_fail"), "Invalid MAC address format (must be 12 hex characters)"))
 		return
