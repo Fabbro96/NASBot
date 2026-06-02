@@ -23,6 +23,7 @@ func SetupCommandRegistry() *CommandRegistry {
 	// Network
 	r.Register("net", &NetCmd{})
 	r.Register("speedtest", &SpeedtestCmd{})
+	r.Register("wol", &WolCmd{})
 
 	// Tools
 	r.Register("ping", &PingCmd{})

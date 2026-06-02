@@ -125,5 +125,8 @@
   },
   "update": {
     "auto_apply": false
+  },
+  "wake_on_lan": {
+    "mac_address": ""
   }
 }
