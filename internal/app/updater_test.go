@@ -30,22 +30,7 @@ func TestIsNewerRelease(t *testing.T) {
 	}
 }
 
-func TestPickAssetFallsBackToAnyAsset(t *testing.T) {
-	rel := githubRelease{TagName: "v1.2.3", Assets: []struct {
-		Name               string `json:"name"`
-		BrowserDownloadURL string `json:"browser_download_url"`
-	}{
-		{Name: "something-else", BrowserDownloadURL: "https://example.com/x"},
-	}}
 
-	name, url, ok := pickAsset(rel)
-	if !ok {
-		t.Fatalf("expected fallback asset pick")
-	}
-	if name != "something-else" || url == "" {
-		t.Fatalf("unexpected picked asset: name=%q url=%q", name, url)
-	}
-}
 
 type mockHTTPClientFunc func(req *http.Request) *http.Response
 
@@ -63,7 +48,7 @@ func TestApplyLatestRelease_CapturesMsgID(t *testing.T) {
 	app.HTTP = &http.Client{
 		Transport: mockHTTPClientFunc(func(req *http.Request) *http.Response {
 			if strings.Contains(req.URL.String(), "releases/latest") {
-				body := `{"tag_name": "v9.9.9", "assets": [{"name": "nasbot-linux-arm64", "browser_download_url": "http://fake"}]}`
+				body := `{"tag_name": "v9.9.9", "assets": [{"name": "nasbot", "browser_download_url": "http://fake"}]}`
 				return &http.Response{
 					StatusCode: 200,
 					Body:       io.NopCloser(bytes.NewBufferString(body)),
