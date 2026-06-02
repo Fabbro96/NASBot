@@ -89,9 +89,13 @@ func isNewerRelease(latestTag, currentVersion string) bool {
 
 func preferredReleaseAssets() []string {
 	if runtime.GOARCH == "arm64" {
-		return []string{"nasbot-arm64", "nasbot-update-arm64", "nasbot"}
+		return []string{"nasbot-arm64", "nasbot-update-arm64"}
 	}
-	return []string{"nasbot", "nasbot-amd64", "nasbot-arm64"}
+	if runtime.GOARCH == "amd64" {
+		return []string{"nasbot-amd64", "nasbot-update-amd64", "nasbot"}
+	}
+	// Fallback for other archs
+	return []string{"nasbot-" + runtime.GOARCH, "nasbot"}
 }
 
 func pickAsset(rel githubRelease) (name, url string, ok bool) {
@@ -102,11 +106,7 @@ func pickAsset(rel githubRelease) (name, url string, ok bool) {
 			}
 		}
 	}
-	for _, a := range rel.Assets {
-		if a.BrowserDownloadURL != "" {
-			return a.Name, a.BrowserDownloadURL, true
-		}
-	}
+	// Do not fallback to a random asset to avoid breaking the bot with wrong architecture.
 	return "", "", false
 }
 
@@ -245,11 +245,7 @@ func downloadReleaseAsset(ctx *AppContext, rel releaseCandidate) (string, error)
 	}
 	req.Header.Set("User-Agent", "nasbot-updater")
 
-	client := http.DefaultClient
-	if ctx != nil && ctx.HTTP != nil {
-		client = ctx.HTTP
-	}
-
+	client := &http.Client{Timeout: 10 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err

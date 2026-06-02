@@ -168,9 +168,19 @@ func networkForceRebootAfter(cfg *Config) time.Duration {
 }
 
 func pingHost(host string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	return runCommand(ctx, "ping", "-c", "1", "-W", "2", host) == nil
+	// Prova fino a 4 volte con 5 secondi di pausa (circa 15-20 sec di tolleranza)
+	for i := 0; i < 4; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		err := runCommand(ctx, "ping", "-c", "1", "-W", "2", host)
+		cancel()
+		if err == nil {
+			return true // Successo
+		}
+		if i < 3 {
+			time.Sleep(5 * time.Second)
+		}
+	}
+	return false
 }
 
 func checkDNS(host string) bool {
