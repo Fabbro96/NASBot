@@ -236,7 +236,7 @@ func updaterTargetPath() (string, error) {
 }
 
 func downloadReleaseAsset(ctx *AppContext, rel releaseCandidate) (string, error) {
-	reqCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	reqCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, rel.AssetURL, nil)
