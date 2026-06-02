@@ -30,8 +30,6 @@ func TestIsNewerRelease(t *testing.T) {
 	}
 }
 
-
-
 type mockHTTPClientFunc func(req *http.Request) *http.Response
 
 func (m mockHTTPClientFunc) RoundTrip(req *http.Request) (*http.Response, error) {
