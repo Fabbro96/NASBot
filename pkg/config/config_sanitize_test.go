@@ -114,12 +114,12 @@ func TestSanitizeConfig_NormalizesLists(t *testing.T) {
 			CriticalThreshold: 90,
 		},
 		NetworkWatchdog: NetworkWatchdogConfig{
-			Targets:              []string{" 1.1.1.1 ", "", "1.1.1.1", "8.8.8.8"},
+			Targets:              []string{" 9.9.9.9 ", "", "9.9.9.9", "1.1.1.1"},
 			CheckIntervalSecs:    60,
 			FailureThreshold:     3,
 			CooldownMins:         10,
 			ForceRebootAfterMins: 2000,
-			DNSHost:              "google.com",
+			DNSHost:              "quad9.net",
 		},
 	}
 
@@ -137,7 +137,7 @@ func TestSanitizeConfig_NormalizesLists(t *testing.T) {
 	if len(cfg.FSWatchdog.ExcludePatterns) != 1 || cfg.FSWatchdog.ExcludePatterns[0] != "/proc" {
 		t.Fatalf("exclude patterns not normalized: %#v", cfg.FSWatchdog.ExcludePatterns)
 	}
-	if len(cfg.NetworkWatchdog.Targets) != 2 || cfg.NetworkWatchdog.Targets[0] != "1.1.1.1" || cfg.NetworkWatchdog.Targets[1] != "8.8.8.8" {
+	if len(cfg.NetworkWatchdog.Targets) != 2 || cfg.NetworkWatchdog.Targets[0] != "9.9.9.9" || cfg.NetworkWatchdog.Targets[1] != "1.1.1.1" {
 		t.Fatalf("network targets not normalized: %#v", cfg.NetworkWatchdog.Targets)
 	}
 	if cfg.NetworkWatchdog.ForceRebootAfterMins != 1440 {

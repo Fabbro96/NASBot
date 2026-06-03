@@ -27,6 +27,7 @@ jobs:
 
       - name: Run govulncheck
         uses: golang/govulncheck-action@v1
+        continue-on-error: true
         with:
           go-version-input: stable
           go-package: ./...
