@@ -37,8 +37,8 @@ func defaultConfigTemplate() Config {
 		NetworkWatchdog: NetworkWatchdogConfig{
 			Enabled:              true,
 			CheckIntervalSecs:    60,
-			Targets:              []string{"1.1.1.1", "8.8.8.8"},
-			DNSHost:              "google.com",
+			Targets:              []string{"9.9.9.9", "1.1.1.1"},
+			DNSHost:              "quad9.net",
 			Gateway:              "",
 			FailureThreshold:     3,
 			CooldownMins:         10,

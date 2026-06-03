@@ -26,11 +26,11 @@ func checkNetworkHealth(ctx *AppContext, bot BotAPI) {
 
 	targets := cfg.NetworkWatchdog.Targets
 	if len(targets) == 0 {
-		targets = []string{"1.1.1.1", "8.8.8.8"}
+		targets = []string{"9.9.9.9", "1.1.1.1"}
 	}
 	dnsHost := cfg.NetworkWatchdog.DNSHost
 	if dnsHost == "" {
-		dnsHost = "google.com"
+		dnsHost = "quad9.net"
 	}
 	threshold := cfg.NetworkWatchdog.FailureThreshold
 	if threshold <= 0 {
@@ -184,6 +184,18 @@ func pingHost(host string) bool {
 }
 
 func checkDNS(host string) bool {
+	if doCheckDNS(host) {
+		return true
+	}
+	time.Sleep(10 * time.Second)
+	if doCheckDNS(host) {
+		return true
+	}
+	time.Sleep(15 * time.Second)
+	return doCheckDNS(host)
+}
+
+func doCheckDNS(host string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
