@@ -83,7 +83,7 @@ A system report is being generated and I need you to summarize the recent system
 }
 
 func callGeminiWithFallback(ctx *AppContext, prompt string, onModelChange func(string)) (string, error) {
-	models := []string{"gemini-3.1-flash-lite-preview", "gemini-3-flash-preview", "gemini-3.1-pro-preview"}
+	models := []string{"gemini-3.1-flash-lite", "gemini-3.5-flash", "gemini-3.1-pro-preview"}
 
 	c, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()

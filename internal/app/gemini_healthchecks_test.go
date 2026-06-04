@@ -46,7 +46,7 @@ func errorResponse(status int, body string) *http.Response {
 func TestCallGeminiAPIWithError_Success(t *testing.T) {
 	prompt := "hello world"
 	mockClient := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if !strings.Contains(req.URL.String(), "models/gemini-3.1-flash-lite-preview:generateContent") {
+		if !strings.Contains(req.URL.String(), "models/gemini-3.1-flash-lite:generateContent") {
 			t.Fatalf("unexpected URL: %s", req.URL.String())
 		}
 		bodyBytes, _ := io.ReadAll(req.Body)
@@ -63,7 +63,7 @@ func TestCallGeminiAPIWithError_Success(t *testing.T) {
 		HTTP: mockClient,
 	}
 
-	got, err := callGeminiAPIWithError(ctx, context.Background(), prompt, "gemini-3.1-flash-lite-preview")
+	got, err := callGeminiAPIWithError(ctx, context.Background(), prompt, "gemini-3.1-flash-lite")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestCallGeminiAPIWithError_Non200(t *testing.T) {
 		HTTP: mockClient,
 	}
 
-	_, err := callGeminiAPIWithError(ctx, context.Background(), "prompt", "gemini-3.1-flash-lite-preview")
+	_, err := callGeminiAPIWithError(ctx, context.Background(), "prompt", "gemini-3.1-flash-lite")
 	if err == nil || !strings.Contains(err.Error(), "API error 500") {
 		t.Fatalf("expected status error, got: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestCallGeminiAPIWithError_EmptyResponse(t *testing.T) {
 		HTTP: mockClient,
 	}
 
-	_, err := callGeminiAPIWithError(ctx, context.Background(), "prompt", "gemini-3.1-flash-lite-preview")
+	_, err := callGeminiAPIWithError(ctx, context.Background(), "prompt", "gemini-3.1-flash-lite")
 	if err == nil || !strings.Contains(err.Error(), "empty response") {
 		t.Fatalf("expected empty response error, got: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestCallGeminiWithFallback_RetriesUntilSuccess(t *testing.T) {
 			model = strings.TrimPrefix(path[idx+len("/models/"):], "")
 			model = strings.TrimSuffix(model, ":generateContent")
 		}
-		if model == "gemini-3.1-flash-lite-preview" || model == "gemini-3-flash-preview" {
+		if model == "gemini-3.1-flash-lite" || model == "gemini-3.5-flash" {
 			return errorResponse(500, "fail"), nil
 		}
 		if model == "gemini-3.1-pro-preview" {
@@ -149,7 +149,7 @@ func TestCallGeminiWithFallback_RetriesUntilSuccess(t *testing.T) {
 	if len(modelsSeen) < 3 {
 		t.Fatalf("expected at least 3 model attempts, got %d", len(modelsSeen))
 	}
-	if modelsSeen[0] != "gemini-3.1-flash-lite-preview" || modelsSeen[1] != "gemini-3-flash-preview" || modelsSeen[2] != "gemini-3.1-pro-preview" {
+	if modelsSeen[0] != "gemini-3.1-flash-lite" || modelsSeen[1] != "gemini-3.5-flash" || modelsSeen[2] != "gemini-3.1-pro-preview" {
 		t.Fatalf("unexpected model order: %v", modelsSeen)
 	}
 }

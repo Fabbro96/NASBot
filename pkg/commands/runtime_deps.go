@@ -30,7 +30,7 @@ type RuntimeDeps struct {
 	ReadCPUTemp                  func() float64
 	GetSmartDevices              func(ctx *AppContext) []string
 	ReadDiskSMART                func(device string) (temp int, health string)
-	Version                      string
+	Version                      func() string
 	RunCommandOutput             func(ctx context.Context, name string, args ...string) ([]byte, error)
 	RunCommandStdout             func(ctx context.Context, name string, args ...string) ([]byte, error)
 	RunCommand                   func(ctx context.Context, name string, args ...string) error
@@ -165,10 +165,10 @@ func readDiskSMART(device string) (temp int, health string) {
 }
 
 func getVersion() string {
-	if runtimeDeps.Version != "" {
-		return runtimeDeps.Version
+	if runtimeDeps.Version != nil {
+		return runtimeDeps.Version()
 	}
-	return "dev"
+	return "unknown"
 }
 
 func runCommandOutput(ctx context.Context, name string, args ...string) ([]byte, error) {

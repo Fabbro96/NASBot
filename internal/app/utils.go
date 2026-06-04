@@ -50,7 +50,7 @@ func readDiskSMART(device string) (temp int, health string) {
 	temp = -1
 	health = "UNKNOWN"
 
-	out, attrErr := runCommandStdout(ctx, "smartctl", "-A", "/dev/"+device)
+	out, attrErr := runCommandStdout(ctx, "sudo", "-n", "smartctl", "-A", "/dev/"+device)
 	for _, line := range strings.Split(string(out), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if strings.Contains(line, "Temperature_Celsius") || strings.Contains(line, "Temperature_Internal") {
@@ -72,7 +72,7 @@ func readDiskSMART(device string) (temp int, health string) {
 		}
 	}
 
-	out, healthErr := runCommandStdout(ctx, "smartctl", "-H", "/dev/"+device)
+	out, healthErr := runCommandStdout(ctx, "sudo", "-n", "smartctl", "-H", "/dev/"+device)
 	if healthErr == nil {
 		health = "OK"
 	}
