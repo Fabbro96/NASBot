@@ -119,8 +119,8 @@ start_bot() {
 	
 	nohup "$BOT_BINARY" >>"$LOG_FILE" 2>&1 &
 	local bg_pid=$!
-	disown $bg_pid 2>/dev/null || true
-	echo $bg_pid >"$PID_FILE"
+	disown 2>/dev/null || true
+	echo "$bg_pid" >"$PID_FILE"
 
 	sleep 2
 	if is_running; then

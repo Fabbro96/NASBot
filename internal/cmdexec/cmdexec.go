@@ -24,10 +24,10 @@ var systemPaths = []string{
 // resolveName returns the full path of name, searching the current PATH
 // first, then the fallback systemPaths.
 func resolveName(name string) (string, error) {
-	// Already an absolute path — just verify it exists.
+	// Already an absolute path — just verify it exists and is executable.
 	if filepath.IsAbs(name) {
-		if _, err := os.Stat(name); err == nil {
-			return name, nil
+		if p, err := exec.LookPath(name); err == nil {
+			return p, nil
 		}
 		return "", fmt.Errorf("command %s not found", name)
 	}
@@ -49,8 +49,8 @@ func resolveName(name string) (string, error) {
 			continue
 		}
 		candidate := filepath.Join(dir, name)
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
-			return candidate, nil
+		if p, err := exec.LookPath(candidate); err == nil {
+			return p, nil
 		}
 	}
 
