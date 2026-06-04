@@ -124,7 +124,7 @@ func saveConfig(c *Config) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(configFile, b, 0644)
+	return os.WriteFile(configFile, b, 0600)
 }
 
 func sanitizeConfig(c *Config) []string {
@@ -422,7 +422,7 @@ func applyConfigPatch(patch map[string]interface{}) (ConfigPatchResult, error) {
 	}
 
 	// Save
-	if err := os.WriteFile(configFile, newContent, 0644); err != nil {
+	if err := os.WriteFile(configFile, newContent, 0600); err != nil {
 		return result, err
 	}
 

@@ -4,9 +4,58 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"strings"
 )
+
+// systemPaths are extra directories searched when exec.LookPath fails.
+// This ensures commands like "reboot" or "shutdown" are found even when
+// /sbin and /usr/sbin are absent from the process PATH (e.g. under cron).
+var systemPaths = []string{
+	"/usr/sbin",
+	"/sbin",
+	"/usr/bin",
+	"/bin",
+}
+
+// resolveName returns the full path of name, searching the current PATH
+// first, then the fallback systemPaths.
+func resolveName(name string) (string, error) {
+	// Already an absolute path — just verify it exists.
+	if filepath.IsAbs(name) {
+		if _, err := os.Stat(name); err == nil {
+			return name, nil
+		}
+		return "", fmt.Errorf("command %s not found", name)
+	}
+
+	// Standard PATH lookup.
+	if p, err := exec.LookPath(name); err == nil {
+		return p, nil
+	}
+
+	// Avoid duplicate searching of directories already in PATH.
+	pathDirs := strings.Split(os.Getenv("PATH"), string(os.PathListSeparator))
+	inPath := make(map[string]bool, len(pathDirs))
+	for _, d := range pathDirs {
+		inPath[d] = true
+	}
+
+	for _, dir := range systemPaths {
+		if inPath[dir] {
+			continue
+		}
+		candidate := filepath.Join(dir, name)
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate, nil
+		}
+	}
+
+	return "", fmt.Errorf("command %s not found", name)
+}
 
 var ErrUnsupportedOS = errors.New("unsupported OS")
 
@@ -21,7 +70,7 @@ type Runner interface {
 type defaultRunner struct{}
 
 func (defaultRunner) Exists(name string) bool {
-	_, err := exec.LookPath(name)
+	_, err := resolveName(name)
 	return err == nil
 }
 
@@ -29,30 +78,33 @@ func (defaultRunner) CombinedOutput(ctx context.Context, name string, args ...st
 	if runtime.GOOS != "linux" {
 		return nil, ErrUnsupportedOS
 	}
-	if _, err := exec.LookPath(name); err != nil {
-		return nil, fmt.Errorf("command %s not found", name)
+	resolved, err := resolveName(name)
+	if err != nil {
+		return nil, err
 	}
-	return exec.CommandContext(ctx, name, args...).CombinedOutput()
+	return exec.CommandContext(ctx, resolved, args...).CombinedOutput()
 }
 
 func (defaultRunner) Output(ctx context.Context, name string, args ...string) ([]byte, error) {
 	if runtime.GOOS != "linux" {
 		return nil, ErrUnsupportedOS
 	}
-	if _, err := exec.LookPath(name); err != nil {
-		return nil, fmt.Errorf("command %s not found", name)
+	resolved, err := resolveName(name)
+	if err != nil {
+		return nil, err
 	}
-	return exec.CommandContext(ctx, name, args...).Output()
+	return exec.CommandContext(ctx, resolved, args...).Output()
 }
 
 func (defaultRunner) Run(ctx context.Context, name string, args ...string) error {
 	if runtime.GOOS != "linux" {
 		return ErrUnsupportedOS
 	}
-	if _, err := exec.LookPath(name); err != nil {
-		return fmt.Errorf("command %s not found", name)
+	resolved, err := resolveName(name)
+	if err != nil {
+		return err
 	}
-	return exec.CommandContext(ctx, name, args...).Run()
+	return exec.CommandContext(ctx, resolved, args...).Run()
 }
 
 var runner Runner = defaultRunner{}

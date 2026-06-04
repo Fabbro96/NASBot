@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"runtime/debug"
@@ -63,6 +64,9 @@ func RunBot() {
 		slog.Error("Failed to start bot", "err", err)
 		closeLogger()
 		os.Exit(1)
+	}
+	if httpClient, ok := bot.Client.(*http.Client); ok {
+		httpClient.Timeout = 90 * time.Second
 	}
 	slog.Info("NASBot started", "user", bot.Self.UserName)
 
@@ -267,7 +271,7 @@ func acquirePIDLock() {
 	pidPath := pidFilePath()
 	ensureParentDir(pidPath)
 
-	f, err := os.OpenFile(pidPath, os.O_RDWR|os.O_CREATE, 0644)
+	f, err := os.OpenFile(pidPath, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
 		slog.Error("PID lock failed", "err", err)
 		os.Exit(1)

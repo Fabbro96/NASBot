@@ -118,7 +118,9 @@ start_bot() {
 	export NASBOT_STATE_FILE="$STATE_FILE"
 	
 	nohup "$BOT_BINARY" >>"$LOG_FILE" 2>&1 &
-	echo $! >"$PID_FILE"
+	local bg_pid=$!
+	disown $bg_pid 2>/dev/null || true
+	echo $bg_pid >"$PID_FILE"
 
 	sleep 2
 	if is_running; then
