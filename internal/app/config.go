@@ -285,7 +285,7 @@ func sanitizeConfig(c *Config) []string {
 	trimField("network_watchdog.dns_host", &c.NetworkWatchdog.DNSHost)
 	trimField("network_watchdog.gateway", &c.NetworkWatchdog.Gateway)
 	if c.NetworkWatchdog.DNSHost == "" {
-		c.NetworkWatchdog.DNSHost = "google.com"
+		c.NetworkWatchdog.DNSHost = "quad9.net"
 		add("network_watchdog.dns_host", c.NetworkWatchdog.DNSHost)
 	}
 	if len(c.NetworkWatchdog.Targets) > 0 {
@@ -293,7 +293,7 @@ func sanitizeConfig(c *Config) []string {
 		add("network_watchdog.targets", "normalized")
 	}
 	if len(c.NetworkWatchdog.Targets) == 0 {
-		c.NetworkWatchdog.Targets = []string{"1.1.1.1", "8.8.8.8"}
+		c.NetworkWatchdog.Targets = []string{"9.9.9.9", "1.1.1.1"}
 		add("network_watchdog.targets", "default")
 	}
 
