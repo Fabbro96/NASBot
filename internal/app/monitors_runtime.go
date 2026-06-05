@@ -246,7 +246,7 @@ func checkTemperatureAlert(ctx *AppContext, bot BotAPI) {
 			m.ParseMode = "Markdown"
 			sendMsg = true
 		}
-		
+
 		ctx.Monitor.Mu.Lock()
 		ctx.Monitor.LastTempAlert = time.Now()
 		ctx.Monitor.Mu.Unlock()
@@ -264,7 +264,7 @@ func checkTemperatureAlert(ctx *AppContext, bot BotAPI) {
 			m.ParseMode = "Markdown"
 			sendMsg = true
 		}
-		
+
 		ctx.Monitor.Mu.Lock()
 		ctx.Monitor.LastTempAlert = time.Now()
 		ctx.Monitor.Mu.Unlock()
