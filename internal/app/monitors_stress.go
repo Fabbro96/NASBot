@@ -12,7 +12,6 @@ import (
 
 func checkResourceStress(ctx *AppContext, bot BotAPI, resource string, currentValue, threshold float64) {
 	ctx.State.Mu.Lock()
-	defer ctx.State.Mu.Unlock()
 
 	tracker := ctx.State.ResourceStress[resource]
 	if tracker == nil {
@@ -22,6 +21,9 @@ func checkResourceStress(ctx *AppContext, bot BotAPI, resource string, currentVa
 
 	isStressed := currentValue >= threshold
 	stressDurationThreshold := time.Duration(ctx.Config.StressTracking.DurationThresholdMinutes) * time.Minute
+
+	var notifyMsg string
+	var eventType, eventMsg string
 
 	if isStressed {
 		if tracker.CurrentStart.IsZero() {
@@ -51,13 +53,10 @@ func checkResourceStress(ctx *AppContext, bot BotAPI, resource string, currentVa
 				unit = "Usage"
 			}
 
-			msg := fmt.Sprintf("%s *%s stress*\n\n%s: `%.0f%%` for `%s`\n\n_Watching..._", emoji, resource, unit, currentValue, stressDuration.Round(time.Second))
-			m := tgbotapi.NewMessage(ctx.Config.AllowedUserID, msg)
-			m.ParseMode = "Markdown"
-			safeSend(bot, m)
-
+			notifyMsg = fmt.Sprintf("%s *%s stress*\n\n%s: `%.0f%%` for `%s`\n\n_Watching..._", emoji, resource, unit, currentValue, stressDuration.Round(time.Second))
 			tracker.Notified = true
-			ctx.State.AddEvent("warning", fmt.Sprintf("%s high (%.0f%%) for %s", resource, currentValue, stressDuration.Round(time.Second)))
+			eventType = "warning"
+			eventMsg = fmt.Sprintf("%s high (%.0f%%) for %s", resource, currentValue, stressDuration.Round(time.Second))
 		}
 	} else {
 		if !tracker.CurrentStart.IsZero() {
@@ -68,16 +67,26 @@ func checkResourceStress(ctx *AppContext, bot BotAPI, resource string, currentVa
 			}
 
 			if tracker.Notified && !ctx.IsQuietHours() {
-				msg := fmt.Sprintf("✅ *%s back to normal* after `%s`", resource, stressDuration.Round(time.Second))
-				m := tgbotapi.NewMessage(ctx.Config.AllowedUserID, msg)
-				m.ParseMode = "Markdown"
-				safeSend(bot, m)
-				ctx.State.AddEvent("info", fmt.Sprintf("%s normalized after %s", resource, stressDuration.Round(time.Second)))
+				notifyMsg = fmt.Sprintf("✅ *%s back to normal* after `%s`", resource, stressDuration.Round(time.Second))
+				eventType = "info"
+				eventMsg = fmt.Sprintf("%s normalized after %s", resource, stressDuration.Round(time.Second))
 			}
 
 			tracker.CurrentStart = time.Time{}
 			tracker.Notified = false
 		}
+	}
+	ctx.State.Mu.Unlock()
+
+	// Perform I/O and non-reentrant lock calls outside the locked section
+	if notifyMsg != "" {
+		m := tgbotapi.NewMessage(ctx.Config.AllowedUserID, notifyMsg)
+		m.ParseMode = "Markdown"
+		safeSend(bot, m)
+	}
+
+	if eventType != "" {
+		ctx.State.AddEvent(eventType, eventMsg)
 	}
 }
 

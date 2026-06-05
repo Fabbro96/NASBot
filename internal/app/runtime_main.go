@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"runtime/debug"
@@ -57,8 +58,11 @@ func RunBot() {
 	addPowerLifecycleEvent(app, "boot", false, "system", "startup", "process-start")
 	saveState(app)
 
-	// Start Bot
-	bot, err := tgbotapi.NewBotAPI(app.Config.BotToken)
+	// Start Bot with a custom HTTP client to prevent infinite hangs on stale connections
+	botClient := &http.Client{
+		Timeout: 75 * time.Second, // Must be larger than long-polling timeout (60s)
+	}
+	bot, err := tgbotapi.NewBotAPIWithClient(app.Config.BotToken, tgbotapi.APIEndpoint, botClient)
 	if err != nil {
 		slog.Error("Failed to start bot", "err", err)
 		closeLogger()
