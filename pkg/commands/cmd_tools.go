@@ -120,6 +120,41 @@ func (c *HealthCmd) Description() string { return "Show healthchecks.io integrat
 type UpdateCmd struct{}
 
 func (c *UpdateCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, args string) {
-	applyLatestRelease(ctx, bot, msg.Chat.ID, 0)
+	rel, hasUpdate, err := checkForUpdate(ctx)
+	if err != nil {
+		sendMarkdown(bot, msg.Chat.ID, fmt.Sprintf(ctx.Tr("update_check_failed"), err))
+		return
+	}
+	if !hasUpdate {
+		sendMarkdown(bot, msg.Chat.ID, fmt.Sprintf(ctx.Tr("update_none"), getVersion()))
+		return
+	}
+
+	text := fmt.Sprintf(ctx.Tr("update_available_confirm"), rel.Tag, rel.Changelog)
+	kb := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("yes"), "update_apply_latest"),
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("no"), "update_cancel"),
+		),
+	)
+	m := tgbotapi.NewMessage(msg.Chat.ID, text)
+	m.ParseMode = "Markdown"
+	m.ReplyMarkup = kb
+	safeSend(bot, m)
 }
 func (c *UpdateCmd) Description() string { return "Download latest GitHub release and restart NASBot" }
+
+type ChangelogCmd struct{}
+
+func (c *ChangelogCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, args string) {
+	rel, err := fetchLatestRelease(ctx)
+	if err != nil {
+		sendMarkdown(bot, msg.Chat.ID, fmt.Sprintf(ctx.Tr("update_check_failed"), err))
+		return
+	}
+	
+	title := fmt.Sprintf(ctx.Tr("changelog_title"), rel.Tag)
+	text := fmt.Sprintf("%s\n\n%s\n\n[Release Page](%s)", title, rel.Changelog, rel.URL)
+	sendMarkdown(bot, msg.Chat.ID, text)
+}
+func (c *ChangelogCmd) Description() string { return "Show the latest release changelog" }

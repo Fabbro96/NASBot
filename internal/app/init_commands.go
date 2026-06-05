@@ -38,6 +38,7 @@ func SetupCommandRegistry() *CommandRegistry {
 	r.Register("health", &HealthCmd{})
 	r.Register("healthchecks", &HealthCmd{}) // Alias
 	r.Register("update", &UpdateCmd{})
+	r.Register("changelog", &ChangelogCmd{})
 	r.Register("version", &VersionCmd{})
 	r.Register("v", &VersionCmd{}) // Alias
 

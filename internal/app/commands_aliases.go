@@ -27,6 +27,7 @@ type QuickCmd = pcommands.QuickCmd
 type DiskPredCmd = pcommands.DiskPredCmd
 type HealthCmd = pcommands.HealthCmd
 type UpdateCmd = pcommands.UpdateCmd
+type ChangelogCmd = pcommands.ChangelogCmd
 type ReportCmd = pcommands.ReportCmd
 type ConfigCmd = pcommands.ConfigCmd
 type ConfigJSONCmd = pcommands.ConfigJSONCmd

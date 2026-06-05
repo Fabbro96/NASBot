@@ -30,6 +30,26 @@ func init() {
 		SafeSend:                     safeSend,
 		HandleHealthCommand:          handleHealthCommand,
 		ApplyLatestRelease:           applyLatestRelease,
+		CheckForUpdate: func(ctx *pcommands.AppContext) (pcommands.ReleaseInfo, bool, error) {
+			rel, has, err := checkForUpdate(ctx)
+			return pcommands.ReleaseInfo{
+				Tag:       rel.Tag,
+				URL:       rel.URL,
+				AssetName: rel.AssetName,
+				AssetURL:  rel.AssetURL,
+				Changelog: rel.Changelog,
+			}, has, err
+		},
+		FetchLatestRelease: func(ctx *pcommands.AppContext) (pcommands.ReleaseInfo, error) {
+			rel, err := fetchLatestRelease(ctx)
+			return pcommands.ReleaseInfo{
+				Tag:       rel.Tag,
+				URL:       rel.URL,
+				AssetName: rel.AssetName,
+				AssetURL:  rel.AssetURL,
+				Changelog: rel.Changelog,
+			}, err
+		},
 		GenerateReport:               generateReport,
 		GetConfigJSONSafe:            getConfigJSONSafe,
 		ApplyConfigPatch: func(patch map[string]interface{}) (pcommands.ConfigPatchResult, error) {

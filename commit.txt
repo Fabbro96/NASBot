@@ -1,0 +1,9 @@
+fix: resolve monitor deadlock and Telegram API hangs
+
+- Remove AddEvent and Telegram bot calls from the mutex-locked 
+  section in checkResourceStress to prevent a goroutine deadlock.
+- Configure Telegram BotAPI to use a custom http.Client with a 75s
+  timeout, mitigating infinite hanging on dropped idle connections 
+  (typical of VPS firewalls).
+- Chunk Markdown messages in sendMarkdown that exceed Telegram's 
+  4096-character limit to avoid silent text truncation failures.
