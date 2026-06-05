@@ -230,30 +230,48 @@ func checkTemperatureAlert(ctx *AppContext, bot BotAPI) {
 	}
 
 	ctx.Monitor.Mu.Lock()
-	defer ctx.Monitor.Mu.Unlock()
-
 	if time.Since(ctx.Monitor.LastTempAlert) < 30*time.Minute {
+		ctx.Monitor.Mu.Unlock()
 		return
 	}
+	ctx.Monitor.Mu.Unlock()
 
 	cfg := ctx.Config
 	if temp >= cfg.Temperature.CriticalThreshold {
+		var m tgbotapi.MessageConfig
+		sendMsg := false
 		if !ctx.IsQuietHours() {
 			msg := fmt.Sprintf("🔥 *CPU Temperature Critical!*\n\nCurrent: `%.1f°C`\nThreshold: `%.0f°C`\n\n_Consider checking cooling or reducing load_", temp, cfg.Temperature.CriticalThreshold)
-			m := tgbotapi.NewMessage(cfg.AllowedUserID, msg)
+			m = tgbotapi.NewMessage(cfg.AllowedUserID, msg)
 			m.ParseMode = "Markdown"
+			sendMsg = true
+		}
+
+		ctx.Monitor.Mu.Lock()
+		ctx.Monitor.LastTempAlert = time.Now()
+		ctx.Monitor.Mu.Unlock()
+
+		if sendMsg {
 			safeSend(bot, m)
 		}
-		ctx.Monitor.LastTempAlert = time.Now()
 		ctx.State.AddEvent("critical", fmt.Sprintf("CPU temp critical: %.1f°C", temp))
 	} else if temp >= cfg.Temperature.WarningThreshold {
+		var m tgbotapi.MessageConfig
+		sendMsg := false
 		if !ctx.IsQuietHours() {
 			msg := fmt.Sprintf("🌡 *CPU Temperature Warning*\n\nCurrent: `%.1f°C`\nThreshold: `%.0f°C`", temp, cfg.Temperature.WarningThreshold)
-			m := tgbotapi.NewMessage(cfg.AllowedUserID, msg)
+			m = tgbotapi.NewMessage(cfg.AllowedUserID, msg)
 			m.ParseMode = "Markdown"
+			sendMsg = true
+		}
+
+		ctx.Monitor.Mu.Lock()
+		ctx.Monitor.LastTempAlert = time.Now()
+		ctx.Monitor.Mu.Unlock()
+
+		if sendMsg {
 			safeSend(bot, m)
 		}
-		ctx.Monitor.LastTempAlert = time.Now()
 		ctx.State.AddEvent("warning", fmt.Sprintf("CPU temp high: %.1f°C", temp))
 	}
 }
@@ -325,30 +343,37 @@ func checkCriticalContainers(ctx *AppContext, bot BotAPI) {
 		containerMap[c.Name] = c.Running
 	}
 
-	ctx.Monitor.Mu.Lock()
-	defer ctx.Monitor.Mu.Unlock()
-
 	for _, name := range ctx.Config.CriticalContainers {
 		running, exists := containerMap[name]
 		if !exists || !running {
-			if lastAlert, ok := ctx.Monitor.LastCriticalContainerAlert[name]; ok {
-				if time.Since(lastAlert) < 10*time.Minute {
-					continue
-				}
+			ctx.Monitor.Mu.Lock()
+			lastAlert, ok := ctx.Monitor.LastCriticalContainerAlert[name]
+			ctx.Monitor.Mu.Unlock()
+
+			if ok && time.Since(lastAlert) < 10*time.Minute {
+				continue
 			}
 
+			var m tgbotapi.MessageConfig
+			sendMsg := false
 			if !ctx.IsQuietHours() {
 				status := ctx.Tr("status_not_running")
 				if !exists {
 					status = ctx.Tr("status_not_found")
 				}
 				msg := fmt.Sprintf(ctx.Tr("crit_cont_alert"), name, status)
-				m := tgbotapi.NewMessage(ctx.Config.AllowedUserID, msg)
+				m = tgbotapi.NewMessage(ctx.Config.AllowedUserID, msg)
 				m.ParseMode = "Markdown"
-				safeSend(bot, m)
+				sendMsg = true
 			}
 
+			ctx.Monitor.Mu.Lock()
 			ctx.Monitor.LastCriticalContainerAlert[name] = time.Now()
+			ctx.Monitor.Mu.Unlock()
+
+			if sendMsg {
+				safeSend(bot, m)
+			}
 			ctx.State.AddEvent("critical", fmt.Sprintf("Critical container %s down", name))
 		}
 	}
