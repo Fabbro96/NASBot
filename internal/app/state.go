@@ -173,7 +173,7 @@ func saveState(ctx *AppContext) {
 
 	// Atomic write: write to temp file then rename to prevent corruption on crash
 	tmpPath := statePath + ".tmp"
-	mode := os.FileMode(0o644)
+	mode := os.FileMode(0o600)
 	if st, statErr := os.Stat(statePath); statErr == nil {
 		mode = st.Mode().Perm()
 	} else if !os.IsNotExist(statErr) {

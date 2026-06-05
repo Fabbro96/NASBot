@@ -22,7 +22,7 @@ func init() {
 		ReadCPUTemp:                  readCPUTemp,
 		GetSmartDevices:              getSmartDevices,
 		ReadDiskSMART:                readDiskSMART,
-		Version:                      Version,
+		Version:                      func() string { return Version },
 		RunCommandOutput:             runCommandOutput,
 		RunCommandStdout:             runCommandStdout,
 		RunCommand:                   runCommand,

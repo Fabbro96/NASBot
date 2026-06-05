@@ -52,7 +52,7 @@ func setupLoggerLocked(announce bool) {
 	persistentLogPath = logPath
 	ensureParentDir(logPath)
 
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		logFile = nil
 	}
@@ -152,7 +152,7 @@ func prunePersistentLogsOlderThan(retention time.Duration) error {
 	defer in.Close()
 
 	tmpPath := logPath + ".tmp"
-	out, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	out, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}
