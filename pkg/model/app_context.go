@@ -4,7 +4,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"sync"
 	"time"
 )
 
@@ -22,14 +21,14 @@ type AppContext struct {
 
 // ThreadSafeStats wraps stats with a mutex
 type ThreadSafeStats struct {
-	Mu    sync.RWMutex
+	Mu    RWMutex
 	Data  Stats
 	Ready bool
 }
 
 // RuntimeState holds runtime volatile state
 type RuntimeState struct {
-	Mu                  sync.Mutex
+	Mu                  Mutex
 	ResourceStress      map[string]*StressTracker
 	DockerFailure       time.Time
 	LastReport          time.Time
@@ -42,7 +41,7 @@ type RuntimeState struct {
 
 // BotContext holds bot-specific interaction state
 type BotContext struct {
-	Mu                     sync.Mutex
+	Mu                     Mutex
 	StartTime              time.Time
 	PendingAction          string
 	PendingContainerAction string
@@ -51,7 +50,7 @@ type BotContext struct {
 
 // DockerManager holds Docker monitoring state
 type DockerManager struct {
-	Mu                sync.RWMutex
+	Mu                RWMutex
 	Cache             DockerCache
 	AutoRestarts      map[string][]time.Time
 	LastStates        map[string]bool      // true = running
@@ -61,7 +60,7 @@ type DockerManager struct {
 
 // MonitorState holds historical trends and alert states
 type MonitorState struct {
-	Mu                         sync.Mutex
+	Mu                         Mutex
 	CPUTrend                   []TrendPoint
 	RAMTrend                   []TrendPoint
 	LastTempAlert              time.Time
@@ -89,7 +88,7 @@ type MonitorState struct {
 
 // UserSettings holds persistent user preferences (loaded from JSON)
 type UserSettings struct {
-	Mu            sync.RWMutex
+	Mu            RWMutex
 	Language      string
 	ReportMode    int
 	ReportMorning TimePoint

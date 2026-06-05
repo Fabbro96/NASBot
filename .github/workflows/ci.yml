@@ -97,7 +97,7 @@ jobs:
           if [ ! -f config.json ]; then
             cp config.example.json config.json
           fi
-          go test -coverprofile=coverage.out ./...
+          go test -tags deadlock -timeout 45s -coverprofile=coverage.out ./...
 
       - name: Upload coverage artifact
         if: matrix.go-version == '1.22.x'

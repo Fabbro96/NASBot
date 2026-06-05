@@ -125,6 +125,10 @@ func handlePowerAndDockerCallback(ctx *AppContext, bot BotAPI, chatID int64, msg
 		applyLatestRelease(ctx, bot, chatID, msgID)
 		return true
 	}
+	if data == "update_cancel" {
+		editMessage(bot, chatID, msgID, ctx.Tr("update_cancel_text"), nil)
+		return true
+	}
 
 	if data == "confirm_reboot" || data == "confirm_shutdown" {
 		handlePowerConfirm(ctx, bot, chatID, msgID, data)

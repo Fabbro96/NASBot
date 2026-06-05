@@ -308,6 +308,24 @@ var translations = map[string]map[string]string{
 		// Update notifications
 		"update_available": "🆕 New version available: *%s*\nCurrent version: *%s*\nAsset: `%s`",
 		"update_apply_now": "Update now",
+
+		// Update & Changelog
+		"cmd_update_desc":          "Download and install latest update",
+		"cmd_changelog_desc":       "Show the latest release changelog",
+		"update_available_confirm": "Version: *%s*\n\nChangelog:\n%s\n\nDo you want to update now?",
+		"changelog_title":          "📄 *Changelog %s*",
+		"update_cancel_text":       "❌ Update cancelled.",
+
+		// Other commands
+		"cmd_net_desc":       "Network information",
+		"cmd_logs_desc":      "View recent system logs",
+		"cmd_logsearch_desc": "Search container logs",
+		"cmd_health_desc":    "Healthchecks.io status",
+		"cmd_config_desc":    "Show current configuration",
+		"cmd_sysinfo_desc":   "Detailed system information",
+		"cmd_diskpred_desc":  "Disk space prediction",
+		"cmd_shutdown_desc":  "Shutdown the system",
+		"cmd_help_desc":      "Show all available commands",
 	},
 	"it": {
 		"status_title": "🖥 *NAS* alle %s\n\n",
@@ -619,6 +637,24 @@ var translations = map[string]map[string]string{
 		// Notifiche aggiornamento
 		"update_available": "🆕 Nuova versione disponibile: *%s*\nVersione attuale: *%s*\nAsset: `%s`",
 		"update_apply_now": "Aggiorna ora",
+
+		// Update & Changelog
+		"cmd_update_desc":          "Scarica e installa l'ultimo aggiornamento",
+		"cmd_changelog_desc":       "Mostra le novità dell'ultima versione",
+		"update_available_confirm": "Versione: *%s*\n\nChangelog:\n%s\n\nVuoi aggiornare ora?",
+		"changelog_title":          "📄 *Changelog %s*",
+		"update_cancel_text":       "❌ Aggiornamento annullato.",
+
+		// Other commands
+		"cmd_net_desc":       "Informazioni di rete",
+		"cmd_logs_desc":      "Visualizza i log di sistema recenti",
+		"cmd_logsearch_desc": "Cerca nei log dei container",
+		"cmd_health_desc":    "Stato Healthchecks.io",
+		"cmd_config_desc":    "Mostra la configurazione attuale",
+		"cmd_sysinfo_desc":   "Informazioni dettagliate sul sistema",
+		"cmd_diskpred_desc":  "Previsione spazio su disco",
+		"cmd_shutdown_desc":  "Spegni il sistema",
+		"cmd_help_desc":      "Mostra tutti i comandi disponibili",
 	},
 	"es": {
 		"status_title":      "🖥 *NAS* a las %s\n\n",
@@ -686,6 +722,24 @@ var translations = map[string]map[string]string{
 		"cfg_quiet_fmt":     "✅ %02d:%02d — %02d:%02d\n",
 		"unknown_command":   "No conozco ese comando. Prueba /help",
 		"back":              "⬅️ Atrás",
+
+		// Update & Changelog
+		"cmd_update_desc":          "Descargar e instalar la última actualización",
+		"cmd_changelog_desc":       "Mostrar los cambios de la última versión",
+		"update_available_confirm": "Versión: *%s*\n\nChangelog:\n%s\n\n¿Quieres actualizar ahora?",
+		"changelog_title":          "📄 *Changelog %s*",
+		"update_cancel_text":       "❌ Actualización cancelada.",
+
+		// Other commands
+		"cmd_net_desc":       "Información de red",
+		"cmd_logs_desc":      "Ver registros del sistema",
+		"cmd_logsearch_desc": "Buscar en los registros del contenedor",
+		"cmd_health_desc":    "Estado de Healthchecks.io",
+		"cmd_config_desc":    "Mostrar la configuración actual",
+		"cmd_sysinfo_desc":   "Información detallada del sistema",
+		"cmd_diskpred_desc":  "Predicción de espacio en disco",
+		"cmd_shutdown_desc":  "Apagar el sistema",
+		"cmd_help_desc":      "Mostrar todos los comandos",
 	},
 	"de": {
 		"status_title":      "🖥 *NAS* um %s\n\n",
@@ -753,6 +807,24 @@ var translations = map[string]map[string]string{
 		"cfg_quiet_fmt":     "✅ %02d:%02d — %02d:%02d\n",
 		"unknown_command":   "Diesen Befehl kenne ich nicht. Versuche /help",
 		"back":              "⬅️ Zurück",
+
+		// Update & Changelog
+		"cmd_update_desc":          "Aktualisierung herunterladen und installieren",
+		"cmd_changelog_desc":       "Änderungsprotokoll der neuesten Version anzeigen",
+		"update_available_confirm": "Version: *%s*\n\nChangelog:\n%s\n\nMöchten Sie jetzt aktualisieren?",
+		"changelog_title":          "📄 *Changelog %s*",
+		"update_cancel_text":       "❌ Aktualisierung abgebrochen.",
+
+		// Other commands
+		"cmd_net_desc":       "Netzwerkinformationen",
+		"cmd_logs_desc":      "Systemprotokolle anzeigen",
+		"cmd_logsearch_desc": "Container-Protokolle durchsuchen",
+		"cmd_health_desc":    "Healthchecks.io-Status",
+		"cmd_config_desc":    "Aktuelle Konfiguration anzeigen",
+		"cmd_sysinfo_desc":   "Detaillierte Systeminformationen",
+		"cmd_diskpred_desc":  "Speicherplatzvorhersage",
+		"cmd_shutdown_desc":  "System herunterfahren",
+		"cmd_help_desc":      "Alle verfügbaren Befehle anzeigen",
 	},
 	"zh": {
 		"status_title":      "🖥 *NAS* 时间 %s\n\n",
@@ -820,6 +892,24 @@ var translations = map[string]map[string]string{
 		"cfg_quiet_fmt":     "✅ %02d:%02d — %02d:%02d\n",
 		"unknown_command":   "未知命令。请试试 /help",
 		"back":              "⬅️ 返回",
+
+		// Update & Changelog
+		"cmd_update_desc":          "下载并安装最新更新",
+		"cmd_changelog_desc":       "显示最新版本的更新日志",
+		"update_available_confirm": "版本: *%s*\n\n更新日志:\n%s\n\n你现在要更新吗？",
+		"changelog_title":          "📄 *更新日志 %s*",
+		"update_cancel_text":       "❌ 更新已取消。",
+
+		// Other commands
+		"cmd_net_desc":       "网络信息",
+		"cmd_logs_desc":      "查看近期系统日志",
+		"cmd_logsearch_desc": "搜索容器日志",
+		"cmd_health_desc":    "Healthchecks.io 状态",
+		"cmd_config_desc":    "显示当前配置",
+		"cmd_sysinfo_desc":   "详细系统信息",
+		"cmd_diskpred_desc":  "磁盘空间预测",
+		"cmd_shutdown_desc":  "关闭系统",
+		"cmd_help_desc":      "显示所有可用命令",
 	},
 	"uk": {
 		"status_title":      "🖥 *NAS* о %s\n\n",
@@ -887,5 +977,23 @@ var translations = map[string]map[string]string{
 		"cfg_quiet_fmt":     "✅ %02d:%02d — %02d:%02d\n",
 		"unknown_command":   "Невідома команда. Спробуйте /help",
 		"back":              "⬅️ Назад",
+
+		// Update & Changelog
+		"cmd_update_desc":          "Завантажити та встановити останнє оновлення",
+		"cmd_changelog_desc":       "Показати журнал змін останньої версії",
+		"update_available_confirm": "Версія: *%s*\n\nЖурнал змін:\n%s\n\nБажаєте оновити зараз?",
+		"changelog_title":          "📄 *Журнал змін %s*",
+		"update_cancel_text":       "❌ Оновлення скасовано.",
+
+		// Other commands
+		"cmd_net_desc":       "Мережева інформація",
+		"cmd_logs_desc":      "Перегляд журналів системи",
+		"cmd_logsearch_desc": "Пошук у журналах контейнерів",
+		"cmd_health_desc":    "Стан Healthchecks.io",
+		"cmd_config_desc":    "Показати поточну конфігурацію",
+		"cmd_sysinfo_desc":   "Детальна інформація про систему",
+		"cmd_diskpred_desc":  "Прогнозування вільного місця",
+		"cmd_shutdown_desc":  "Вимкнути систему",
+		"cmd_help_desc":      "Показати всі доступні команди",
 	},
 }

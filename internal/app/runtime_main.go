@@ -245,11 +245,23 @@ func registerBotCommands(ctx *AppContext, bot BotAPI) {
 		{Command: "status", Description: ctx.Tr("cmd_status_desc")},
 		{Command: "quick", Description: ctx.Tr("cmd_quick_desc")},
 		{Command: "docker", Description: ctx.Tr("cmd_docker_desc")},
-		{Command: "reboot", Description: ctx.Tr("cmd_reboot_desc")},
+		{Command: "dstats", Description: ctx.Tr("cmd_docker_desc")}, // fallback description
 		{Command: "top", Description: ctx.Tr("cmd_top_desc")},
 		{Command: "temp", Description: ctx.Tr("cmd_temp_desc")},
+		{Command: "net", Description: ctx.Tr("cmd_net_desc")},
+		{Command: "logs", Description: ctx.Tr("cmd_logs_desc")},
+		{Command: "logsearch", Description: ctx.Tr("cmd_logsearch_desc")},
 		{Command: "report", Description: ctx.Tr("cmd_report_desc")},
+		{Command: "health", Description: ctx.Tr("cmd_health_desc")},
+		{Command: "config", Description: ctx.Tr("cmd_config_desc")},
+		{Command: "sysinfo", Description: ctx.Tr("cmd_sysinfo_desc")},
+		{Command: "diskpred", Description: ctx.Tr("cmd_diskpred_desc")},
 		{Command: "settings", Description: ctx.Tr("cmd_settings_desc")},
+		{Command: "update", Description: ctx.Tr("cmd_update_desc")},
+		{Command: "changelog", Description: ctx.Tr("cmd_changelog_desc")},
+		{Command: "reboot", Description: ctx.Tr("cmd_reboot_desc")},
+		{Command: "shutdown", Description: ctx.Tr("cmd_shutdown_desc")},
+		{Command: "help", Description: ctx.Tr("cmd_help_desc")},
 	}
 
 	req := tgbotapi.NewSetMyCommands(cmds...)

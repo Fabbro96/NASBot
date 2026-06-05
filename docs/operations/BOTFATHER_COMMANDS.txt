@@ -25,6 +25,8 @@ language - 🌍 Change language (EN/IT)
 container - 📦 Manage specific container
 kill - 💀 Force kill a container
 restartdocker - 🔄 Restart Docker service
+update - ⬇️ Download and install latest update
+changelog - 📄 Show the latest release changelog
 reboot - 🔁 Reboot the system
 shutdown - ⏹ Shutdown the system
 help - ❓ Show all available commands

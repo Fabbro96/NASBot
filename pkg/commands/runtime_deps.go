@@ -11,6 +11,14 @@ type ConfigPatchResult struct {
 	Corrected []string
 }
 
+type ReleaseInfo struct {
+	Tag       string
+	URL       string
+	AssetName string
+	AssetURL  string
+	Changelog string
+}
+
 type RuntimeDeps struct {
 	SendDockerMenu               func(ctx *AppContext, bot BotAPI, chatID int64)
 	SendWithKeyboard             func(ctx *AppContext, bot BotAPI, chatID int64, text string)
@@ -38,6 +46,8 @@ type RuntimeDeps struct {
 	SafeSend                     func(bot BotAPI, c tgbotapi.Chattable)
 	HandleHealthCommand          func(ctx *AppContext, bot BotAPI, chatID int64)
 	ApplyLatestRelease           func(ctx *AppContext, bot BotAPI, chatID int64, msgID int)
+	CheckForUpdate               func(ctx *AppContext) (ReleaseInfo, bool, error)
+	FetchLatestRelease           func(ctx *AppContext) (ReleaseInfo, error)
 	GenerateReport               func(ctx *AppContext, includeAI bool, onModelChange func(string)) string
 	GetConfigJSONSafe            func() (string, error)
 	ApplyConfigPatch             func(patch map[string]interface{}) (ConfigPatchResult, error)
@@ -214,6 +224,20 @@ func applyLatestRelease(ctx *AppContext, bot BotAPI, chatID int64, msgID int) {
 	if runtimeDeps.ApplyLatestRelease != nil {
 		runtimeDeps.ApplyLatestRelease(ctx, bot, chatID, msgID)
 	}
+}
+
+func checkForUpdate(ctx *AppContext) (ReleaseInfo, bool, error) {
+	if runtimeDeps.CheckForUpdate != nil {
+		return runtimeDeps.CheckForUpdate(ctx)
+	}
+	return ReleaseInfo{}, false, nil
+}
+
+func fetchLatestRelease(ctx *AppContext) (ReleaseInfo, error) {
+	if runtimeDeps.FetchLatestRelease != nil {
+		return runtimeDeps.FetchLatestRelease(ctx)
+	}
+	return ReleaseInfo{}, nil
 }
 
 func generateReport(ctx *AppContext, includeAI bool, onModelChange func(string)) string {

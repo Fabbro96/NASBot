@@ -28,6 +28,7 @@ const (
 type githubRelease struct {
 	TagName string `json:"tag_name"`
 	HTMLURL string `json:"html_url"`
+	Body    string `json:"body"`
 	Assets  []struct {
 		Name               string `json:"name"`
 		BrowserDownloadURL string `json:"browser_download_url"`
@@ -39,6 +40,7 @@ type releaseCandidate struct {
 	URL       string
 	AssetName string
 	AssetURL  string
+	Changelog string
 }
 
 func updaterRepo() string {
@@ -151,7 +153,7 @@ func fetchLatestRelease(ctx *AppContext) (releaseCandidate, error) {
 		return releaseCandidate{}, fmt.Errorf("no downloadable release assets found for %s", runtime.GOARCH)
 	}
 
-	return releaseCandidate{Tag: rel.TagName, URL: rel.HTMLURL, AssetName: assetName, AssetURL: assetURL}, nil
+	return releaseCandidate{Tag: rel.TagName, URL: rel.HTMLURL, AssetName: assetName, AssetURL: assetURL, Changelog: rel.Body}, nil
 }
 
 func checkForUpdate(ctx *AppContext) (releaseCandidate, bool, error) {
