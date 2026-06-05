@@ -176,12 +176,23 @@ func sendMarkdown(bot BotAPI, chatID int64, text string) {
 	if bot == nil {
 		return
 	}
-	msg := tgbotapi.NewMessage(chatID, text)
-	msg.ParseMode = "Markdown"
-	if _, err := bot.Send(msg); err != nil {
-		slog.Error("Error sending Markdown message. Retrying as plain text", "err", err)
-		msg.ParseMode = ""
-		safeSend(bot, msg)
+
+	const maxLen = 4096
+	runes := []rune(text)
+
+	for i := 0; i < len(runes); i += maxLen {
+		end := i + maxLen
+		if end > len(runes) {
+			end = len(runes)
+		}
+
+		msg := tgbotapi.NewMessage(chatID, string(runes[i:end]))
+		msg.ParseMode = "Markdown"
+		if _, err := bot.Send(msg); err != nil {
+			slog.Error("Error sending Markdown message. Retrying as plain text", "err", err)
+			msg.ParseMode = ""
+			safeSend(bot, msg)
+		}
 	}
 }
 
