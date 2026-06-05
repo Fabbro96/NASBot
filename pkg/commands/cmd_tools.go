@@ -152,7 +152,7 @@ func (c *ChangelogCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Messag
 		sendMarkdown(bot, msg.Chat.ID, fmt.Sprintf(ctx.Tr("update_check_failed"), err))
 		return
 	}
-	
+
 	title := fmt.Sprintf(ctx.Tr("changelog_title"), rel.Tag)
 	text := fmt.Sprintf("%s\n\n%s\n\n[Release Page](%s)", title, rel.Changelog, rel.URL)
 	sendMarkdown(bot, msg.Chat.ID, text)

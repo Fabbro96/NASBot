@@ -50,8 +50,8 @@ func init() {
 				Changelog: rel.Changelog,
 			}, err
 		},
-		GenerateReport:               generateReport,
-		GetConfigJSONSafe:            getConfigJSONSafe,
+		GenerateReport:    generateReport,
+		GetConfigJSONSafe: getConfigJSONSafe,
 		ApplyConfigPatch: func(patch map[string]interface{}) (pcommands.ConfigPatchResult, error) {
 			res, err := applyConfigPatch(patch)
 			return pcommands.ConfigPatchResult{Ignored: res.Ignored, Corrected: res.Corrected}, err
