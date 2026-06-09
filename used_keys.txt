@@ -204,7 +204,4 @@ wd_disabled
 wd_no_containers
 wd_restarting
 wd_title
-wol_fail
-wol_no_mac
-wol_success
 yes

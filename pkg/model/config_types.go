@@ -21,17 +21,12 @@ type Config struct {
 	NetworkWatchdog    NetworkWatchdogConfig `json:"network_watchdog"`
 	RaidWatchdog       RaidWatchdogConfig    `json:"raid_watchdog"`
 	Update             UpdateConfig          `json:"update"`
-	WakeOnLan          WakeOnLanConfig       `json:"wake_on_lan"`
 	Backup             BackupConfig          `json:"backup"`
 	AdBlock            AdBlockConfig         `json:"adblock"`
 }
 
 type BackupConfig struct {
 	TargetUserID int64 `json:"target_user_id"`
-}
-
-type WakeOnLanConfig struct {
-	MacAddress string `json:"mac_address"`
 }
 
 // UpdateConfig controls automatic update behavior.
