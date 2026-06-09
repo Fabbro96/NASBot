@@ -382,45 +382,45 @@ func getPruneScheduleText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarku
 }
 
 func getWOLSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
-	text := "💻 *Wake-on-LAN (WOL)*\n\nInserisci il MAC Address del computer che vuoi accendere usando il comando `/wake`."
+	text := ctx.Tr("wol_settings_title")
 
 	mac := ctx.Config.WakeOnLan.MacAddress
 	if mac == "" {
-		text += "\n\nAttualmente: _Non configurato_"
+		text += ctx.Tr("wol_current_none")
 	} else {
-		text += fmt.Sprintf("\n\nAttualmente: `%s`", mac)
+		text += fmt.Sprintf(ctx.Tr("wol_current_mac"), mac)
 	}
 
-	rows := [][]tgbotapi.InlineKeyboardButton{
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📝 Modifica MAC", "wol_set_mac"),
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("wol_btn_edit"), "wol_set_mac"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("back"), "back_settings"),
 		),
-	}
+	)
 
-	return text, tgbotapi.NewInlineKeyboardMarkup(rows...)
+	return text, keyboard
 }
 
 func getBackupSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
-	text := "📦 *Backup Configurazioni*\n\nSeleziona il Telegram User ID (Chat ID) a cui verranno inviati i backup generati col comando `/backup`."
+	text := ctx.Tr("backup_settings_title")
 
 	uid := ctx.Config.Backup.TargetUserID
 	if uid == 0 {
-		text += fmt.Sprintf("\n\nAttualmente: _Default_ (`%d`)", ctx.Config.AllowedUserID)
+		text += fmt.Sprintf(ctx.Tr("backup_current_default"), ctx.Config.AllowedUserID)
 	} else {
-		text += fmt.Sprintf("\n\nAttualmente: `%d`", uid)
+		text += fmt.Sprintf(ctx.Tr("backup_current_uid"), uid)
 	}
 
-	rows := [][]tgbotapi.InlineKeyboardButton{
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📝 Modifica ID Destinatario", "backup_set_uid"),
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("backup_btn_edit"), "backup_set_uid"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("back"), "back_settings"),
 		),
-	}
+	)
 
-	return text, tgbotapi.NewInlineKeyboardMarkup(rows...)
+	return text, keyboard
 }
