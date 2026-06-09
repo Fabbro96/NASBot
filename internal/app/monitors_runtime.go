@@ -15,6 +15,7 @@ import (
 	"github.com/shirou/gopsutil/v3/host"
 	"github.com/shirou/gopsutil/v3/load"
 	"github.com/shirou/gopsutil/v3/mem"
+	gopsnet "github.com/shirou/gopsutil/v3/net"
 	"github.com/shirou/gopsutil/v3/process"
 )
 
@@ -65,6 +66,14 @@ func monitorAlerts(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 				msg := "🚨 *Critical*\n\n" + strings.Join(criticalAlerts, "\n")
 				m := tgbotapi.NewMessage(cfg.AllowedUserID, msg)
 				m.ParseMode = "Markdown"
+				
+				kb := tgbotapi.NewInlineKeyboardMarkup(
+					tgbotapi.NewInlineKeyboardRow(
+						tgbotapi.NewInlineKeyboardButtonData("🤖 Analizza con AI", "ai_analyze_critical"),
+					),
+				)
+				m.ReplyMarkup = kb
+				
 				safeSend(bot, m)
 				ctx.Monitor.Mu.Lock()
 				ctx.Monitor.LastCriticalAlert = time.Now()
@@ -99,6 +108,9 @@ func monitorAlerts(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 func statsCollector(ctx *AppContext, runCtx context.Context) {
 	var lastIO map[string]disk.IOCountersStat
 	var lastIOTime time.Time
+	
+	var lastNet []gopsnet.IOCountersStat
+	var lastNetTime time.Time
 
 	ticker := time.NewTicker(time.Duration(ctx.Config.Intervals.StatsSeconds) * time.Second)
 	defer ticker.Stop()
@@ -145,6 +157,27 @@ func statsCollector(ctx *AppContext, runCtx context.Context) {
 		}
 		lastIO = currentIO
 		lastIOTime = time.Now()
+		
+		currentNet, _ := gopsnet.IOCounters(false)
+		var rxMbps, txMbps float64
+		var rxTotal, txTotal float64
+		if len(currentNet) > 0 {
+			rxTotal = float64(currentNet[0].BytesRecv) / 1024 / 1024
+			txTotal = float64(currentNet[0].BytesSent) / 1024 / 1024
+			
+			if lastNet != nil && !lastNetTime.IsZero() {
+				elapsed := time.Since(lastNetTime).Seconds()
+				if elapsed > 0 {
+					rxBytes := currentNet[0].BytesRecv - lastNet[0].BytesRecv
+					txBytes := currentNet[0].BytesSent - lastNet[0].BytesSent
+					// Convert bytes/sec to Megabits/sec (Mbps)
+					rxMbps = (float64(rxBytes) * 8 / 1000000) / elapsed
+					txMbps = (float64(txBytes) * 8 / 1000000) / elapsed
+				}
+			}
+			lastNet = currentNet
+			lastNetTime = time.Now()
+		}
 
 		topCPU, topRAM := getTopProcesses(5)
 		cVal := 0.0
@@ -153,20 +186,24 @@ func statsCollector(ctx *AppContext, runCtx context.Context) {
 		}
 
 		newStats := Stats{
-			CPU:        format.SafeFloat([]float64{cVal}, 0),
-			RAM:        v.UsedPercent,
-			RAMFreeMB:  v.Available / 1024 / 1024,
-			RAMTotalMB: v.Total / 1024 / 1024,
-			Swap:       sw.UsedPercent,
-			Load1m:     l.Load1,
-			Load5m:     l.Load5,
-			Load15m:    l.Load15,
-			Uptime:     h.Uptime,
-			ReadMBs:    readMBs,
-			WriteMBs:   writeMBs,
-			DiskUtil:   diskUtil,
-			TopCPU:     topCPU,
-			TopRAM:     topRAM,
+			CPU:          format.SafeFloat([]float64{cVal}, 0),
+			RAM:          v.UsedPercent,
+			RAMFreeMB:    v.Available / 1024 / 1024,
+			RAMTotalMB:   v.Total / 1024 / 1024,
+			Swap:         sw.UsedPercent,
+			Load1m:       l.Load1,
+			Load5m:       l.Load5,
+			Load15m:      l.Load15,
+			Uptime:       h.Uptime,
+			ReadMBs:      readMBs,
+			WriteMBs:     writeMBs,
+			DiskUtil:     diskUtil,
+			NetRxMbps:    rxMbps,
+			NetTxMbps:    txMbps,
+			NetRxTotalMB: rxTotal,
+			NetTxTotalMB: txTotal,
+			TopCPU:       topCPU,
+			TopRAM:       topRAM,
 		}
 
 		if dSSD != nil {

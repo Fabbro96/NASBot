@@ -1,6 +1,9 @@
 package app
 
-import pcommands "nasbot/pkg/commands"
+import (
+	pcommands "nasbot/pkg/commands"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+)
 
 type CommandRegistry = pcommands.CommandRegistry
 
@@ -36,10 +39,13 @@ type LanguageCmd = pcommands.LanguageCmd
 type SettingsCmd = pcommands.SettingsCmd
 type VersionCmd = pcommands.VersionCmd
 type WolCmd = pcommands.WolCmd
+type BackupCmd = pcommands.BackupCmd
+type ProcessesCmd = pcommands.ProcessesCmd
 
 func getStatusText(ctx *AppContext) string  { return pcommands.GetStatusText(ctx) }
 func getTempText(ctx *AppContext) string    { return pcommands.GetTempText(ctx) }
 func getTopProcText(ctx *AppContext) string { return pcommands.GetTopProcText(ctx) }
+func getProcessesMenu(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) { return pcommands.GetProcessesMenu(ctx) }
 func getNetworkText(ctx *AppContext) string { return pcommands.GetNetworkText(ctx) }
 func getHelpText(ctx *AppContext) string    { return pcommands.GetHelpText(ctx) }
 func getPingText(ctx *AppContext) string    { return pcommands.GetPingText(ctx) }

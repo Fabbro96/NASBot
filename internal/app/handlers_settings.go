@@ -164,6 +164,12 @@ func getSettingsMenuText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("⚠️ "+ctx.Tr("settings_thresholds"), "settings_change_thresholds"),
 		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("💻 "+ctx.Tr("settings_wol"), "settings_change_wol"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("📦 "+ctx.Tr("settings_backup"), "settings_change_backup"),
+		),
 	)
 	return text, kb
 }
@@ -373,4 +379,48 @@ func getPruneScheduleText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarku
 	rows = append(rows, []tgbotapi.InlineKeyboardButton{tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("back"), "settings_change_prune")})
 	kb := tgbotapi.NewInlineKeyboardMarkup(rows...)
 	return text, kb
+}
+
+func getWOLSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
+	text := "💻 *Wake-on-LAN (WOL)*\n\nInserisci il MAC Address del computer che vuoi accendere usando il comando `/wake`."
+	
+	mac := ctx.Config.WakeOnLan.MacAddress
+	if mac == "" {
+		text += "\n\nAttualmente: _Non configurato_"
+	} else {
+		text += fmt.Sprintf("\n\nAttualmente: `%s`", mac)
+	}
+
+	rows := [][]tgbotapi.InlineKeyboardButton{
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("📝 Modifica MAC", "wol_set_mac"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("back"), "back_settings"),
+		),
+	}
+	
+	return text, tgbotapi.NewInlineKeyboardMarkup(rows...)
+}
+
+func getBackupSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
+	text := "📦 *Backup Configurazioni*\n\nSeleziona il Telegram User ID (Chat ID) a cui verranno inviati i backup generati col comando `/backup`."
+	
+	uid := ctx.Config.Backup.TargetUserID
+	if uid == 0 {
+		text += fmt.Sprintf("\n\nAttualmente: _Default_ (`%d`)", ctx.Config.AllowedUserID)
+	} else {
+		text += fmt.Sprintf("\n\nAttualmente: `%d`", uid)
+	}
+
+	rows := [][]tgbotapi.InlineKeyboardButton{
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("📝 Modifica ID Destinatario", "backup_set_uid"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("back"), "back_settings"),
+		),
+	}
+	
+	return text, tgbotapi.NewInlineKeyboardMarkup(rows...)
 }

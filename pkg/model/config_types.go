@@ -22,6 +22,11 @@ type Config struct {
 	RaidWatchdog       RaidWatchdogConfig    `json:"raid_watchdog"`
 	Update             UpdateConfig          `json:"update"`
 	WakeOnLan          WakeOnLanConfig       `json:"wake_on_lan"`
+	Backup             BackupConfig          `json:"backup"`
+}
+
+type BackupConfig struct {
+	TargetUserID int64 `json:"target_user_id"`
 }
 
 type WakeOnLanConfig struct {

@@ -131,8 +131,22 @@ func getNetworkText(ctx *AppContext) string {
 	publicCtx, cancelPublic := context.WithTimeout(context.Background(), netTimeout)
 	defer cancelPublic()
 	b.WriteString(fmt.Sprintf(tr("net_public"), getPublicIP(ctx, publicCtx)))
+	
+	s, ready := ctx.Stats.Get()
+	if ready {
+		b.WriteString("\n\n📊 *Traffico di Rete*\n")
+		b.WriteString(fmt.Sprintf("⬇️ Download: `%.2f Mbps` (Tot: `%s`)\n", s.NetRxMbps, formatData(s.NetRxTotalMB)))
+		b.WriteString(fmt.Sprintf("⬆️ Upload: `%.2f Mbps` (Tot: `%s`)\n", s.NetTxMbps, formatData(s.NetTxTotalMB)))
+	}
 
 	return b.String()
+}
+
+func formatData(mb float64) string {
+	if mb > 1024 {
+		return fmt.Sprintf("%.2f GB", mb/1024)
+	}
+	return fmt.Sprintf("%.2f MB", mb)
 }
 
 func GetNetworkText(ctx *AppContext) string { return getNetworkText(ctx) }

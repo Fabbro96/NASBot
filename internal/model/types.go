@@ -16,6 +16,8 @@ type Stats struct {
 	Uptime                      uint64
 	VolSSD, VolHDD              VolumeStats
 	ReadMBs, WriteMBs, DiskUtil float64
+	NetRxMbps, NetTxMbps        float64
+	NetRxTotalMB, NetTxTotalMB  float64
 	TopCPU, TopRAM              []ProcInfo
 }
 

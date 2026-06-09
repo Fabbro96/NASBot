@@ -6,6 +6,7 @@ package app
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -55,6 +56,50 @@ func handleMessage(bot BotAPI, msg *tgbotapi.Message) {
 		
 		text, kb := getReportSettingsText(app)
 		safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, "✅ Time added successfully."))
+		msgSettings := tgbotapi.NewMessage(msg.Chat.ID, text)
+		msgSettings.ParseMode = "Markdown"
+		msgSettings.ReplyMarkup = kb
+		safeSend(bot, msgSettings)
+		return
+	}
+	
+	if action == "set_wol_mac" {
+		app.Bot.ClearPendingAction()
+		mac := strings.TrimSpace(msg.Text)
+		
+		patch := map[string]interface{}{
+			"wake_on_lan": map[string]interface{}{
+				"mac_address": mac,
+			},
+		}
+		applyConfigPatch(patch)
+		
+		safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, "✅ MAC Address per WOL aggiornato con successo."))
+		text, kb := getWOLSettingsText(app)
+		msgSettings := tgbotapi.NewMessage(msg.Chat.ID, text)
+		msgSettings.ParseMode = "Markdown"
+		msgSettings.ReplyMarkup = kb
+		safeSend(bot, msgSettings)
+		return
+	}
+
+	if action == "set_backup_uid" {
+		app.Bot.ClearPendingAction()
+		uid := int64(0)
+		if _, err := fmt.Sscanf(strings.TrimSpace(msg.Text), "%d", &uid); err != nil {
+			safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, "❌ Formato non valido. Devi inserire un numero (es. `123456789`)."))
+			return
+		}
+		
+		patch := map[string]interface{}{
+			"backup": map[string]interface{}{
+				"target_user_id": uid,
+			},
+		}
+		applyConfigPatch(patch)
+		
+		safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, "✅ ID Destinatario Backup aggiornato con successo."))
+		text, kb := getBackupSettingsText(app)
 		msgSettings := tgbotapi.NewMessage(msg.Chat.ID, text)
 		msgSettings.ParseMode = "Markdown"
 		msgSettings.ReplyMarkup = kb

@@ -21,6 +21,11 @@ type Config struct {
 	NetworkWatchdog    NetworkWatchdogConfig `json:"network_watchdog"`
 	RaidWatchdog       RaidWatchdogConfig    `json:"raid_watchdog"`
 	Update             UpdateConfig          `json:"update"`
+	Backup             BackupConfig          `json:"backup"`
+}
+
+type BackupConfig struct {
+	TargetUserID int64 `json:"target_user_id"`
 }
 
 // UpdateConfig controls automatic update behavior.

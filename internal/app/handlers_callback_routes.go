@@ -4,8 +4,11 @@
 package app
 
 import (
+	"context"
 	"fmt"
+	"os/exec"
 	"strings"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -155,6 +158,32 @@ func handleSettingsCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int
 		return true
 	}
 
+	if data == "settings_change_wol" {
+		text, kb := getWOLSettingsText(ctx)
+		editMessage(bot, chatID, msgID, text, &kb)
+		return true
+	}
+	if data == "wol_set_mac" {
+		ctx.Bot.SetPendingAction("set_wol_mac")
+		msg := tgbotapi.NewMessage(chatID, "💻 Inserisci il nuovo MAC Address (es. `AA:BB:CC:DD:EE:FF`):")
+		msg.ParseMode = "Markdown"
+		safeSend(bot, msg)
+		return true
+	}
+
+	if data == "settings_change_backup" {
+		text, kb := getBackupSettingsText(ctx)
+		editMessage(bot, chatID, msgID, text, &kb)
+		return true
+	}
+	if data == "backup_set_uid" {
+		ctx.Bot.SetPendingAction("set_backup_uid")
+		msg := tgbotapi.NewMessage(chatID, "📦 Inserisci il Telegram User ID (Chat ID) a cui inviare i backup:")
+		msg.ParseMode = "Markdown"
+		safeSend(bot, msg)
+		return true
+	}
+
 	if data == "back_settings" {
 		text, kb := getSettingsMenuText(ctx)
 		editMessage(bot, chatID, msgID, text, &kb)
@@ -291,6 +320,76 @@ func handleScopedCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int, 
 		handleContainerCallback(ctx, bot, chatID, msgID, data)
 		return true
 	}
+	
+	if data == "ai_analyze_critical" {
+		msg := tgbotapi.NewMessage(chatID, "⏳ Sto raccogliendo il contesto (syslog, top, docker stats) e chiedendo all'AI...")
+		sentMsg, err := bot.Send(msg)
+		if err == nil {
+			go func() {
+				// We don't have onModelChange visually integrated right here, but we can pass nil or a simple closure.
+				diagnosis, errDiag := AnalyzeCriticalAlerts(ctx, func(model string) {
+					// Optionally update "Trying model..." here, skipping for simplicity
+				})
+				
+				if errDiag != nil {
+					bot.Send(tgbotapi.NewEditMessageText(chatID, sentMsg.MessageID, fmt.Sprintf("❌ Errore AI: %v", errDiag)))
+				} else {
+					bot.Send(tgbotapi.NewEditMessageText(chatID, sentMsg.MessageID, diagnosis))
+				}
+			}()
+		}
+		return true
+	}
+	
+	if strings.HasPrefix(data, "proc_manage_") {
+		pid := strings.TrimPrefix(data, "proc_manage_")
+		text := fmt.Sprintf("⚙️ *Gestore Processi*\n\nCosa vuoi fare con il processo `%s`?", pid)
+		kb := tgbotapi.NewInlineKeyboardMarkup(
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("🛑 Termina (SIGTERM)", "proc_kill_term_"+pid),
+			),
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("💀 Forza Chiusura (SIGKILL)", "proc_kill_kill_"+pid),
+			),
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("cancel"), "proc_refresh"),
+			),
+		)
+		editMessage(bot, chatID, msgID, text, &kb)
+		return true
+	}
+	if strings.HasPrefix(data, "proc_kill_") {
+		parts := strings.Split(data, "_")
+		if len(parts) >= 4 {
+			signal := parts[2]
+			pid := parts[3]
+			
+			sigArg := "-15"
+			if signal == "kill" {
+				sigArg = "-9"
+			}
+			
+			ctxExec, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctxExec, "kill", sigArg, pid)
+			err := cmd.Run()
+			
+			if err != nil {
+				safeSend(bot, tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Errore durante l'uccisione del processo %s: %v", pid, err)))
+			} else {
+				safeSend(bot, tgbotapi.NewMessage(chatID, fmt.Sprintf("✅ Processo %s ucciso con successo.", pid)))
+			}
+		}
+		text, kb := getProcessesMenu(ctx)
+		editMessage(bot, chatID, msgID, text, &kb)
+		return true
+	}
+	if data == "proc_refresh" {
+		text, kb := getProcessesMenu(ctx)
+		editMessage(bot, chatID, msgID, text, &kb)
+		return true
+	}
+	
 	return false
 }
 

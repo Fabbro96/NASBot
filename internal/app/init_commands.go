@@ -7,6 +7,7 @@ func SetupCommandRegistry() *CommandRegistry {
 	r.Register("status", &StatusCmd{})
 	r.Register("start", &StatusCmd{}) // Alias
 	r.Register("top", &TopCmd{})
+	r.Register("processes", &ProcessesCmd{})
 	r.Register("sysinfo", &SysInfoCmd{})
 	r.Register("temp", &TempCmd{})
 	r.Register("reboot", &PowerCmd{Action: "reboot"})
@@ -24,6 +25,8 @@ func SetupCommandRegistry() *CommandRegistry {
 	r.Register("net", &NetCmd{})
 	r.Register("speedtest", &SpeedtestCmd{})
 	r.Register("wol", &WolCmd{})
+	r.Register("wake", &WolCmd{})
+	r.Register("backup", &BackupCmd{})
 
 	// Tools
 	r.Register("ping", &PingCmd{})
