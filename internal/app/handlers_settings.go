@@ -381,28 +381,6 @@ func getPruneScheduleText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarku
 	return text, kb
 }
 
-func getWOLSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
-	text := ctx.Tr("wol_settings_title")
-
-	mac := ctx.Config.WakeOnLan.MacAddress
-	if mac == "" {
-		text += ctx.Tr("wol_current_none")
-	} else {
-		text += fmt.Sprintf(ctx.Tr("wol_current_mac"), mac)
-	}
-
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("wol_btn_edit"), "wol_set_mac"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("back"), "back_settings"),
-		),
-	)
-
-	return text, keyboard
-}
-
 func getBackupSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
 	text := ctx.Tr("backup_settings_title")
 

@@ -6,7 +6,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -204,65 +203,6 @@ func handleSettingsCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int
 			text, kb := getThresholdResourceText(ctx, res)
 			editMessage(bot, chatID, msgID, text, &kb)
 		}
-		return true
-	}
-
-	if data == "settings_change_wol" {
-		text, kb := getWOLSettingsText(ctx)
-		editMessage(bot, chatID, msgID, text, &kb)
-		return true
-	}
-	if data == "wol_set_mac" {
-		arpMacs := getARPMacAddresses()
-
-		if len(arpMacs) == 0 {
-			ctx.Bot.SetPendingAction("set_wol_mac")
-			msg := tgbotapi.NewMessage(chatID, ctx.Tr("wol_prompt"))
-			msg.ParseMode = "Markdown"
-			safeSend(bot, msg)
-			return true
-		}
-
-		var rows [][]tgbotapi.InlineKeyboardButton
-		for mac, ip := range arpMacs {
-			btnText := fmt.Sprintf("%s - %s", ip, mac)
-			rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData(btnText, "wol_selmac_"+mac),
-			))
-		}
-
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("mac_manual_btn"), "wol_manual_mac"),
-		))
-
-		msg := tgbotapi.NewMessage(chatID, ctx.Tr("mac_select_prompt"))
-		msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
-		safeSend(bot, msg)
-		return true
-	}
-
-	if strings.HasPrefix(data, "wol_selmac_") {
-		mac := strings.TrimPrefix(data, "wol_selmac_")
-		patch := map[string]interface{}{
-			"wake_on_lan": map[string]interface{}{
-				"mac_address": mac,
-			},
-		}
-		applyConfigPatch(patch)
-
-		// Update ctx.Config manually to reflect changes immediately for the UI
-		ctx.Config.WakeOnLan.MacAddress = mac
-
-		text, kb := getWOLSettingsText(ctx)
-		editMessage(bot, chatID, msgID, text, &kb)
-		return true
-	}
-
-	if data == "wol_manual_mac" {
-		ctx.Bot.SetPendingAction("set_wol_mac")
-		msg := tgbotapi.NewMessage(chatID, ctx.Tr("wol_prompt"))
-		msg.ParseMode = "Markdown"
-		safeSend(bot, msg)
 		return true
 	}
 
@@ -534,24 +474,4 @@ func handleMainMenuCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int
 	}
 
 	editMessage(bot, chatID, msgID, text, kb)
-}
-
-func getARPMacAddresses() map[string]string {
-	macs := make(map[string]string)
-	data, err := os.ReadFile("/proc/net/arp")
-	if err != nil {
-		return macs
-	}
-	lines := strings.Split(string(data), "\n")
-	for _, line := range lines {
-		fields := strings.Fields(line)
-		if len(fields) >= 4 {
-			ip := fields[0]
-			mac := fields[3]
-			if mac != "00:00:00:00:00:00" && len(mac) == 17 {
-				macs[mac] = ip
-			}
-		}
-	}
-	return macs
 }

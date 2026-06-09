@@ -63,26 +63,6 @@ func handleMessage(bot BotAPI, msg *tgbotapi.Message) {
 		return
 	}
 
-	if action == "set_wol_mac" {
-		app.Bot.ClearPendingAction()
-		mac := strings.TrimSpace(msg.Text)
-
-		patch := map[string]interface{}{
-			"wake_on_lan": map[string]interface{}{
-				"mac_address": mac,
-			},
-		}
-		applyConfigPatch(patch)
-
-		safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, "✅ MAC Address per WOL aggiornato con successo."))
-		text, kb := getWOLSettingsText(app)
-		msgSettings := tgbotapi.NewMessage(msg.Chat.ID, text)
-		msgSettings.ParseMode = "Markdown"
-		msgSettings.ReplyMarkup = kb
-		safeSend(bot, msgSettings)
-		return
-	}
-
 	if action == "set_backup_uid" {
 		app.Bot.ClearPendingAction()
 		uid := int64(0)

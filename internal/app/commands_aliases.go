@@ -38,7 +38,6 @@ type ConfigSetCmd = pcommands.ConfigSetCmd
 type LanguageCmd = pcommands.LanguageCmd
 type SettingsCmd = pcommands.SettingsCmd
 type VersionCmd = pcommands.VersionCmd
-type WolCmd = pcommands.WolCmd
 type BackupCmd = pcommands.BackupCmd
 type ProcessesCmd = pcommands.ProcessesCmd
 type AdBlockCmd = pcommands.AdBlockCmd

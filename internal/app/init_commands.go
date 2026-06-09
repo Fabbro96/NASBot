@@ -24,8 +24,6 @@ func SetupCommandRegistry() *CommandRegistry {
 	// Network
 	r.Register("net", &NetCmd{})
 	r.Register("speedtest", &SpeedtestCmd{})
-	r.Register("wol", &WolCmd{})
-	r.Register("wake", &WolCmd{})
 	r.Register("backup", &BackupCmd{})
 	r.Register("adblock", &AdBlockCmd{})
 

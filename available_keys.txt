@@ -307,8 +307,5 @@ wd_no_containers
 wd_restarting
 wd_title
 wednesday
-wol_fail
-wol_no_mac
-wol_success
 yes
 zh
