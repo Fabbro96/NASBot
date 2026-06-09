@@ -21,7 +21,7 @@ func TestSleepWithContextCancelled(t *testing.T) {
 func TestPeriodicReportStopsOnCancelledContext(t *testing.T) {
 	ctx := newTestAppContext()
 	ctx.Config.Intervals.StatsSeconds = 1
-	ctx.Settings.ReportMode = 1
+	ctx.Settings.ReportsEnabled = true
 
 	c, cancel := context.WithCancel(context.Background())
 	cancel()

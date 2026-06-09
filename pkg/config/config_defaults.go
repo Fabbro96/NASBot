@@ -7,9 +7,9 @@ func defaultConfigTemplate() Config {
 		Paths:    PathsConfig{SSD: defaultPathSSD, HDD: defaultPathHDD},
 		Timezone: "Europe/Rome",
 		Reports: ReportsConfig{
-			Enabled: true,
-			Morning: ReportSchedule{Enabled: true, Hour: 7, Minute: 30},
-			Evening: ReportSchedule{Enabled: true, Hour: 18, Minute: 30},
+			Enabled:      true,
+			IntervalDays: 1,
+			Times:        []TimeConfig{{Hour: 7, Minute: 30}, {Hour: 18, Minute: 30}},
 		},
 		QuietHours: QuietHoursConfig{Enabled: true, StartHour: 23, StartMinute: 30, EndHour: 7, EndMinute: 0},
 		Notifications: NotificationsConfig{

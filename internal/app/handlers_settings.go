@@ -115,13 +115,10 @@ func getSettingsMenuText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup
 	currentLang := ctx.Settings.GetLanguage()
 	langName := ctx.Tr(languageNameKey(currentLang)) + " " + languageFlag(currentLang)
 
-	reportMode := ctx.Settings.GetReportMode()
+	repEnabled, repInterval, repTimes := ctx.Settings.GetReportsSettings()
 	reportText := ctx.Tr("report_disabled")
-	switch reportMode {
-	case 1:
-		reportText = ctx.Tr("report_once")
-	case 2:
-		reportText = ctx.Tr("report_twice")
+	if repEnabled {
+		reportText = fmt.Sprintf(ctx.Tr("report_enabled_fmt"), repInterval, len(repTimes))
 	}
 
 	ctx.Settings.Mu.RLock()
@@ -164,39 +161,140 @@ func getSettingsMenuText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🧹 "+ctx.Tr("settings_prune"), "settings_change_prune"),
 		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("⚠️ "+ctx.Tr("settings_thresholds"), "settings_change_thresholds"),
+		),
 	)
 	return text, kb
 }
 
 func getReportSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
 	text := ctx.Tr("report_settings_title")
-	checkDisabled := " "
-	checkOnce := " "
-	checkTwice := " "
-	mode := ctx.Settings.GetReportMode()
-	switch mode {
-	case 0:
-		checkDisabled = "✓"
-	case 1:
-		checkOnce = "✓"
-	case 2:
-		checkTwice = "✓"
+	enabled, interval, times := ctx.Settings.GetReportsSettings()
+	
+	if !enabled {
+		text += "\n" + ctx.Tr("status_disabled")
+	} else {
+		text += "\n" + fmt.Sprintf(ctx.Tr("report_freq_fmt"), interval)
 	}
-	kb := tgbotapi.NewInlineKeyboardMarkup(
+
+	rows := [][]tgbotapi.InlineKeyboardButton{}
+
+	toggleText := ctx.Tr("enable")
+	toggleData := "report_enable"
+	if enabled {
+		toggleText = ctx.Tr("disable")
+		toggleData = "report_disable"
+	}
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData(toggleText, toggleData),
+	))
+
+	if enabled {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("➖", "report_interval_dec"),
+			tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf(ctx.Tr("report_interval_btn"), interval), "noop"),
+			tgbotapi.NewInlineKeyboardButtonData("➕", "report_interval_inc"),
+		))
+
+		timeRow := []tgbotapi.InlineKeyboardButton{}
+		for i, tp := range times {
+			btnText := fmt.Sprintf("✖ %02d:%02d", tp.Hour, tp.Minute)
+			btnData := fmt.Sprintf("report_del_time_%d", i)
+			timeRow = append(timeRow, tgbotapi.NewInlineKeyboardButtonData(btnText, btnData))
+			if len(timeRow) == 2 {
+				rows = append(rows, timeRow)
+				timeRow = []tgbotapi.InlineKeyboardButton{}
+			}
+		}
+		if len(timeRow) > 0 {
+			rows = append(rows, timeRow)
+		}
+
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("➕ "+ctx.Tr("add_time"), "report_add_time"),
+		))
+	}
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("back"), "back_settings"),
+	))
+
+	kb := tgbotapi.NewInlineKeyboardMarkup(rows...)
+	return text, kb
+}
+
+func getThresholdsMenuText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
+	text := ctx.Tr("thresholds_settings_title")
+	
+	// Read current thresholds from Config
+	cfg := ctx.Config
+	cpuW, cpuC := cfg.Notifications.CPU.WarningThreshold, cfg.Notifications.CPU.CriticalThreshold
+	ramW, ramC := cfg.Notifications.RAM.WarningThreshold, cfg.Notifications.RAM.CriticalThreshold
+	ssdW, ssdC := cfg.Notifications.DiskSSD.WarningThreshold, cfg.Notifications.DiskSSD.CriticalThreshold
+	tempW, tempC := cfg.Temperature.WarningThreshold, cfg.Temperature.CriticalThreshold
+
+	rows := [][]tgbotapi.InlineKeyboardButton{
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(checkDisabled+" "+ctx.Tr("report_disabled"), "set_reports_0"),
+			tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("🌡 CPU: %.0f%% / %.0f%%", cpuW, cpuC), "thresh_edit_cpu"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(checkOnce+" "+ctx.Tr("report_once"), "set_reports_1"),
+			tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("🧠 RAM: %.0f%% / %.0f%%", ramW, ramC), "thresh_edit_ram"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(checkTwice+" "+ctx.Tr("report_twice"), "set_reports_2"),
+			tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("💾 Disk SSD: %.0f%% / %.0f%%", ssdW, ssdC), "thresh_edit_ssd"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("🔥 Temp: %.0f°C / %.0f°C", tempW, tempC), "thresh_edit_temp"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("back"), "back_settings"),
 		),
-	)
-	return text, kb
+	}
+	
+	return text, tgbotapi.NewInlineKeyboardMarkup(rows...)
+}
+
+func getThresholdResourceText(ctx *AppContext, resource string) (string, tgbotapi.InlineKeyboardMarkup) {
+	text := fmt.Sprintf(ctx.Tr("thresh_edit_title"), strings.ToUpper(resource))
+	
+	cfg := ctx.Config
+	var w, c float64
+	var unit string
+	
+	switch resource {
+	case "cpu":
+		w, c = cfg.Notifications.CPU.WarningThreshold, cfg.Notifications.CPU.CriticalThreshold
+		unit = "%"
+	case "ram":
+		w, c = cfg.Notifications.RAM.WarningThreshold, cfg.Notifications.RAM.CriticalThreshold
+		unit = "%"
+	case "ssd":
+		w, c = cfg.Notifications.DiskSSD.WarningThreshold, cfg.Notifications.DiskSSD.CriticalThreshold
+		unit = "%"
+	case "temp":
+		w, c = cfg.Temperature.WarningThreshold, cfg.Temperature.CriticalThreshold
+		unit = "°C"
+	}
+	
+	rows := [][]tgbotapi.InlineKeyboardButton{
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("➖ Warning", fmt.Sprintf("thresh_dec_w_%s", resource)),
+			tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("%.0f%s", w, unit), "noop"),
+			tgbotapi.NewInlineKeyboardButtonData("➕ Warning", fmt.Sprintf("thresh_inc_w_%s", resource)),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("➖ Critical", fmt.Sprintf("thresh_dec_c_%s", resource)),
+			tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("%.0f%s", c, unit), "noop"),
+			tgbotapi.NewInlineKeyboardButtonData("➕ Critical", fmt.Sprintf("thresh_inc_c_%s", resource)),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("back"), "settings_change_thresholds"),
+		),
+	}
+	
+	return text, tgbotapi.NewInlineKeyboardMarkup(rows...)
 }
 
 func getQuietHoursSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {

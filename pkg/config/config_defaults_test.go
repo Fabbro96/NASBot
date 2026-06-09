@@ -27,8 +27,8 @@ func TestFillMissingConfigFields_PreservesExistingValues(t *testing.T) {
 	if enabled, _ := reports["enabled"].(bool); enabled {
 		t.Fatalf("existing explicit value should be preserved")
 	}
-	if _, ok := reports["morning"]; !ok {
-		t.Fatalf("expected missing nested default field reports.morning")
+	if _, ok := reports["times"]; !ok {
+		t.Fatalf("expected missing nested default field reports.times")
 	}
 	if _, ok := cfgMap["network_watchdog"]; !ok {
 		t.Fatalf("expected network_watchdog defaults to be added")
@@ -76,7 +76,7 @@ func TestLoadConfig_AddsMissingFieldsToLegacyConfig(t *testing.T) {
 	if enabled, _ := reports["enabled"].(bool); enabled {
 		t.Fatalf("legacy explicit reports.enabled=false should be preserved")
 	}
-	if _, ok := reports["morning"]; !ok {
+	if _, ok := reports["times"]; !ok {
 		t.Fatalf("expected nested missing defaults in reports section")
 	}
 }

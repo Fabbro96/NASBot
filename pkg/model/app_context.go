@@ -88,13 +88,13 @@ type MonitorState struct {
 
 // UserSettings holds persistent user preferences (loaded from JSON)
 type UserSettings struct {
-	Mu            RWMutex
-	Language      string
-	ReportMode    int
-	ReportMorning TimePoint
-	ReportEvening TimePoint
-	QuietHours    QuietSettings
-	DockerPrune   PruneSettings
+	Mu             RWMutex
+	Language       string
+	ReportsEnabled bool
+	ReportInterval int
+	ReportTimes    []TimePoint
+	QuietHours     QuietSettings
+	DockerPrune    PruneSettings
 }
 
 type TimePoint struct {
@@ -117,9 +117,10 @@ type PruneSettings struct {
 // InitApp initializes the application context
 func InitApp(cfg *Config) *AppContext {
 	// Default settings seeded from config, overridden by persisted state later.
-	reportMode := 2
-	reportMorning := TimePoint{7, 30}
-	reportEvening := TimePoint{18, 30}
+	reportsEnabled := true
+	reportInterval := 1
+	reportTimes := []TimePoint{{7, 30}, {18, 30}}
+
 	quietHours := QuietSettings{
 		Enabled: true,
 		Start:   TimePoint{23, 30},
@@ -128,19 +129,16 @@ func InitApp(cfg *Config) *AppContext {
 	dockerPrune := PruneSettings{Enabled: true, Day: "sunday", Hour: 4}
 
 	if cfg != nil {
-		// Reports: mirror config as defaults for user settings.
-		if !cfg.Reports.Enabled {
-			reportMode = 0
-		} else if cfg.Reports.Morning.Enabled && cfg.Reports.Evening.Enabled {
-			reportMode = 2
-			reportMorning = TimePoint{cfg.Reports.Morning.Hour, cfg.Reports.Morning.Minute}
-			reportEvening = TimePoint{cfg.Reports.Evening.Hour, cfg.Reports.Evening.Minute}
-		} else if cfg.Reports.Morning.Enabled {
-			reportMode = 1
-			reportMorning = TimePoint{cfg.Reports.Morning.Hour, cfg.Reports.Morning.Minute}
-		} else if cfg.Reports.Evening.Enabled {
-			reportMode = 1
-			reportMorning = TimePoint{cfg.Reports.Evening.Hour, cfg.Reports.Evening.Minute}
+		reportsEnabled = cfg.Reports.Enabled
+		if cfg.Reports.IntervalDays > 0 {
+			reportInterval = cfg.Reports.IntervalDays
+		}
+		if len(cfg.Reports.Times) > 0 {
+			reportsTimes := make([]TimePoint, 0, len(cfg.Reports.Times))
+			for _, tc := range cfg.Reports.Times {
+				reportsTimes = append(reportsTimes, TimePoint{Hour: tc.Hour, Minute: tc.Minute})
+			}
+			reportTimes = reportsTimes
 		}
 
 		// Quiet hours defaults.
@@ -192,12 +190,12 @@ func InitApp(cfg *Config) *AppContext {
 			KwLastSignatures:           make(map[string]string),
 		},
 		Settings: &UserSettings{
-			Language:      "en",
-			ReportMode:    reportMode,
-			ReportMorning: reportMorning,
-			ReportEvening: reportEvening,
-			QuietHours:    quietHours,
-			DockerPrune:   dockerPrune,
+			Language:       "en",
+			ReportsEnabled: reportsEnabled,
+			ReportInterval: reportInterval,
+			ReportTimes:    reportTimes,
+			QuietHours:     quietHours,
+			DockerPrune:    dockerPrune,
 		},
 		HTTP: httpClient,
 	}
@@ -286,10 +284,14 @@ func (s *UserSettings) SetLanguage(lang string) {
 	s.Language = lang
 }
 
-func (s *UserSettings) GetReportMode() int {
+func (s *UserSettings) GetReportsSettings() (enabled bool, interval int, times []TimePoint) {
 	s.Mu.RLock()
 	defer s.Mu.RUnlock()
-	return s.ReportMode
+	enabled = s.ReportsEnabled
+	interval = s.ReportInterval
+	times = make([]TimePoint, len(s.ReportTimes))
+	copy(times, s.ReportTimes)
+	return
 }
 
 // Helpers designed to bridge the gap during refactor

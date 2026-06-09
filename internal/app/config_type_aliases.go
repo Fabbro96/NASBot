@@ -5,7 +5,7 @@ import pmodel "nasbot/pkg/model"
 type Config = pmodel.Config
 type PathsConfig = pmodel.PathsConfig
 type ReportsConfig = pmodel.ReportsConfig
-type ReportSchedule = pmodel.ReportSchedule
+type TimeConfig = pmodel.TimeConfig
 type QuietHoursConfig = pmodel.QuietHoursConfig
 type NotificationsConfig = pmodel.NotificationsConfig
 type ResourceConfig = pmodel.ResourceConfig

@@ -4,99 +4,108 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-// getNextReportTime calculates the next report time based on reportMode
-func getNextReportTime(ctx *AppContext) (time.Time, bool) {
-	ctx.Settings.Mu.RLock()
-	mode := ctx.Settings.ReportMode
-	morning := ctx.Settings.ReportMorning
-	evening := ctx.Settings.ReportEvening
-	ctx.Settings.Mu.RUnlock()
-
+// getNextReportTime calculates the next report time based on settings
+func getNextReportTime(ctx *AppContext) (time.Time, TimePoint) {
+	enabled, intervalDays, times := ctx.Settings.GetReportsSettings()
 	loc := ctx.State.TimeLocation
 	now := time.Now().In(loc)
 
-	if mode == 0 {
-		return now.Add(24 * 365 * time.Hour), false
+	if !enabled || len(times) == 0 {
+		return now.Add(24 * 365 * time.Hour), TimePoint{}
 	}
 
-	morningReport := time.Date(now.Year(), now.Month(), now.Day(),
-		morning.Hour, morning.Minute, 0, 0, loc)
-	eveningReport := time.Date(now.Year(), now.Month(), now.Day(),
-		evening.Hour, evening.Minute, 0, 0, loc)
+	if intervalDays < 1 {
+		intervalDays = 1
+	}
 
-	const gracePeriod = 5 * time.Minute
+	// Sort times to process chronologically
+	sort.Slice(times, func(i, j int) bool {
+		if times[i].Hour == times[j].Hour {
+			return times[i].Minute < times[j].Minute
+		}
+		return times[i].Hour < times[j].Hour
+	})
 
 	ctx.State.Mu.Lock()
-	lastReportToday := ctx.State.LastReport.In(loc)
+	lastReport := ctx.State.LastReport.In(loc)
 	ctx.State.Mu.Unlock()
 
-	sameDay := lastReportToday.Year() == now.Year() &&
-		lastReportToday.Month() == now.Month() &&
-		lastReportToday.Day() == now.Day()
-
-	morningDone := sameDay && lastReportToday.Hour() >= morning.Hour &&
-		(lastReportToday.Hour() > morning.Hour || lastReportToday.Minute() >= morning.Minute)
-	eveningDone := sameDay && lastReportToday.Hour() >= evening.Hour &&
-		(lastReportToday.Hour() > evening.Hour || lastReportToday.Minute() >= evening.Minute)
-
-	if mode == 2 {
-		if !morningDone && now.After(morningReport) && now.Before(morningReport.Add(gracePeriod)) {
-			slog.Info("Report: Missed morning report, triggering now (grace period)")
-			return now, true
-		}
-		if !eveningDone && now.After(eveningReport) && now.Before(eveningReport.Add(gracePeriod)) {
-			slog.Info("Report: Missed evening report, triggering now (grace period)")
-			return now, false
-		}
-		if now.Before(morningReport) {
-			return morningReport, true
-		} else if now.Before(eveningReport) {
-			return eveningReport, false
-		}
-		return morningReport.Add(24 * time.Hour), true
+	lastReportDate := time.Date(lastReport.Year(), lastReport.Month(), lastReport.Day(), 0, 0, 0, 0, loc)
+	nowDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+	
+	// Handle uninitialized lastReport
+	if lastReport.IsZero() {
+		lastReportDate = nowDate.AddDate(0, 0, -intervalDays)
 	}
 
-	if !morningDone && now.After(morningReport) && now.Before(morningReport.Add(gracePeriod)) {
-		slog.Info("Report: Missed daily report, triggering now (grace period)")
-		return now, true
+	daysSinceLast := int(nowDate.Sub(lastReportDate).Hours() / 24)
+	if daysSinceLast < 0 {
+		daysSinceLast = intervalDays // force recalculation for clock skew
 	}
-	if now.Before(morningReport) {
-		return morningReport, true
+
+	const gracePeriod = 5 * time.Minute
+	isReportDay := daysSinceLast >= intervalDays || daysSinceLast == 0
+
+	if isReportDay {
+		for _, tp := range times {
+			reportTime := time.Date(now.Year(), now.Month(), now.Day(), tp.Hour, tp.Minute, 0, 0, loc)
+			
+			sameDay := lastReport.Year() == now.Year() &&
+				lastReport.Month() == now.Month() &&
+				lastReport.Day() == now.Day()
+			
+			alreadySent := sameDay && (lastReport.Hour() > tp.Hour || (lastReport.Hour() == tp.Hour && lastReport.Minute() >= tp.Minute))
+			
+			if alreadySent {
+				continue
+			}
+
+			if now.After(reportTime) && now.Before(reportTime.Add(gracePeriod)) {
+				slog.Info("Report: Missed report, triggering now (grace period)")
+				return now, tp
+			}
+			
+			if now.Before(reportTime) {
+				return reportTime, tp
+			}
+		}
 	}
-	return morningReport.Add(24 * time.Hour), true
+
+	daysToAdd := 1
+	if !isReportDay {
+		daysToAdd = intervalDays - daysSinceLast
+	} else if daysSinceLast == 0 {
+		daysToAdd = intervalDays
+	}
+
+	nextDate := nowDate.AddDate(0, 0, daysToAdd)
+	tp := times[0]
+	nextReport := time.Date(nextDate.Year(), nextDate.Month(), nextDate.Day(), tp.Hour, tp.Minute, 0, 0, loc)
+	return nextReport, tp
 }
 
 func getNextReportDescription(ctx *AppContext) string {
-	ctx.Settings.Mu.RLock()
-	mode := ctx.Settings.ReportMode
-	morning := ctx.Settings.ReportMorning
-	evening := ctx.Settings.ReportEvening
-	ctx.Settings.Mu.RUnlock()
-
-	loc := ctx.State.TimeLocation
-	now := time.Now().In(loc)
-
-	if mode == 0 {
-		return ctx.Tr("reprt_disabled")
+	enabled, _, _ := ctx.Settings.GetReportsSettings()
+	if !enabled {
+		return ctx.Tr("report_disabled")
 	}
 
-	if mode == 2 {
-		m := time.Date(now.Year(), now.Month(), now.Day(), morning.Hour, morning.Minute, 0, 0, loc)
-		e := time.Date(now.Year(), now.Month(), now.Day(), evening.Hour, evening.Minute, 0, 0, loc)
-		if now.Before(m) {
-			return fmt.Sprintf(ctx.Tr("report_next"), morning.Hour, morning.Minute)
-		} else if now.Before(e) {
-			return fmt.Sprintf(ctx.Tr("report_next"), evening.Hour, evening.Minute)
-		}
-		return fmt.Sprintf(ctx.Tr("report_next_tmr"), morning.Hour, morning.Minute)
+	nextReport, tp := getNextReportTime(ctx)
+	now := time.Now().In(ctx.State.TimeLocation)
+	
+	if nextReport.Year() == now.Year() && nextReport.Month() == now.Month() && nextReport.Day() == now.Day() {
+		return fmt.Sprintf(ctx.Tr("report_next"), tp.Hour, tp.Minute)
+	} else if nextReport.Year() == now.Year() && nextReport.Month() == now.Month() && nextReport.Day() == now.AddDate(0, 0, 1).Day() {
+		return fmt.Sprintf(ctx.Tr("report_next_tmr"), tp.Hour, tp.Minute)
 	}
-
-	return fmt.Sprintf(ctx.Tr("report_daily"), morning.Hour, morning.Minute)
+	
+	return fmt.Sprintf(ctx.Tr("report_next_date"), nextReport.Day(), nextReport.Month().String()[:3], tp.Hour, tp.Minute)
 }
 
 func periodicReport(ctx *AppContext, bot BotAPI, runCtx context.Context) {
@@ -106,22 +115,23 @@ func periodicReport(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 	}
 
 	for {
-		ctx.Settings.Mu.RLock()
-		mode := ctx.Settings.ReportMode
-		ctx.Settings.Mu.RUnlock()
+		enabled, _, _ := ctx.Settings.GetReportsSettings()
 
-		if mode == 0 {
+		if !enabled {
 			if !sleepWithContext(runCtx, 1*time.Hour) {
 				return
 			}
 			continue
 		}
 
-		nextReport, isMorning := getNextReportTime(ctx)
+		nextReport, tp := getNextReportTime(ctx)
 		sleepDuration := time.Until(nextReport)
 
+		// Greeting based on time of day
 		greeting := ctx.Tr("good_morning")
-		if !isMorning {
+		if tp.Hour >= 12 && tp.Hour < 18 {
+			greeting = ctx.Tr("good_afternoon")
+		} else if tp.Hour >= 18 {
 			greeting = ctx.Tr("good_evening")
 		}
 

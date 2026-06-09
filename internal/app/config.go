@@ -165,14 +165,19 @@ func sanitizeConfig(c *Config) []string {
 	}
 
 	// Reports
-	if c.Reports.Enabled && !c.Reports.Morning.Enabled && !c.Reports.Evening.Enabled {
-		c.Reports.Morning.Enabled = true
-		add("reports.morning.enabled", true)
+	clampIntField("reports.interval_days", &c.Reports.IntervalDays, 1, 365)
+	if len(c.Reports.Times) > 0 {
+		validTimes := make([]TimeConfig, 0)
+		for _, t := range c.Reports.Times {
+			h, changedH := clampInt(t.Hour, 0, 23)
+			m, changedM := clampInt(t.Minute, 0, 59)
+			if changedH || changedM {
+				add("reports.times.adjusted", fmt.Sprintf("%02d:%02d -> %02d:%02d", t.Hour, t.Minute, h, m))
+			}
+			validTimes = append(validTimes, TimeConfig{Hour: h, Minute: m})
+		}
+		c.Reports.Times = validTimes
 	}
-	clampIntField("reports.morning.hour", &c.Reports.Morning.Hour, 0, 23)
-	clampIntField("reports.morning.minute", &c.Reports.Morning.Minute, 0, 59)
-	clampIntField("reports.evening.hour", &c.Reports.Evening.Hour, 0, 23)
-	clampIntField("reports.evening.minute", &c.Reports.Evening.Minute, 0, 59)
 
 	// Quiet hours
 	clampIntField("quiet_hours.start_hour", &c.QuietHours.StartHour, 0, 23)

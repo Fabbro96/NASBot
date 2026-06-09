@@ -6,9 +6,9 @@ func TestSanitizeConfig_DefaultsAndClamps(t *testing.T) {
 	cfg := Config{
 		Paths: PathsConfig{},
 		Reports: ReportsConfig{
-			Enabled: true,
-			Morning: ReportSchedule{Enabled: false, Hour: 30, Minute: -5},
-			Evening: ReportSchedule{Enabled: false, Hour: -2, Minute: 90},
+			Enabled:      true,
+			IntervalDays: -5,
+			Times:        []TimeConfig{{Hour: 25, Minute: 65}, {Hour: -1, Minute: 30}},
 		},
 		QuietHours: QuietHoursConfig{
 			Enabled:     true,
@@ -52,14 +52,23 @@ func TestSanitizeConfig_DefaultsAndClamps(t *testing.T) {
 	if cfg.Paths.SSD != defaultPathSSD || cfg.Paths.HDD != defaultPathHDD {
 		t.Fatalf("expected default paths, got ssd=%q hdd=%q", cfg.Paths.SSD, cfg.Paths.HDD)
 	}
-	if !cfg.Reports.Morning.Enabled {
-		t.Fatalf("expected morning reports enabled when reports enabled")
+	if cfg.Reports.IntervalDays != 1 {
+		t.Errorf("Expected Reports.IntervalDays to be clamped to 1, got %d", cfg.Reports.IntervalDays)
 	}
-	if cfg.Reports.Morning.Hour < 0 || cfg.Reports.Morning.Hour > 23 || cfg.Reports.Morning.Minute < 0 || cfg.Reports.Morning.Minute > 59 {
-		t.Fatalf("morning report time not clamped: %02d:%02d", cfg.Reports.Morning.Hour, cfg.Reports.Morning.Minute)
+	if len(cfg.Reports.Times) != 2 {
+		t.Fatalf("Expected 2 Times, got %d", len(cfg.Reports.Times))
 	}
-	if cfg.Reports.Evening.Hour < 0 || cfg.Reports.Evening.Hour > 23 || cfg.Reports.Evening.Minute < 0 || cfg.Reports.Evening.Minute > 59 {
-		t.Fatalf("evening report time not clamped: %02d:%02d", cfg.Reports.Evening.Hour, cfg.Reports.Evening.Minute)
+	if cfg.Reports.Times[0].Hour != 23 {
+		t.Errorf("Expected Reports.Times[0].Hour to be clamped to 23, got %d", cfg.Reports.Times[0].Hour)
+	}
+	if cfg.Reports.Times[0].Minute != 59 {
+		t.Errorf("Expected Reports.Times[0].Minute to be clamped to 59, got %d", cfg.Reports.Times[0].Minute)
+	}
+	if cfg.Reports.Times[1].Hour != 0 {
+		t.Errorf("Expected Reports.Times[1].Hour to be clamped to 0, got %d", cfg.Reports.Times[1].Hour)
+	}
+	if cfg.Reports.Times[1].Minute != 30 {
+		t.Errorf("Expected Reports.Times[1].Minute to be kept at 30, got %d", cfg.Reports.Times[1].Minute)
 	}
 	if cfg.QuietHours.Enabled {
 		t.Fatalf("expected quiet hours disabled when start=end")

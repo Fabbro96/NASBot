@@ -42,15 +42,14 @@ type PathsConfig struct {
 }
 
 type ReportsConfig struct {
-	Enabled bool           `json:"enabled"`
-	Morning ReportSchedule `json:"morning"`
-	Evening ReportSchedule `json:"evening"`
+	Enabled      bool         `json:"enabled"`
+	IntervalDays int          `json:"interval_days"`
+	Times        []TimeConfig `json:"times"`
 }
 
-type ReportSchedule struct {
-	Enabled bool `json:"enabled"`
-	Hour    int  `json:"hour"`
-	Minute  int  `json:"minute"`
+type TimeConfig struct {
+	Hour   int `json:"hour"`
+	Minute int `json:"minute"`
 }
 
 type QuietHoursConfig struct {
