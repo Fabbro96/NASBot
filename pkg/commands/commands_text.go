@@ -131,7 +131,7 @@ func getNetworkText(ctx *AppContext) string {
 	publicCtx, cancelPublic := context.WithTimeout(context.Background(), netTimeout)
 	defer cancelPublic()
 	b.WriteString(fmt.Sprintf(tr("net_public"), getPublicIP(ctx, publicCtx)))
-	
+
 	s, ready := ctx.Stats.Get()
 	if ready {
 		b.WriteString("\n\n📊 *Traffico di Rete*\n")

@@ -37,7 +37,7 @@ func (c *BackupCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, 
 		sendMarkdown(bot, msg.Chat.ID, fmt.Sprintf("❌ Errore durante l'invio del backup: %v", err))
 		return
 	}
-	
+
 	if targetID != msg.Chat.ID {
 		sendMarkdown(bot, msg.Chat.ID, "✅ Backup inviato con successo all'utente configurato.")
 	}

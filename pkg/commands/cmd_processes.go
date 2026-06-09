@@ -12,7 +12,7 @@ type ProcessesCmd struct{}
 
 func (c *ProcessesCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, args string) {
 	text, kb := getProcessesMenu(ctx)
-	
+
 	outMsg := tgbotapi.NewMessage(msg.Chat.ID, text)
 	outMsg.ParseMode = "Markdown"
 	outMsg.ReplyMarkup = kb
@@ -65,7 +65,7 @@ func getProcessesMenu(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
 
 		btnText := fmt.Sprintf("🛑 %s (%s)", cmdName, pid)
 		btnData := fmt.Sprintf("proc_manage_%s", pid)
-		
+
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(btnText, btnData),
 		))

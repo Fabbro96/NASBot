@@ -99,7 +99,7 @@ func loadState(ctx *AppContext) {
 		ctx.Settings.ReportsEnabled = state.ReportMode > 0
 		ctx.Settings.ReportInterval = 1
 		ctx.Settings.ReportTimes = make([]TimePoint, 0, 2)
-		
+
 		if state.ReportMode >= 1 {
 			if state.ReportMorningHour > 0 || state.ReportMorningMinute > 0 {
 				ctx.Settings.ReportTimes = append(ctx.Settings.ReportTimes, TimePoint{Hour: state.ReportMorningHour, Minute: state.ReportMorningMinute})

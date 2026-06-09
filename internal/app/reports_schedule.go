@@ -38,7 +38,7 @@ func getNextReportTime(ctx *AppContext) (time.Time, TimePoint) {
 
 	lastReportDate := time.Date(lastReport.Year(), lastReport.Month(), lastReport.Day(), 0, 0, 0, 0, loc)
 	nowDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
-	
+
 	// Handle uninitialized lastReport
 	if lastReport.IsZero() {
 		lastReportDate = nowDate.AddDate(0, 0, -intervalDays)
@@ -55,13 +55,13 @@ func getNextReportTime(ctx *AppContext) (time.Time, TimePoint) {
 	if isReportDay {
 		for _, tp := range times {
 			reportTime := time.Date(now.Year(), now.Month(), now.Day(), tp.Hour, tp.Minute, 0, 0, loc)
-			
+
 			sameDay := lastReport.Year() == now.Year() &&
 				lastReport.Month() == now.Month() &&
 				lastReport.Day() == now.Day()
-			
+
 			alreadySent := sameDay && (lastReport.Hour() > tp.Hour || (lastReport.Hour() == tp.Hour && lastReport.Minute() >= tp.Minute))
-			
+
 			if alreadySent {
 				continue
 			}
@@ -70,7 +70,7 @@ func getNextReportTime(ctx *AppContext) (time.Time, TimePoint) {
 				slog.Info("Report: Missed report, triggering now (grace period)")
 				return now, tp
 			}
-			
+
 			if now.Before(reportTime) {
 				return reportTime, tp
 			}
@@ -98,13 +98,13 @@ func getNextReportDescription(ctx *AppContext) string {
 
 	nextReport, tp := getNextReportTime(ctx)
 	now := time.Now().In(ctx.State.TimeLocation)
-	
+
 	if nextReport.Year() == now.Year() && nextReport.Month() == now.Month() && nextReport.Day() == now.Day() {
 		return fmt.Sprintf(ctx.Tr("report_next"), tp.Hour, tp.Minute)
 	} else if nextReport.Year() == now.Year() && nextReport.Month() == now.Month() && nextReport.Day() == now.AddDate(0, 0, 1).Day() {
 		return fmt.Sprintf(ctx.Tr("report_next_tmr"), tp.Hour, tp.Minute)
 	}
-	
+
 	return fmt.Sprintf(ctx.Tr("report_next_date"), nextReport.Day(), nextReport.Month().String()[:3], tp.Hour, tp.Minute)
 }
 

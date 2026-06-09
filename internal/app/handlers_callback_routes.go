@@ -108,50 +108,98 @@ func handleSettingsCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int
 			action := parts[1] // inc / dec
 			level := parts[2]  // w / c
 			res := parts[3]    // cpu / ram / ssd / temp
-			
+
 			// Build the patch
 			key := ""
 			if res == "temp" {
 				key = "temperature"
 			} else {
 				key = "notifications." + res
-				if res == "ssd" { key = "notifications.disk_ssd" }
+				if res == "ssd" {
+					key = "notifications.disk_ssd"
+				}
 			}
-			if level == "w" { key += ".warning_threshold" } else { key += ".critical_threshold" }
-			
+			if level == "w" {
+				key += ".warning_threshold"
+			} else {
+				key += ".critical_threshold"
+			}
+
 			// Get current value
 			var currentVal float64
 			cfg := ctx.Config
 			switch res {
-			case "cpu": if level == "w" { currentVal = cfg.Notifications.CPU.WarningThreshold } else { currentVal = cfg.Notifications.CPU.CriticalThreshold }
-			case "ram": if level == "w" { currentVal = cfg.Notifications.RAM.WarningThreshold } else { currentVal = cfg.Notifications.RAM.CriticalThreshold }
-			case "ssd": if level == "w" { currentVal = cfg.Notifications.DiskSSD.WarningThreshold } else { currentVal = cfg.Notifications.DiskSSD.CriticalThreshold }
-			case "temp": if level == "w" { currentVal = cfg.Temperature.WarningThreshold } else { currentVal = cfg.Temperature.CriticalThreshold }
+			case "cpu":
+				if level == "w" {
+					currentVal = cfg.Notifications.CPU.WarningThreshold
+				} else {
+					currentVal = cfg.Notifications.CPU.CriticalThreshold
+				}
+			case "ram":
+				if level == "w" {
+					currentVal = cfg.Notifications.RAM.WarningThreshold
+				} else {
+					currentVal = cfg.Notifications.RAM.CriticalThreshold
+				}
+			case "ssd":
+				if level == "w" {
+					currentVal = cfg.Notifications.DiskSSD.WarningThreshold
+				} else {
+					currentVal = cfg.Notifications.DiskSSD.CriticalThreshold
+				}
+			case "temp":
+				if level == "w" {
+					currentVal = cfg.Temperature.WarningThreshold
+				} else {
+					currentVal = cfg.Temperature.CriticalThreshold
+				}
 			}
-			
+
 			newVal := currentVal
-			if action == "inc" { newVal += 5.0 } else { newVal -= 5.0 }
-			if newVal < 0 { newVal = 0 }
-			if newVal > 100 && res != "temp" { newVal = 100 }
-			if newVal > 120 && res == "temp" { newVal = 120 }
-			
+			if action == "inc" {
+				newVal += 5.0
+			} else {
+				newVal -= 5.0
+			}
+			if newVal < 0 {
+				newVal = 0
+			}
+			if newVal > 100 && res != "temp" {
+				newVal = 100
+			}
+			if newVal > 120 && res == "temp" {
+				newVal = 120
+			}
+
 			// Apply patch
 			patch := map[string]interface{}{}
 			if res == "temp" {
 				patch["temperature"] = map[string]interface{}{}
-				if level == "w" { patch["temperature"].(map[string]interface{})["warning_threshold"] = newVal } else { patch["temperature"].(map[string]interface{})["critical_threshold"] = newVal }
+				if level == "w" {
+					patch["temperature"].(map[string]interface{})["warning_threshold"] = newVal
+				} else {
+					patch["temperature"].(map[string]interface{})["critical_threshold"] = newVal
+				}
 			} else {
 				node := "cpu"
-				if res == "ssd" { node = "disk_ssd" } else if res == "ram" { node = "ram" }
+				if res == "ssd" {
+					node = "disk_ssd"
+				} else if res == "ram" {
+					node = "ram"
+				}
 				patch["notifications"] = map[string]interface{}{
 					node: map[string]interface{}{},
 				}
-				if level == "w" { patch["notifications"].(map[string]interface{})[node].(map[string]interface{})["warning_threshold"] = newVal } else { patch["notifications"].(map[string]interface{})[node].(map[string]interface{})["critical_threshold"] = newVal }
+				if level == "w" {
+					patch["notifications"].(map[string]interface{})[node].(map[string]interface{})["warning_threshold"] = newVal
+				} else {
+					patch["notifications"].(map[string]interface{})[node].(map[string]interface{})["critical_threshold"] = newVal
+				}
 			}
-			
+
 			// Call applyConfigPatch directly
 			applyConfigPatch(patch)
-			
+
 			text, kb := getThresholdResourceText(ctx, res)
 			editMessage(bot, chatID, msgID, text, &kb)
 		}
@@ -320,7 +368,7 @@ func handleScopedCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int, 
 		handleContainerCallback(ctx, bot, chatID, msgID, data)
 		return true
 	}
-	
+
 	if data == "ai_analyze_critical" {
 		msg := tgbotapi.NewMessage(chatID, "⏳ Sto raccogliendo il contesto (syslog, top, docker stats) e chiedendo all'AI...")
 		sentMsg, err := bot.Send(msg)
@@ -330,7 +378,7 @@ func handleScopedCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int, 
 				diagnosis, errDiag := AnalyzeCriticalAlerts(ctx, func(model string) {
 					// Optionally update "Trying model..." here, skipping for simplicity
 				})
-				
+
 				if errDiag != nil {
 					bot.Send(tgbotapi.NewEditMessageText(chatID, sentMsg.MessageID, fmt.Sprintf("❌ Errore AI: %v", errDiag)))
 				} else {
@@ -340,7 +388,7 @@ func handleScopedCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int, 
 		}
 		return true
 	}
-	
+
 	if strings.HasPrefix(data, "proc_manage_") {
 		pid := strings.TrimPrefix(data, "proc_manage_")
 		text := fmt.Sprintf("⚙️ *Gestore Processi*\n\nCosa vuoi fare con il processo `%s`?", pid)
@@ -363,17 +411,17 @@ func handleScopedCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int, 
 		if len(parts) >= 4 {
 			signal := parts[2]
 			pid := parts[3]
-			
+
 			sigArg := "-15"
 			if signal == "kill" {
 				sigArg = "-9"
 			}
-			
+
 			ctxExec, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
 			cmd := exec.CommandContext(ctxExec, "kill", sigArg, pid)
 			err := cmd.Run()
-			
+
 			if err != nil {
 				safeSend(bot, tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Errore durante l'uccisione del processo %s: %v", pid, err)))
 			} else {
@@ -389,7 +437,7 @@ func handleScopedCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int, 
 		editMessage(bot, chatID, msgID, text, &kb)
 		return true
 	}
-	
+
 	return false
 }
 

@@ -66,14 +66,14 @@ func monitorAlerts(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 				msg := "🚨 *Critical*\n\n" + strings.Join(criticalAlerts, "\n")
 				m := tgbotapi.NewMessage(cfg.AllowedUserID, msg)
 				m.ParseMode = "Markdown"
-				
+
 				kb := tgbotapi.NewInlineKeyboardMarkup(
 					tgbotapi.NewInlineKeyboardRow(
 						tgbotapi.NewInlineKeyboardButtonData("🤖 Analizza con AI", "ai_analyze_critical"),
 					),
 				)
 				m.ReplyMarkup = kb
-				
+
 				safeSend(bot, m)
 				ctx.Monitor.Mu.Lock()
 				ctx.Monitor.LastCriticalAlert = time.Now()
@@ -108,7 +108,7 @@ func monitorAlerts(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 func statsCollector(ctx *AppContext, runCtx context.Context) {
 	var lastIO map[string]disk.IOCountersStat
 	var lastIOTime time.Time
-	
+
 	var lastNet []gopsnet.IOCountersStat
 	var lastNetTime time.Time
 
@@ -157,14 +157,14 @@ func statsCollector(ctx *AppContext, runCtx context.Context) {
 		}
 		lastIO = currentIO
 		lastIOTime = time.Now()
-		
+
 		currentNet, _ := gopsnet.IOCounters(false)
 		var rxMbps, txMbps float64
 		var rxTotal, txTotal float64
 		if len(currentNet) > 0 {
 			rxTotal = float64(currentNet[0].BytesRecv) / 1024 / 1024
 			txTotal = float64(currentNet[0].BytesSent) / 1024 / 1024
-			
+
 			if lastNet != nil && !lastNetTime.IsZero() {
 				elapsed := time.Since(lastNetTime).Seconds()
 				if elapsed > 0 {

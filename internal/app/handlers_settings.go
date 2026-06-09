@@ -177,7 +177,7 @@ func getSettingsMenuText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup
 func getReportSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
 	text := ctx.Tr("report_settings_title")
 	enabled, interval, times := ctx.Settings.GetReportsSettings()
-	
+
 	if !enabled {
 		text += "\n" + ctx.Tr("status_disabled")
 	} else {
@@ -233,7 +233,7 @@ func getReportSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMark
 
 func getThresholdsMenuText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
 	text := ctx.Tr("thresholds_settings_title")
-	
+
 	// Read current thresholds from Config
 	cfg := ctx.Config
 	cpuW, cpuC := cfg.Notifications.CPU.WarningThreshold, cfg.Notifications.CPU.CriticalThreshold
@@ -258,17 +258,17 @@ func getThresholdsMenuText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMark
 			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("back"), "back_settings"),
 		),
 	}
-	
+
 	return text, tgbotapi.NewInlineKeyboardMarkup(rows...)
 }
 
 func getThresholdResourceText(ctx *AppContext, resource string) (string, tgbotapi.InlineKeyboardMarkup) {
 	text := fmt.Sprintf(ctx.Tr("thresh_edit_title"), strings.ToUpper(resource))
-	
+
 	cfg := ctx.Config
 	var w, c float64
 	var unit string
-	
+
 	switch resource {
 	case "cpu":
 		w, c = cfg.Notifications.CPU.WarningThreshold, cfg.Notifications.CPU.CriticalThreshold
@@ -283,7 +283,7 @@ func getThresholdResourceText(ctx *AppContext, resource string) (string, tgbotap
 		w, c = cfg.Temperature.WarningThreshold, cfg.Temperature.CriticalThreshold
 		unit = "°C"
 	}
-	
+
 	rows := [][]tgbotapi.InlineKeyboardButton{
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("➖ Warning", fmt.Sprintf("thresh_dec_w_%s", resource)),
@@ -299,7 +299,7 @@ func getThresholdResourceText(ctx *AppContext, resource string) (string, tgbotap
 			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("back"), "settings_change_thresholds"),
 		),
 	}
-	
+
 	return text, tgbotapi.NewInlineKeyboardMarkup(rows...)
 }
 
@@ -383,7 +383,7 @@ func getPruneScheduleText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarku
 
 func getWOLSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
 	text := "💻 *Wake-on-LAN (WOL)*\n\nInserisci il MAC Address del computer che vuoi accendere usando il comando `/wake`."
-	
+
 	mac := ctx.Config.WakeOnLan.MacAddress
 	if mac == "" {
 		text += "\n\nAttualmente: _Non configurato_"
@@ -399,13 +399,13 @@ func getWOLSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup)
 			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("back"), "back_settings"),
 		),
 	}
-	
+
 	return text, tgbotapi.NewInlineKeyboardMarkup(rows...)
 }
 
 func getBackupSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
 	text := "📦 *Backup Configurazioni*\n\nSeleziona il Telegram User ID (Chat ID) a cui verranno inviati i backup generati col comando `/backup`."
-	
+
 	uid := ctx.Config.Backup.TargetUserID
 	if uid == 0 {
 		text += fmt.Sprintf("\n\nAttualmente: _Default_ (`%d`)", ctx.Config.AllowedUserID)
@@ -421,6 +421,6 @@ func getBackupSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMark
 			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("back"), "back_settings"),
 		),
 	}
-	
+
 	return text, tgbotapi.NewInlineKeyboardMarkup(rows...)
 }

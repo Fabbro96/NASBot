@@ -33,27 +33,27 @@ func handleMessage(bot BotAPI, msg *tgbotapi.Message) {
 		slog.Error("App context is nil in handleMessage")
 		return
 	}
-	
+
 	action := app.Bot.GetPendingAction()
 	if action == "add_report_time" {
 		app.Bot.ClearPendingAction()
-		
+
 		var hour, minute int
 		if _, err := fmt.Sscanf(msg.Text, "%d:%d", &hour, &minute); err != nil {
 			safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, "❌ Invalid format. Use HH:MM (e.g., 14:30)"))
 			return
 		}
-		
+
 		if hour < 0 || hour > 23 || minute < 0 || minute > 59 {
 			safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, "❌ Invalid time. Hours: 0-23, Minutes: 0-59"))
 			return
 		}
-		
+
 		app.Settings.Mu.Lock()
 		app.Settings.ReportTimes = append(app.Settings.ReportTimes, TimePoint{Hour: hour, Minute: minute})
 		app.Settings.Mu.Unlock()
 		saveState(app)
-		
+
 		text, kb := getReportSettingsText(app)
 		safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, "✅ Time added successfully."))
 		msgSettings := tgbotapi.NewMessage(msg.Chat.ID, text)
@@ -62,18 +62,18 @@ func handleMessage(bot BotAPI, msg *tgbotapi.Message) {
 		safeSend(bot, msgSettings)
 		return
 	}
-	
+
 	if action == "set_wol_mac" {
 		app.Bot.ClearPendingAction()
 		mac := strings.TrimSpace(msg.Text)
-		
+
 		patch := map[string]interface{}{
 			"wake_on_lan": map[string]interface{}{
 				"mac_address": mac,
 			},
 		}
 		applyConfigPatch(patch)
-		
+
 		safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, "✅ MAC Address per WOL aggiornato con successo."))
 		text, kb := getWOLSettingsText(app)
 		msgSettings := tgbotapi.NewMessage(msg.Chat.ID, text)
@@ -90,14 +90,14 @@ func handleMessage(bot BotAPI, msg *tgbotapi.Message) {
 			safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, "❌ Formato non valido. Devi inserire un numero (es. `123456789`)."))
 			return
 		}
-		
+
 		patch := map[string]interface{}{
 			"backup": map[string]interface{}{
 				"target_user_id": uid,
 			},
 		}
 		applyConfigPatch(patch)
-		
+
 		safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, "✅ ID Destinatario Backup aggiornato con successo."))
 		text, kb := getBackupSettingsText(app)
 		msgSettings := tgbotapi.NewMessage(msg.Chat.ID, text)
