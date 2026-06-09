@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Running pre-push checks (CI Guard)..."
+
+# Run the full CI guard script
+scripts/ci_guard.sh
+
+echo "✅ pre-push checks passed"

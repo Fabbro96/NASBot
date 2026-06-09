@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-scripts/secret_scan.sh
+echo "Running pre-commit checks..."
 
-echo "pre-commit: secret scan passed"
+# Check if gofmt needs to be run
+fmt_files=$(gofmt -l .)
+if [[ -n "$fmt_files" ]]; then
+  echo "❌ Files not formatted with gofmt. Run 'gofmt -w .' or format your code."
+  echo "$fmt_files"
+  exit 1
+fi
+
+# Run fast quality checks and secret scan
+scripts/secret_scan.sh --repo
+scripts/quality_check.sh
+
+echo "✅ pre-commit checks passed"
