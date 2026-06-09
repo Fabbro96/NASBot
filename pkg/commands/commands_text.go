@@ -240,8 +240,9 @@ func getHelpText(ctx *AppContext) string {
 	b.WriteString("/reboot · /shutdown — power control\n")
 	b.WriteString("/reboot force · /forcereboot — forced reboot (no confirm)\n\n")
 
-	ctx.Settings.Mu.RLock()
 	reportsEnabled, reportInterval, reportTimes := ctx.Settings.GetReportsSettings()
+
+	ctx.Settings.Mu.RLock()
 	quiet := ctx.Settings.QuietHours
 	ctx.Settings.Mu.RUnlock()
 
