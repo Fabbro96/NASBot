@@ -57,12 +57,16 @@ func parseSemverTag(tag string) ([3]int, bool) {
 	parts := strings.SplitN(t, "-", 2)
 	base := parts[0]
 	segs := strings.Split(base, ".")
-	if len(segs) != 3 {
+	if len(segs) < 2 || len(segs) > 3 {
 		return [3]int{}, false
 	}
 	maj, err1 := strconv.Atoi(segs[0])
 	min, err2 := strconv.Atoi(segs[1])
-	pat, err3 := strconv.Atoi(segs[2])
+	pat := 0
+	var err3 error
+	if len(segs) == 3 {
+		pat, err3 = strconv.Atoi(segs[2])
+	}
 	if err1 != nil || err2 != nil || err3 != nil {
 		return [3]int{}, false
 	}

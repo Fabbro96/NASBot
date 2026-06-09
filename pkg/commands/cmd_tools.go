@@ -140,7 +140,10 @@ func (c *UpdateCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, 
 	m := tgbotapi.NewMessage(msg.Chat.ID, text)
 	m.ParseMode = "Markdown"
 	m.ReplyMarkup = kb
-	safeSend(bot, m)
+	if _, err := bot.Send(m); err != nil {
+		m.ParseMode = ""
+		safeSend(bot, m)
+	}
 }
 func (c *UpdateCmd) Description() string { return "Download latest GitHub release and restart NASBot" }
 
