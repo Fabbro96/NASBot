@@ -23,6 +23,7 @@ type Config struct {
 	Update             UpdateConfig          `json:"update"`
 	WakeOnLan          WakeOnLanConfig       `json:"wake_on_lan"`
 	Backup             BackupConfig          `json:"backup"`
+	AdBlock            AdBlockConfig         `json:"adblock"`
 }
 
 type BackupConfig struct {
@@ -177,4 +178,11 @@ type RaidWatchdogConfig struct {
 	CheckIntervalSecs int  `json:"check_interval_seconds"`
 	CooldownMins      int  `json:"cooldown_minutes"`
 	RecoveryNotify    bool `json:"recovery_notify"`
+}
+
+type AdBlockConfig struct {
+	Enabled bool   `json:"enabled"`
+	Type    string `json:"type"` // "pihole" or "adguard"
+	URL     string `json:"url"`
+	Token   string `json:"token"`
 }

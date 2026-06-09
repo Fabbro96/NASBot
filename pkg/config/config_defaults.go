@@ -48,6 +48,7 @@ func defaultConfigTemplate() Config {
 		},
 		RaidWatchdog: RaidWatchdogConfig{Enabled: true, CheckIntervalSecs: 300, CooldownMins: 30, RecoveryNotify: true},
 		Backup:       BackupConfig{TargetUserID: 0},
+		AdBlock:      AdBlockConfig{Enabled: false, Type: "pihole", URL: "http://192.168.1.100", Token: ""},
 	}
 }
 

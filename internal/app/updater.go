@@ -57,20 +57,22 @@ func parseSemverTag(tag string) ([3]int, bool) {
 	parts := strings.SplitN(t, "-", 2)
 	base := parts[0]
 	segs := strings.Split(base, ".")
-	if len(segs) < 2 || len(segs) > 3 {
-		return [3]int{}, false
+
+	var ver [3]int
+	parsedSomething := false
+
+	for i := 0; i < 3 && i < len(segs); i++ {
+		val, err := strconv.Atoi(segs[i])
+		if err == nil {
+			ver[i] = val
+			parsedSomething = true
+		} else {
+			// Stop parsing if we hit a non-integer segment
+			break
+		}
 	}
-	maj, err1 := strconv.Atoi(segs[0])
-	min, err2 := strconv.Atoi(segs[1])
-	pat := 0
-	var err3 error
-	if len(segs) == 3 {
-		pat, err3 = strconv.Atoi(segs[2])
-	}
-	if err1 != nil || err2 != nil || err3 != nil {
-		return [3]int{}, false
-	}
-	return [3]int{maj, min, pat}, true
+
+	return ver, parsedSomething
 }
 
 func isNewerRelease(latestTag, currentVersion string) bool {

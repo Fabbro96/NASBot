@@ -411,6 +411,10 @@ func handleScopedCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int, 
 		handleHealthCallback(ctx, bot, query, data)
 		return true
 	}
+	if strings.HasPrefix(data, "adblock_") {
+		handleAdBlockCallback(ctx, bot, chatID, msgID, data)
+		return true
+	}
 	if strings.HasPrefix(data, "container_") {
 		handleContainerCallback(ctx, bot, chatID, msgID, data)
 		return true

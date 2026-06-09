@@ -85,3 +85,31 @@ func TestApplyLatestRelease_CapturesMsgID(t *testing.T) {
 		t.Fatalf("expected text to contain download error, but got %q", secondMsg.Text)
 	}
 }
+
+func TestParseSemverTag(t *testing.T) {
+	tests := []struct {
+		tag      string
+		expected [3]int
+		valid    bool
+	}{
+		{"v1.2.3", [3]int{1, 2, 3}, true},
+		{"1.2.3", [3]int{1, 2, 3}, true},
+		{"V1.0", [3]int{1, 0, 0}, true},
+		{"v1", [3]int{1, 0, 0}, true},
+		{"1.x", [3]int{1, 0, 0}, true},
+		{"v2.0.0-beta", [3]int{2, 0, 0}, true},
+		{"v0.10.1", [3]int{0, 10, 1}, true},
+		{"v1.2.3.4", [3]int{1, 2, 3}, true},
+		{"random", [3]int{0, 0, 0}, false},
+	}
+
+	for _, tc := range tests {
+		got, ok := parseSemverTag(tc.tag)
+		if ok != tc.valid {
+			t.Errorf("parseSemverTag(%q) valid = %v, want %v", tc.tag, ok, tc.valid)
+		}
+		if got != tc.expected {
+			t.Errorf("parseSemverTag(%q) = %v, want %v", tc.tag, got, tc.expected)
+		}
+	}
+}
