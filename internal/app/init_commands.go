@@ -27,6 +27,7 @@ func SetupCommandRegistry() *CommandRegistry {
 	r.Register("wol", &WolCmd{})
 	r.Register("wake", &WolCmd{})
 	r.Register("backup", &BackupCmd{})
+	r.Register("adblock", &AdBlockCmd{})
 
 	// Tools
 	r.Register("ping", &PingCmd{})
