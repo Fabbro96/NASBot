@@ -4,7 +4,11 @@
 package app
 
 import (
+	"context"
+	"fmt"
+	"os/exec"
 	"strings"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -34,22 +38,200 @@ func handleSettingsCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int
 		editMessage(bot, chatID, msgID, text, &kb)
 		return true
 	}
-	if strings.HasPrefix(data, "set_reports_") {
-		mode := 0
-		switch data {
-		case "set_reports_1":
-			mode = 1
-		case "set_reports_2":
-			mode = 2
-		}
+	if data == "report_enable" {
 		ctx.Settings.Mu.Lock()
-		ctx.Settings.ReportMode = mode
+		ctx.Settings.ReportsEnabled = true
 		ctx.Settings.Mu.Unlock()
 		saveState(ctx)
-		text, kb := getSettingsMenuText(ctx)
+		text, kb := getReportSettingsText(ctx)
 		editMessage(bot, chatID, msgID, text, &kb)
 		return true
 	}
+	if data == "report_disable" {
+		ctx.Settings.Mu.Lock()
+		ctx.Settings.ReportsEnabled = false
+		ctx.Settings.Mu.Unlock()
+		saveState(ctx)
+		text, kb := getReportSettingsText(ctx)
+		editMessage(bot, chatID, msgID, text, &kb)
+		return true
+	}
+	if data == "report_interval_inc" || data == "report_interval_dec" {
+		ctx.Settings.Mu.Lock()
+		if data == "report_interval_inc" {
+			ctx.Settings.ReportInterval++
+		} else if ctx.Settings.ReportInterval > 1 {
+			ctx.Settings.ReportInterval--
+		}
+		ctx.Settings.Mu.Unlock()
+		saveState(ctx)
+		text, kb := getReportSettingsText(ctx)
+		editMessage(bot, chatID, msgID, text, &kb)
+		return true
+	}
+	if data == "report_add_time" {
+		ctx.Bot.SetPendingAction("add_report_time")
+		msg := tgbotapi.NewMessage(chatID, ctx.Tr("type_time_prompt"))
+		safeSend(bot, msg)
+		return true
+	}
+	if strings.HasPrefix(data, "report_del_time_") {
+		var idx int
+		if _, err := fmt.Sscanf(data, "report_del_time_%d", &idx); err == nil {
+			ctx.Settings.Mu.Lock()
+			if idx >= 0 && idx < len(ctx.Settings.ReportTimes) {
+				ctx.Settings.ReportTimes = append(ctx.Settings.ReportTimes[:idx], ctx.Settings.ReportTimes[idx+1:]...)
+			}
+			ctx.Settings.Mu.Unlock()
+			saveState(ctx)
+			text, kb := getReportSettingsText(ctx)
+			editMessage(bot, chatID, msgID, text, &kb)
+		}
+		return true
+	}
+
+	if data == "settings_change_thresholds" {
+		text, kb := getThresholdsMenuText(ctx)
+		editMessage(bot, chatID, msgID, text, &kb)
+		return true
+	}
+	if strings.HasPrefix(data, "thresh_edit_") {
+		res := strings.TrimPrefix(data, "thresh_edit_")
+		text, kb := getThresholdResourceText(ctx, res)
+		editMessage(bot, chatID, msgID, text, &kb)
+		return true
+	}
+	if strings.HasPrefix(data, "thresh_inc_") || strings.HasPrefix(data, "thresh_dec_") {
+		// thresh_inc_w_cpu, thresh_dec_c_ram
+		parts := strings.Split(data, "_")
+		if len(parts) == 4 {
+			action := parts[1] // inc / dec
+			level := parts[2]  // w / c
+			res := parts[3]    // cpu / ram / ssd / temp
+
+			// Build the patch
+			key := ""
+			if res == "temp" {
+				key = "temperature"
+			} else {
+				key = "notifications." + res
+				if res == "ssd" {
+					key = "notifications.disk_ssd"
+				}
+			}
+			if level == "w" {
+				key += ".warning_threshold"
+			} else {
+				key += ".critical_threshold"
+			}
+
+			// Get current value
+			var currentVal float64
+			cfg := ctx.Config
+			switch res {
+			case "cpu":
+				if level == "w" {
+					currentVal = cfg.Notifications.CPU.WarningThreshold
+				} else {
+					currentVal = cfg.Notifications.CPU.CriticalThreshold
+				}
+			case "ram":
+				if level == "w" {
+					currentVal = cfg.Notifications.RAM.WarningThreshold
+				} else {
+					currentVal = cfg.Notifications.RAM.CriticalThreshold
+				}
+			case "ssd":
+				if level == "w" {
+					currentVal = cfg.Notifications.DiskSSD.WarningThreshold
+				} else {
+					currentVal = cfg.Notifications.DiskSSD.CriticalThreshold
+				}
+			case "temp":
+				if level == "w" {
+					currentVal = cfg.Temperature.WarningThreshold
+				} else {
+					currentVal = cfg.Temperature.CriticalThreshold
+				}
+			}
+
+			newVal := currentVal
+			if action == "inc" {
+				newVal += 5.0
+			} else {
+				newVal -= 5.0
+			}
+			if newVal < 0 {
+				newVal = 0
+			}
+			if newVal > 100 && res != "temp" {
+				newVal = 100
+			}
+			if newVal > 120 && res == "temp" {
+				newVal = 120
+			}
+
+			// Apply patch
+			patch := map[string]interface{}{}
+			if res == "temp" {
+				patch["temperature"] = map[string]interface{}{}
+				if level == "w" {
+					patch["temperature"].(map[string]interface{})["warning_threshold"] = newVal
+				} else {
+					patch["temperature"].(map[string]interface{})["critical_threshold"] = newVal
+				}
+			} else {
+				node := "cpu"
+				if res == "ssd" {
+					node = "disk_ssd"
+				} else if res == "ram" {
+					node = "ram"
+				}
+				patch["notifications"] = map[string]interface{}{
+					node: map[string]interface{}{},
+				}
+				if level == "w" {
+					patch["notifications"].(map[string]interface{})[node].(map[string]interface{})["warning_threshold"] = newVal
+				} else {
+					patch["notifications"].(map[string]interface{})[node].(map[string]interface{})["critical_threshold"] = newVal
+				}
+			}
+
+			// Call applyConfigPatch directly
+			applyConfigPatch(patch)
+
+			text, kb := getThresholdResourceText(ctx, res)
+			editMessage(bot, chatID, msgID, text, &kb)
+		}
+		return true
+	}
+
+	if data == "settings_change_wol" {
+		text, kb := getWOLSettingsText(ctx)
+		editMessage(bot, chatID, msgID, text, &kb)
+		return true
+	}
+	if data == "wol_set_mac" {
+		ctx.Bot.SetPendingAction("set_wol_mac")
+		msg := tgbotapi.NewMessage(chatID, "💻 Inserisci il nuovo MAC Address (es. `AA:BB:CC:DD:EE:FF`):")
+		msg.ParseMode = "Markdown"
+		safeSend(bot, msg)
+		return true
+	}
+
+	if data == "settings_change_backup" {
+		text, kb := getBackupSettingsText(ctx)
+		editMessage(bot, chatID, msgID, text, &kb)
+		return true
+	}
+	if data == "backup_set_uid" {
+		ctx.Bot.SetPendingAction("set_backup_uid")
+		msg := tgbotapi.NewMessage(chatID, "📦 Inserisci il Telegram User ID (Chat ID) a cui inviare i backup:")
+		msg.ParseMode = "Markdown"
+		safeSend(bot, msg)
+		return true
+	}
+
 	if data == "back_settings" {
 		text, kb := getSettingsMenuText(ctx)
 		editMessage(bot, chatID, msgID, text, &kb)
@@ -186,6 +368,76 @@ func handleScopedCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int, 
 		handleContainerCallback(ctx, bot, chatID, msgID, data)
 		return true
 	}
+
+	if data == "ai_analyze_critical" {
+		msg := tgbotapi.NewMessage(chatID, "⏳ Sto raccogliendo il contesto (syslog, top, docker stats) e chiedendo all'AI...")
+		sentMsg, err := bot.Send(msg)
+		if err == nil {
+			go func() {
+				// We don't have onModelChange visually integrated right here, but we can pass nil or a simple closure.
+				diagnosis, errDiag := AnalyzeCriticalAlerts(ctx, func(model string) {
+					// Optionally update "Trying model..." here, skipping for simplicity
+				})
+
+				if errDiag != nil {
+					bot.Send(tgbotapi.NewEditMessageText(chatID, sentMsg.MessageID, fmt.Sprintf("❌ Errore AI: %v", errDiag)))
+				} else {
+					bot.Send(tgbotapi.NewEditMessageText(chatID, sentMsg.MessageID, diagnosis))
+				}
+			}()
+		}
+		return true
+	}
+
+	if strings.HasPrefix(data, "proc_manage_") {
+		pid := strings.TrimPrefix(data, "proc_manage_")
+		text := fmt.Sprintf("⚙️ *Gestore Processi*\n\nCosa vuoi fare con il processo `%s`?", pid)
+		kb := tgbotapi.NewInlineKeyboardMarkup(
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("🛑 Termina (SIGTERM)", "proc_kill_term_"+pid),
+			),
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("💀 Forza Chiusura (SIGKILL)", "proc_kill_kill_"+pid),
+			),
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("cancel"), "proc_refresh"),
+			),
+		)
+		editMessage(bot, chatID, msgID, text, &kb)
+		return true
+	}
+	if strings.HasPrefix(data, "proc_kill_") {
+		parts := strings.Split(data, "_")
+		if len(parts) >= 4 {
+			signal := parts[2]
+			pid := parts[3]
+
+			sigArg := "-15"
+			if signal == "kill" {
+				sigArg = "-9"
+			}
+
+			ctxExec, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctxExec, "kill", sigArg, pid)
+			err := cmd.Run()
+
+			if err != nil {
+				safeSend(bot, tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Errore durante l'uccisione del processo %s: %v", pid, err)))
+			} else {
+				safeSend(bot, tgbotapi.NewMessage(chatID, fmt.Sprintf("✅ Processo %s ucciso con successo.", pid)))
+			}
+		}
+		text, kb := getProcessesMenu(ctx)
+		editMessage(bot, chatID, msgID, text, &kb)
+		return true
+	}
+	if data == "proc_refresh" {
+		text, kb := getProcessesMenu(ctx)
+		editMessage(bot, chatID, msgID, text, &kb)
+		return true
+	}
+
 	return false
 }
 

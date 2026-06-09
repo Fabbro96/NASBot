@@ -143,6 +143,9 @@ func RunBot() {
 			if update.Message.IsCommand() {
 				// handlers.go handleCommand
 				goSafe("command-handler", func() { handleCommand(bot, update.Message) })
+			} else {
+				// Non-command message handler
+				goSafe("message-handler", func() { handleMessage(bot, update.Message) })
 			}
 		}()
 	}

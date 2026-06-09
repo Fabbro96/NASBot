@@ -31,9 +31,10 @@ go build -o nasbot ./...
 
 ## ✨ Key Features
 
-- **📊 Live Stats**: CPU, RAM, Swap, Disk (SSD/HDD), Net, Temperatures.
-- **🐳 Docker Manager**: Start, stop, restart, and kill containers via buttons.
-- **🤖 AI Reports**: Daily summaries powered by **Gemini 2.5 Flash** (optional).
+- **📊 Live Stats**: CPU, RAM, Swap, Disk (SSD/HDD), Real-Time Network (Mbps), Temperatures.
+- **⚙️ Process Manager**: Interactive `/processes` dashboard with inline SIGTERM/SIGKILL buttons.
+- **🐳 Docker Manager**: Start, stop, restart, and kill containers via inline buttons.
+- **🤖 Self-Healing AI**: Diagnose critical alerts in real-time with **Gemini**, analyzing `syslog` and `top` processes automatically via the `[Analizza con AI]` button.
 - **🌍 Multi-language**: EN, IT, ES, DE, ZH, UK (full key coverage with EN fallback).
 - **🔔 Smart Alerts**: Notify on high usage, stopped containers, or critical errors.
 - **🛡️ Watchdogs**: Network, Kernel, RAID, and Docker watchdogs with auto-recovery.
@@ -41,6 +42,7 @@ go build -o nasbot ./...
 - **⚙️ Legacy Config Auto-Heal**: Missing fields in old `config.json` are auto-added with defaults.
 - **📨 Reports**: Scheduled summary (morning/evening) with trends and events.
 - **💓 Healthchecks.io**: Built-in integration for uptime monitoring.
+- **💾 Backup & WOL**: Integrated tools for NAS configuration backups (`/backup`) and Wake-on-LAN routing.
 
 ## 🧩 Code Layout (Short)
 
@@ -123,7 +125,7 @@ Edit `config.json` with your details.
 | Command | Action |
 |:--------|--------|
 | `/status`, `/start` | Stato generale e riepilogo del sistema |
-| `/top` | Monitoraggio delle risorse e dei processi |
+| `/top`, `/processes` | Monitoraggio delle risorse e gestione interattiva dei processi |
 | `/sysinfo` | Informazioni dettagliate sull'hardware |
 | `/temp` | Temperature hardware (CPU, dischi, ecc.) |
 
@@ -139,6 +141,8 @@ Edit `config.json` with your details.
 | `/reboot`, `/shutdown`, `/forcereboot` | Gestione alimentazione NAS |
 | `/diskpred` (o `/prediction`) | Previsione esaurimento spazio su disco |
 | `/health` (o `/healthchecks`) | Stato dei controlli di salute automatici |
+| `/backup` | Backup automatico dei file di configurazione (`config.json`) |
+| `/wol` | Invia pacchetto Wake-on-LAN per risvegliare dispositivi locali |
 | `/update` | Aggiorna automaticamente il bot scaricando l'ultima release |
 
 ### 🌐 Network & Logs

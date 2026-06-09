@@ -132,7 +132,21 @@ func getNetworkText(ctx *AppContext) string {
 	defer cancelPublic()
 	b.WriteString(fmt.Sprintf(tr("net_public"), getPublicIP(ctx, publicCtx)))
 
+	s, ready := ctx.Stats.Get()
+	if ready {
+		b.WriteString("\n\n📊 *Traffico di Rete*\n")
+		b.WriteString(fmt.Sprintf("⬇️ Download: `%.2f Mbps` (Tot: `%s`)\n", s.NetRxMbps, formatData(s.NetRxTotalMB)))
+		b.WriteString(fmt.Sprintf("⬆️ Upload: `%.2f Mbps` (Tot: `%s`)\n", s.NetTxMbps, formatData(s.NetTxTotalMB)))
+	}
+
 	return b.String()
+}
+
+func formatData(mb float64) string {
+	if mb > 1024 {
+		return fmt.Sprintf("%.2f GB", mb/1024)
+	}
+	return fmt.Sprintf("%.2f MB", mb)
 }
 
 func GetNetworkText(ctx *AppContext) string { return getNetworkText(ctx) }
@@ -226,22 +240,18 @@ func getHelpText(ctx *AppContext) string {
 	b.WriteString("/reboot · /shutdown — power control\n")
 	b.WriteString("/reboot force · /forcereboot — forced reboot (no confirm)\n\n")
 
+	reportsEnabled, reportInterval, reportTimes := ctx.Settings.GetReportsSettings()
+
 	ctx.Settings.Mu.RLock()
-	reportMode := ctx.Settings.ReportMode
-	reportMorning := ctx.Settings.ReportMorning
-	reportEvening := ctx.Settings.ReportEvening
 	quiet := ctx.Settings.QuietHours
 	ctx.Settings.Mu.RUnlock()
 
-	if reportMode > 0 {
+	if reportsEnabled {
 		b.WriteString(tr("help_reports"))
-		if reportMode == 2 {
-			b.WriteString(fmt.Sprintf("%02d:%02d & %02d:%02d_\n",
-				reportMorning.Hour, reportMorning.Minute,
-				reportEvening.Hour, reportEvening.Minute))
-		} else {
-			b.WriteString(fmt.Sprintf("%02d:%02d_\n", reportMorning.Hour, reportMorning.Minute))
+		for _, t := range reportTimes {
+			b.WriteString(fmt.Sprintf("%02d:%02d ", t.Hour, t.Minute))
 		}
+		b.WriteString(fmt.Sprintf("(every %d days)\n", reportInterval))
 	}
 
 	if quiet.Enabled {
@@ -296,21 +306,13 @@ func getConfigText(ctx *AppContext) string {
 	// Reports
 	b.WriteString(tr("cfg_reports"))
 	if ctx.Config.Reports.Enabled {
-		if ctx.Config.Reports.Morning.Enabled && ctx.Config.Reports.Evening.Enabled {
-			b.WriteString(fmt.Sprintf(tr("cfg_both"),
-				ctx.Config.Reports.Morning.Hour, ctx.Config.Reports.Morning.Minute,
-				ctx.Config.Reports.Evening.Hour, ctx.Config.Reports.Evening.Minute))
-		} else if ctx.Config.Reports.Morning.Enabled {
-			b.WriteString(fmt.Sprintf(tr("cfg_morning_only"),
-				ctx.Config.Reports.Morning.Hour, ctx.Config.Reports.Morning.Minute))
-		} else if ctx.Config.Reports.Evening.Enabled {
-			b.WriteString(fmt.Sprintf(tr("cfg_evening_only"),
-				ctx.Config.Reports.Evening.Hour, ctx.Config.Reports.Evening.Minute))
-		} else {
-			b.WriteString(tr("cfg_disabled"))
+		b.WriteString(fmt.Sprintf(" ✅ Every %d days at ", ctx.Config.Reports.IntervalDays))
+		for _, t := range ctx.Config.Reports.Times {
+			b.WriteString(fmt.Sprintf("%02d:%02d ", t.Hour, t.Minute))
 		}
+		b.WriteString("\n")
 	} else {
-		b.WriteString(tr("cfg_disabled"))
+		b.WriteString(tr("cfg_disabled") + "\n")
 	}
 
 	// Quiet hours

@@ -15,13 +15,17 @@ type BotState struct {
 	ReportEvents        []ReportEvent          `json:"report_events,omitempty"`
 	LastReleaseNotified string                 `json:"last_release_notified,omitempty"`
 	Language            string                 `json:"language"`
-	ReportMode          int                    `json:"report_mode"` // 0=disabled, 1=once, 2=twice
-
-	// User-configurable settings
+	// Deprecated: Migrating to new reports configuration
+	ReportMode          int `json:"report_mode"`
 	ReportMorningHour   int `json:"report_morning_hour"`
 	ReportMorningMinute int `json:"report_morning_minute"`
 	ReportEveningHour   int `json:"report_evening_hour"`
 	ReportEveningMinute int `json:"report_evening_minute"`
+
+	// New Reports configuration
+	ReportsEnabled *bool       `json:"reports_enabled,omitempty"`
+	ReportInterval int         `json:"report_interval,omitempty"`
+	ReportTimes    []TimePoint `json:"report_times,omitempty"`
 
 	QuietHoursEnabled bool `json:"quiet_hours_enabled"`
 	QuietStartHour    int  `json:"quiet_start_hour"`
@@ -81,15 +85,35 @@ func loadState(ctx *AppContext) {
 	if state.Language != "" {
 		ctx.Settings.Language = state.Language
 	}
-	if state.ReportMode > 0 {
-		ctx.Settings.ReportMode = state.ReportMode
-	}
+	// Migration logic
+	if state.ReportsEnabled != nil {
+		ctx.Settings.ReportsEnabled = *state.ReportsEnabled
+		if state.ReportInterval > 0 {
+			ctx.Settings.ReportInterval = state.ReportInterval
+		}
+		if len(state.ReportTimes) > 0 {
+			ctx.Settings.ReportTimes = state.ReportTimes
+		}
+	} else if state.ReportMode > 0 || state.ReportMode == 0 {
+		// Migrate old format to new format
+		ctx.Settings.ReportsEnabled = state.ReportMode > 0
+		ctx.Settings.ReportInterval = 1
+		ctx.Settings.ReportTimes = make([]TimePoint, 0, 2)
 
-	if state.ReportMorningHour > 0 || state.ReportMorningMinute > 0 {
-		ctx.Settings.ReportMorning = TimePoint{Hour: state.ReportMorningHour, Minute: state.ReportMorningMinute}
-	}
-	if state.ReportEveningHour > 0 || state.ReportEveningMinute > 0 {
-		ctx.Settings.ReportEvening = TimePoint{Hour: state.ReportEveningHour, Minute: state.ReportEveningMinute}
+		if state.ReportMode >= 1 {
+			if state.ReportMorningHour > 0 || state.ReportMorningMinute > 0 {
+				ctx.Settings.ReportTimes = append(ctx.Settings.ReportTimes, TimePoint{Hour: state.ReportMorningHour, Minute: state.ReportMorningMinute})
+			} else {
+				ctx.Settings.ReportTimes = append(ctx.Settings.ReportTimes, TimePoint{Hour: 7, Minute: 30})
+			}
+		}
+		if state.ReportMode == 2 {
+			if state.ReportEveningHour > 0 || state.ReportEveningMinute > 0 {
+				ctx.Settings.ReportTimes = append(ctx.Settings.ReportTimes, TimePoint{Hour: state.ReportEveningHour, Minute: state.ReportEveningMinute})
+			} else {
+				ctx.Settings.ReportTimes = append(ctx.Settings.ReportTimes, TimePoint{Hour: 18, Minute: 30})
+			}
+		}
 	}
 
 	if state.QuietStartHour > 0 || state.QuietStartMinute > 0 {
@@ -133,9 +157,10 @@ func saveState(ctx *AppContext) {
 
 	ctx.Settings.Mu.RLock()
 	language := ctx.Settings.Language
-	reportMode := ctx.Settings.ReportMode
-	reportMorning := ctx.Settings.ReportMorning
-	reportEvening := ctx.Settings.ReportEvening
+	reportsEnabled := ctx.Settings.ReportsEnabled
+	reportInterval := ctx.Settings.ReportInterval
+	reportTimes := make([]TimePoint, len(ctx.Settings.ReportTimes))
+	copy(reportTimes, ctx.Settings.ReportTimes)
 	quietHours := ctx.Settings.QuietHours
 	dockerPrune := ctx.Settings.DockerPrune
 	ctx.Settings.Mu.RUnlock()
@@ -146,11 +171,9 @@ func saveState(ctx *AppContext) {
 		ReportEvents:        reportEvents,
 		LastReleaseNotified: lastReleaseNotified,
 		Language:            language,
-		ReportMode:          reportMode,
-		ReportMorningHour:   reportMorning.Hour,
-		ReportMorningMinute: reportMorning.Minute,
-		ReportEveningHour:   reportEvening.Hour,
-		ReportEveningMinute: reportEvening.Minute,
+		ReportsEnabled:      &reportsEnabled,
+		ReportInterval:      reportInterval,
+		ReportTimes:         reportTimes,
 		QuietHoursEnabled:   quietHours.Enabled,
 		QuietStartHour:      quietHours.Start.Hour,
 		QuietStartMinute:    quietHours.Start.Minute,

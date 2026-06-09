@@ -21,6 +21,11 @@ type Config struct {
 	NetworkWatchdog    NetworkWatchdogConfig `json:"network_watchdog"`
 	RaidWatchdog       RaidWatchdogConfig    `json:"raid_watchdog"`
 	Update             UpdateConfig          `json:"update"`
+	Backup             BackupConfig          `json:"backup"`
+}
+
+type BackupConfig struct {
+	TargetUserID int64 `json:"target_user_id"`
 }
 
 // UpdateConfig controls automatic update behavior.
@@ -36,15 +41,14 @@ type PathsConfig struct {
 }
 
 type ReportsConfig struct {
-	Enabled bool           `json:"enabled"`
-	Morning ReportSchedule `json:"morning"`
-	Evening ReportSchedule `json:"evening"`
+	Enabled      bool         `json:"enabled"`
+	IntervalDays int          `json:"interval_days"`
+	Times        []TimeConfig `json:"times"`
 }
 
-type ReportSchedule struct {
-	Enabled bool `json:"enabled"`
-	Hour    int  `json:"hour"`
-	Minute  int  `json:"minute"`
+type TimeConfig struct {
+	Hour   int `json:"hour"`
+	Minute int `json:"minute"`
 }
 
 type QuietHoursConfig struct {

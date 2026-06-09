@@ -114,17 +114,19 @@ func reportLogRetentionDuration(ctx *AppContext) time.Duration {
 	}
 
 	ctx.Settings.Mu.RLock()
-	mode := ctx.Settings.ReportMode
+	reportsEnabled, reportInterval, _ := ctx.Settings.GetReportsSettings()
 	ctx.Settings.Mu.RUnlock()
 
-	switch mode {
-	case 2:
-		return 24 * time.Hour
-	case 1:
-		return 48 * time.Hour
-	default:
-		return 48 * time.Hour
+	if !reportsEnabled || reportInterval <= 0 {
+		return 48 * time.Hour // default
 	}
+
+	// Keep logs for 2 report intervals plus 1 extra day (minimum 48 hours)
+	days := reportInterval*2 + 1
+	if days < 2 {
+		days = 2
+	}
+	return time.Duration(days) * 24 * time.Hour
 }
 
 func prunePersistentLogsOlderThan(retention time.Duration) error {
