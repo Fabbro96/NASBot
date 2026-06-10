@@ -251,13 +251,27 @@ func getThresholdsMenuText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMark
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("💾 Disk SSD: %.0f%% / %.0f%%", ssdW, ssdC), "thresh_edit_ssd"),
 		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("🔥 Temp: %.0f°C / %.0f°C", tempW, tempC), "thresh_edit_temp"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("back"), "back_settings"),
-		),
 	}
+
+	for mount, diskCfg := range cfg.Notifications.SecondaryDisks {
+		btnText := fmt.Sprintf("🗄 Disk %s: %.0f%% / %.0f%%", mount, diskCfg.WarningThreshold, diskCfg.CriticalThreshold)
+		cbData := "thresh_edit_disk:" + mount
+		// Telegram inline callback data is limited to 64 bytes
+		if len(cbData) > 64 {
+			cbData = cbData[:64]
+		}
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(btnText, cbData),
+		))
+	}
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("🔥 Temp: %.0f°C / %.0f°C", tempW, tempC), "thresh_edit_temp"),
+	))
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("back"), "back_settings"),
+	))
 
 	return text, tgbotapi.NewInlineKeyboardMarkup(rows...)
 }
@@ -269,31 +283,52 @@ func getThresholdResourceText(ctx *AppContext, resource string) (string, tgbotap
 	var w, c float64
 	var unit string
 
-	switch resource {
-	case "cpu":
-		w, c = cfg.Notifications.CPU.WarningThreshold, cfg.Notifications.CPU.CriticalThreshold
+	if strings.HasPrefix(resource, "disk:") {
+		mount := strings.TrimPrefix(resource, "disk:")
+		diskCfg, ok := cfg.Notifications.SecondaryDisks[mount]
+		if !ok {
+			diskCfg = ResourceConfig{Enabled: true, WarningThreshold: 90, CriticalThreshold: 95}
+		}
+		w, c = diskCfg.WarningThreshold, diskCfg.CriticalThreshold
 		unit = "%"
-	case "ram":
-		w, c = cfg.Notifications.RAM.WarningThreshold, cfg.Notifications.RAM.CriticalThreshold
-		unit = "%"
-	case "ssd":
-		w, c = cfg.Notifications.DiskSSD.WarningThreshold, cfg.Notifications.DiskSSD.CriticalThreshold
-		unit = "%"
-	case "temp":
-		w, c = cfg.Temperature.WarningThreshold, cfg.Temperature.CriticalThreshold
-		unit = "°C"
+	} else {
+		switch resource {
+		case "cpu":
+			w, c = cfg.Notifications.CPU.WarningThreshold, cfg.Notifications.CPU.CriticalThreshold
+			unit = "%"
+		case "ram":
+			w, c = cfg.Notifications.RAM.WarningThreshold, cfg.Notifications.RAM.CriticalThreshold
+			unit = "%"
+		case "ssd":
+			w, c = cfg.Notifications.DiskSSD.WarningThreshold, cfg.Notifications.DiskSSD.CriticalThreshold
+			unit = "%"
+		case "temp":
+			w, c = cfg.Temperature.WarningThreshold, cfg.Temperature.CriticalThreshold
+			unit = "°C"
+		}
+	}
+
+	// Build inc/dec buttons; enforce 64-byte Telegram callback limit
+	warningDec := fmt.Sprintf("thresh_dec_w_%s", resource)
+	warningInc := fmt.Sprintf("thresh_inc_w_%s", resource)
+	criticalDec := fmt.Sprintf("thresh_dec_c_%s", resource)
+	criticalInc := fmt.Sprintf("thresh_inc_c_%s", resource)
+	for _, cb := range []*string{&warningDec, &warningInc, &criticalDec, &criticalInc} {
+		if len(*cb) > 64 {
+			*cb = (*cb)[:64]
+		}
 	}
 
 	rows := [][]tgbotapi.InlineKeyboardButton{
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("➖ Warning", fmt.Sprintf("thresh_dec_w_%s", resource)),
+			tgbotapi.NewInlineKeyboardButtonData("➖ Warning", warningDec),
 			tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("%.0f%s", w, unit), "noop"),
-			tgbotapi.NewInlineKeyboardButtonData("➕ Warning", fmt.Sprintf("thresh_inc_w_%s", resource)),
+			tgbotapi.NewInlineKeyboardButtonData("➕ Warning", warningInc),
 		),
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("➖ Critical", fmt.Sprintf("thresh_dec_c_%s", resource)),
+			tgbotapi.NewInlineKeyboardButtonData("➖ Critical", criticalDec),
 			tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("%.0f%s", c, unit), "noop"),
-			tgbotapi.NewInlineKeyboardButtonData("➕ Critical", fmt.Sprintf("thresh_inc_c_%s", resource)),
+			tgbotapi.NewInlineKeyboardButtonData("➕ Critical", criticalInc),
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("back"), "settings_change_thresholds"),

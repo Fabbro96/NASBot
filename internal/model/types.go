@@ -14,7 +14,8 @@ type Stats struct {
 	RAMFreeMB, RAMTotalMB       uint64
 	Load1m, Load5m, Load15m     float64
 	Uptime                      uint64
-	VolSSD, VolHDD              VolumeStats
+	VolSSD                      VolumeStats
+	SecondaryVols               map[string]VolumeStats
 	ReadMBs, WriteMBs, DiskUtil float64
 	NetRxMbps, NetTxMbps        float64
 	NetRxTotalMB, NetTxTotalMB  float64
@@ -37,13 +38,12 @@ type ContainerInfo struct {
 	Running bool
 }
 
-// DiskUsagePoint stores disk usage at a point in time
 type DiskUsagePoint struct {
-	Time    time.Time
-	SSDUsed float64
-	HDDUsed float64
-	SSDFree uint64
-	HDDFree uint64
+	Time          time.Time
+	SSDUsed       float64
+	SSDFree       uint64
+	SecondaryUsed map[string]float64
+	SecondaryFree map[string]uint64
 }
 
 // ReportEvent tracks events for the periodic report

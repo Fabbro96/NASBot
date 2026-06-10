@@ -39,8 +39,15 @@ func monitorAlerts(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 			if cfg.Notifications.DiskSSD.Enabled && s.VolSSD.Used >= cfg.Notifications.DiskSSD.CriticalThreshold {
 				criticalAlerts = append(criticalAlerts, fmt.Sprintf("💿 SSD critical: `%.1f%%`", s.VolSSD.Used))
 			}
-			if cfg.Notifications.DiskHDD.Enabled && s.VolHDD.Used >= cfg.Notifications.DiskHDD.CriticalThreshold {
-				criticalAlerts = append(criticalAlerts, fmt.Sprintf("🗄 HDD critical: `%.1f%%`", s.VolHDD.Used))
+			for mountPoint, volStats := range s.SecondaryVols {
+				diskCfg, ok := cfg.Notifications.SecondaryDisks[mountPoint]
+				if !ok {
+					// Use a default config if not configured
+					diskCfg = ResourceConfig{Enabled: true, WarningThreshold: 90.0, CriticalThreshold: 95.0}
+				}
+				if diskCfg.Enabled && volStats.Used >= diskCfg.CriticalThreshold {
+					criticalAlerts = append(criticalAlerts, fmt.Sprintf("🗄 Disk %s critical: `%.1f%%`", mountPoint, volStats.Used))
+				}
 			}
 			if cfg.Notifications.SMART.Enabled {
 				for _, dev := range getSmartDevices(ctx) {
@@ -98,8 +105,14 @@ func monitorAlerts(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 			if cfg.Notifications.DiskSSD.Enabled && s.VolSSD.Used >= cfg.Notifications.DiskSSD.WarningThreshold && s.VolSSD.Used < cfg.Notifications.DiskSSD.CriticalThreshold {
 				ctx.State.AddEvent("warning", fmt.Sprintf("SSD at %.1f%%", s.VolSSD.Used))
 			}
-			if cfg.Notifications.DiskHDD.Enabled && s.VolHDD.Used >= cfg.Notifications.DiskHDD.WarningThreshold && s.VolHDD.Used < cfg.Notifications.DiskHDD.CriticalThreshold {
-				ctx.State.AddEvent("warning", fmt.Sprintf("HDD at %.1f%%", s.VolHDD.Used))
+			for mountPoint, volStats := range s.SecondaryVols {
+				diskCfg, ok := cfg.Notifications.SecondaryDisks[mountPoint]
+				if !ok {
+					diskCfg = ResourceConfig{Enabled: true, WarningThreshold: 90.0, CriticalThreshold: 95.0}
+				}
+				if diskCfg.Enabled && volStats.Used >= diskCfg.WarningThreshold && volStats.Used < diskCfg.CriticalThreshold {
+					ctx.State.AddEvent("warning", fmt.Sprintf("Disk %s at %.1f%%", mountPoint, volStats.Used))
+				}
 			}
 		}
 	}
@@ -121,12 +134,26 @@ func statsCollector(ctx *AppContext, runCtx context.Context) {
 		sw, _ := mem.SwapMemory()
 		l, _ := load.Avg()
 		h, _ := host.Info()
-		var dSSD, dHDD *disk.UsageStat
+		var dSSD *disk.UsageStat
 		if ctx.Config.Paths.SSD != "" {
 			dSSD, _ = disk.Usage(ctx.Config.Paths.SSD)
 		}
-		if ctx.Config.Paths.HDD != "" {
-			dHDD, _ = disk.Usage(ctx.Config.Paths.HDD)
+
+		secVols := make(map[string]VolumeStats)
+		partitions, err := disk.Partitions(false)
+		if err == nil {
+			for _, p := range partitions {
+				if strings.HasPrefix(p.Device, "/dev/loop") || p.Fstype == "squashfs" || p.Fstype == "tmpfs" || p.Fstype == "devtmpfs" {
+					continue
+				}
+				if p.Mountpoint == ctx.Config.Paths.SSD || p.Mountpoint == "/boot" || p.Mountpoint == "/boot/efi" {
+					continue
+				}
+				dSec, err := disk.Usage(p.Mountpoint)
+				if err == nil {
+					secVols[p.Mountpoint] = VolumeStats{Used: dSec.UsedPercent, Free: dSec.Free}
+				}
+			}
 		}
 
 		currentIO, _ := disk.IOCounters()
@@ -186,31 +213,29 @@ func statsCollector(ctx *AppContext, runCtx context.Context) {
 		}
 
 		newStats := Stats{
-			CPU:          format.SafeFloat([]float64{cVal}, 0),
-			RAM:          v.UsedPercent,
-			RAMFreeMB:    v.Available / 1024 / 1024,
-			RAMTotalMB:   v.Total / 1024 / 1024,
-			Swap:         sw.UsedPercent,
-			Load1m:       l.Load1,
-			Load5m:       l.Load5,
-			Load15m:      l.Load15,
-			Uptime:       h.Uptime,
-			ReadMBs:      readMBs,
-			WriteMBs:     writeMBs,
-			DiskUtil:     diskUtil,
-			NetRxMbps:    rxMbps,
-			NetTxMbps:    txMbps,
-			NetRxTotalMB: rxTotal,
-			NetTxTotalMB: txTotal,
-			TopCPU:       topCPU,
-			TopRAM:       topRAM,
+			CPU:           format.SafeFloat([]float64{cVal}, 0),
+			RAM:           v.UsedPercent,
+			RAMFreeMB:     v.Available / 1024 / 1024,
+			RAMTotalMB:    v.Total / 1024 / 1024,
+			Swap:          sw.UsedPercent,
+			Load1m:        l.Load1,
+			Load5m:        l.Load5,
+			Load15m:       l.Load15,
+			Uptime:        h.Uptime,
+			ReadMBs:       readMBs,
+			WriteMBs:      writeMBs,
+			DiskUtil:      diskUtil,
+			NetRxMbps:     rxMbps,
+			NetTxMbps:     txMbps,
+			NetRxTotalMB:  rxTotal,
+			NetTxTotalMB:  txTotal,
+			TopCPU:        topCPU,
+			TopRAM:        topRAM,
+			SecondaryVols: secVols,
 		}
 
 		if dSSD != nil {
 			newStats.VolSSD = VolumeStats{Used: dSSD.UsedPercent, Free: dSSD.Free}
-		}
-		if dHDD != nil {
-			newStats.VolHDD = VolumeStats{Used: dHDD.UsedPercent, Free: dHDD.Free}
 		}
 
 		ctx.Stats.Set(newStats)

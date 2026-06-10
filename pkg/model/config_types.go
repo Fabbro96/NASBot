@@ -39,7 +39,6 @@ type UpdateConfig struct {
 
 type PathsConfig struct {
 	SSD string `json:"ssd"`
-	HDD string `json:"hdd"`
 }
 
 type ReportsConfig struct {
@@ -62,13 +61,13 @@ type QuietHoursConfig struct {
 }
 
 type NotificationsConfig struct {
-	CPU     ResourceConfig `json:"cpu"`
-	RAM     ResourceConfig `json:"ram"`
-	Swap    ResourceConfig `json:"swap"`
-	DiskSSD ResourceConfig `json:"disk_ssd"`
-	DiskHDD ResourceConfig `json:"disk_hdd"`
-	DiskIO  DiskIOConfig   `json:"disk_io"`
-	SMART   SmartConfig    `json:"smart"`
+	CPU            ResourceConfig            `json:"cpu"`
+	RAM            ResourceConfig            `json:"ram"`
+	Swap           ResourceConfig            `json:"swap"`
+	DiskSSD        ResourceConfig            `json:"disk_ssd"`
+	SecondaryDisks map[string]ResourceConfig `json:"secondary_disks"`
+	DiskIO         DiskIOConfig              `json:"disk_io"`
+	SMART          SmartConfig               `json:"smart"`
 }
 
 type ResourceConfig struct {

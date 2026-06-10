@@ -44,8 +44,15 @@ func getQuickText(ctx *AppContext) string {
 	if s.CPU > 90 || s.RAM > 90 {
 		healthEmoji = "⚠️"
 	}
-	if s.CPU > 95 || s.RAM > 95 || s.VolSSD.Used > 95 || s.VolHDD.Used > 95 {
+	if s.CPU > 95 || s.RAM > 95 || s.VolSSD.Used > 95 {
 		healthEmoji = "🚨"
+	} else {
+		for _, v := range s.SecondaryVols {
+			if v.Used > 95 {
+				healthEmoji = "🚨"
+				break
+			}
+		}
 	}
 
 	// Build compact line with optional trends
@@ -65,7 +72,15 @@ func getQuickText(ctx *AppContext) string {
 	}
 
 	// Disks
-	b.WriteString(fmt.Sprintf(" · SSD %.0f%% · HDD %.0f%%", s.VolSSD.Used, s.VolHDD.Used))
+	b.WriteString(fmt.Sprintf(" · SSD %.0f%%", s.VolSSD.Used))
+	for m, v := range s.SecondaryVols {
+		shortName := mountShortName(m)
+		// Truncate for ultra-compact one-liner display
+		if len(shortName) > 5 {
+			shortName = shortName[:5]
+		}
+		b.WriteString(fmt.Sprintf(" · %s %.0f%%", shortName, v.Used))
+	}
 
 	// Docker
 	b.WriteString(fmt.Sprintf(" · 🐳%d", running))

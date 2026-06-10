@@ -15,13 +15,15 @@ func TestTextGeneratorsSmoke(t *testing.T) {
 			Swap:   0,
 			Uptime: 3600,
 			VolSSD: VolumeStats{Used: 10, Free: 50 * giB},
-			VolHDD: VolumeStats{Used: 20, Free: 100 * giB},
+			SecondaryVols: map[string]VolumeStats{
+				"/mnt/data": {Used: 20, Free: 100 * giB},
+			},
 		}, Ready: true},
 		State: &RuntimeState{
 			TimeLocation: time.UTC,
 			DiskHistory: []DiskUsagePoint{
-				{Time: time.Now().Add(-2 * time.Hour), SSDFree: 100 * giB, HDDFree: 200 * giB},
-				{Time: time.Now(), SSDFree: 90 * giB, HDDFree: 190 * giB},
+				{Time: time.Now().Add(-2 * time.Hour), SSDFree: 100 * giB, SecondaryFree: map[string]uint64{"/mnt/data": 200 * giB}},
+				{Time: time.Now(), SSDFree: 90 * giB, SecondaryFree: map[string]uint64{"/mnt/data": 190 * giB}},
 			},
 		},
 		Settings: &UserSettings{Language: "en"},

@@ -11,7 +11,6 @@ func setupTestContext() *model.AppContext {
 	cfg := &model.Config{
 		Paths: model.PathsConfig{
 			SSD: "/",
-			HDD: "/tmp",
 		},
 	}
 	ctx := model.InitApp(cfg)
@@ -33,7 +32,9 @@ func TestGetStatusText(t *testing.T) {
 		RAM:    60.0,
 		Swap:   10.0,
 		VolSSD: model.VolumeStats{Used: 50.0},
-		VolHDD: model.VolumeStats{Used: 30.0},
+		SecondaryVols: map[string]model.VolumeStats{
+			"/mnt/data": {Used: 30.0},
+		},
 		Uptime: 123456,
 	})
 
