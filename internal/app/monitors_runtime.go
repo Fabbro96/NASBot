@@ -140,10 +140,15 @@ func statsCollector(ctx *AppContext, runCtx context.Context) {
 		}
 
 		secVols := make(map[string]VolumeStats)
-		partitions, err := disk.Partitions(false)
+		partitions, err := disk.Partitions(true)
 		if err == nil {
 			for _, p := range partitions {
-				if strings.HasPrefix(p.Device, "/dev/loop") || p.Fstype == "squashfs" || p.Fstype == "tmpfs" || p.Fstype == "devtmpfs" {
+				// Filter out loop devices, virtual filesystems, and docker overlays
+				if strings.HasPrefix(p.Device, "/dev/loop") || p.Fstype == "squashfs" || p.Fstype == "tmpfs" || p.Fstype == "devtmpfs" || p.Fstype == "overlay" || p.Fstype == "proc" || p.Fstype == "sysfs" || p.Fstype == "cgroup" || p.Fstype == "nsfs" || p.Fstype == "bpf" || p.Fstype == "tracefs" {
+					continue
+				}
+				// Also skip if it's clearly not a real device/mount
+				if p.Device == "none" || p.Device == "sunrpc" || p.Device == "devpts" {
 					continue
 				}
 				if p.Mountpoint == ctx.Config.Paths.SSD || p.Mountpoint == "/boot" || p.Mountpoint == "/boot/efi" {

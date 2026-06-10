@@ -165,9 +165,6 @@ func getSettingsMenuText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup
 			tgbotapi.NewInlineKeyboardButtonData("⚠️ "+ctx.Tr("settings_thresholds"), "settings_change_thresholds"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("💻 "+ctx.Tr("settings_wol"), "settings_change_wol"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("📦 "+ctx.Tr("settings_backup"), "settings_change_backup"),
 		),
 	)
