@@ -378,7 +378,10 @@ func RunFSWatchdog(bot BotAPI) {
 }
 
 func (w *FSWatchdog) checkAllPaths(bot BotAPI) {
-	paths := []string{"/", cfg.Paths.SSD, cfg.Paths.HDD}
+	paths := []string{"/", cfg.Paths.SSD}
+	for mount := range cfg.Notifications.SecondaryDisks {
+		paths = append(paths, mount)
+	}
 	seen := make(map[string]struct{}, len(paths))
 	for _, p := range paths {
 		if p == "" {
@@ -576,7 +579,10 @@ func GetDiskInfoText() string {
 	var b strings.Builder
 	b.WriteString("💾 *Disk Status*\n\n")
 
-	paths := []string{"/", cfg.Paths.SSD, cfg.Paths.HDD}
+	paths := []string{"/", cfg.Paths.SSD}
+	for mount := range cfg.Notifications.SecondaryDisks {
+		paths = append(paths, mount)
+	}
 	seen := make(map[string]struct{}, len(paths))
 	for _, path := range paths {
 		if path == "" {

@@ -52,7 +52,10 @@ func getStatusText(ctx *AppContext) string {
 	}
 
 	b.WriteString(fmt.Sprintf(tr("ssd_fmt"), s.VolSSD.Used, format.FormatBytes(s.VolSSD.Free)))
-	b.WriteString(fmt.Sprintf(tr("hdd_fmt"), s.VolHDD.Used, format.FormatBytes(s.VolHDD.Free)))
+	for m, vol := range s.SecondaryVols {
+		shortName := mountShortName(m)
+		b.WriteString(fmt.Sprintf("🗄 *%s:* %.1f%% | %s free\n", shortName, vol.Used, format.FormatBytes(vol.Free)))
+	}
 
 	if s.DiskUtil > 10 {
 		b.WriteString(fmt.Sprintf(tr("disk_io_fmt"), s.DiskUtil))
@@ -342,7 +345,9 @@ func getConfigText(ctx *AppContext) string {
 	writeNotifLine("RAM", ctx.Config.Notifications.RAM)
 	writeNotifLine("Swap", ResourceConfig{Enabled: ctx.Config.Notifications.Swap.Enabled, WarningThreshold: ctx.Config.Notifications.Swap.WarningThreshold})
 	writeNotifLine("SSD", ctx.Config.Notifications.DiskSSD)
-	writeNotifLine("HDD", ctx.Config.Notifications.DiskHDD)
+	for mount, diskCfg := range ctx.Config.Notifications.SecondaryDisks {
+		writeNotifLine("Disk "+mountShortName(mount), diskCfg)
+	}
 	writeNotifLine("I/O", ResourceConfig{Enabled: ctx.Config.Notifications.DiskIO.Enabled, WarningThreshold: ctx.Config.Notifications.DiskIO.WarningThreshold})
 	b.WriteString(fmt.Sprintf("  SMART: %s\n", format.BoolToEmoji(ctx.Config.Notifications.SMART.Enabled)))
 
@@ -425,7 +430,12 @@ func getSysInfoText(ctx *AppContext) string {
 		path string
 	}{
 		{name: "SSD", path: ctx.Config.Paths.SSD},
-		{name: "HDD", path: ctx.Config.Paths.HDD},
+	}
+	for mount := range ctx.Config.Notifications.SecondaryDisks {
+		paths = append(paths, struct {
+			name string
+			path string
+		}{name: "Disk " + mountShortName(mount), path: mount})
 	}
 	for _, p := range paths {
 		if p.path == "" {
@@ -470,3 +480,15 @@ func getVersionText(ctx *AppContext) string {
 }
 
 func GetVersionText(ctx *AppContext) string { return getVersionText(ctx) }
+
+// mountShortName extracts the last meaningful path component from a mount point
+// for human-readable display. e.g. "/mnt/data" -> "data", "/" -> "root".
+func mountShortName(mount string) string {
+	parts := strings.Split(mount, "/")
+	for i := len(parts) - 1; i >= 0; i-- {
+		if parts[i] != "" {
+			return parts[i]
+		}
+	}
+	return "root"
+}

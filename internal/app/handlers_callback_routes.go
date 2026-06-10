@@ -102,56 +102,64 @@ func handleSettingsCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int
 		return true
 	}
 	if strings.HasPrefix(data, "thresh_inc_") || strings.HasPrefix(data, "thresh_dec_") {
-		// thresh_inc_w_cpu, thresh_dec_c_ram
-		parts := strings.Split(data, "_")
-		if len(parts) == 4 {
-			action := parts[1] // inc / dec
-			level := parts[2]  // w / c
-			res := parts[3]    // cpu / ram / ssd / temp
+		var action, level, res string
+		if strings.HasPrefix(data, "thresh_inc_w_") {
+			action, level, res = "inc", "w", strings.TrimPrefix(data, "thresh_inc_w_")
+		} else if strings.HasPrefix(data, "thresh_inc_c_") {
+			action, level, res = "inc", "c", strings.TrimPrefix(data, "thresh_inc_c_")
+		} else if strings.HasPrefix(data, "thresh_dec_w_") {
+			action, level, res = "dec", "w", strings.TrimPrefix(data, "thresh_dec_w_")
+		} else if strings.HasPrefix(data, "thresh_dec_c_") {
+			action, level, res = "dec", "c", strings.TrimPrefix(data, "thresh_dec_c_")
+		}
 
-			// Build the patch
-			key := ""
-			if res == "temp" {
-				key = "temperature"
-			} else {
-				key = "notifications." + res
-				if res == "ssd" {
-					key = "notifications.disk_ssd"
-				}
-			}
-			if level == "w" {
-				key += ".warning_threshold"
-			} else {
-				key += ".critical_threshold"
-			}
-
+		if action != "" {
 			// Get current value
 			var currentVal float64
 			cfg := ctx.Config
-			switch res {
-			case "cpu":
-				if level == "w" {
-					currentVal = cfg.Notifications.CPU.WarningThreshold
+			isDisk := strings.HasPrefix(res, "disk:")
+			var mount string
+			if isDisk {
+				mount = strings.TrimPrefix(res, "disk:")
+				if diskCfg, ok := cfg.Notifications.SecondaryDisks[mount]; ok {
+					if level == "w" {
+						currentVal = diskCfg.WarningThreshold
+					} else {
+						currentVal = diskCfg.CriticalThreshold
+					}
 				} else {
-					currentVal = cfg.Notifications.CPU.CriticalThreshold
+					if level == "w" {
+						currentVal = 90.0
+					} else {
+						currentVal = 95.0
+					}
 				}
-			case "ram":
-				if level == "w" {
-					currentVal = cfg.Notifications.RAM.WarningThreshold
-				} else {
-					currentVal = cfg.Notifications.RAM.CriticalThreshold
-				}
-			case "ssd":
-				if level == "w" {
-					currentVal = cfg.Notifications.DiskSSD.WarningThreshold
-				} else {
-					currentVal = cfg.Notifications.DiskSSD.CriticalThreshold
-				}
-			case "temp":
-				if level == "w" {
-					currentVal = cfg.Temperature.WarningThreshold
-				} else {
-					currentVal = cfg.Temperature.CriticalThreshold
+			} else {
+				switch res {
+				case "cpu":
+					if level == "w" {
+						currentVal = cfg.Notifications.CPU.WarningThreshold
+					} else {
+						currentVal = cfg.Notifications.CPU.CriticalThreshold
+					}
+				case "ram":
+					if level == "w" {
+						currentVal = cfg.Notifications.RAM.WarningThreshold
+					} else {
+						currentVal = cfg.Notifications.RAM.CriticalThreshold
+					}
+				case "ssd":
+					if level == "w" {
+						currentVal = cfg.Notifications.DiskSSD.WarningThreshold
+					} else {
+						currentVal = cfg.Notifications.DiskSSD.CriticalThreshold
+					}
+				case "temp":
+					if level == "w" {
+						currentVal = cfg.Temperature.WarningThreshold
+					} else {
+						currentVal = cfg.Temperature.CriticalThreshold
+					}
 				}
 			}
 
@@ -180,6 +188,34 @@ func handleSettingsCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int
 				} else {
 					patch["temperature"].(map[string]interface{})["critical_threshold"] = newVal
 				}
+			} else if isDisk {
+				// Rebuild the full secondary_disks map to preserve other entries during patch
+				existingSecondary := make(map[string]interface{})
+				for k, v := range cfg.Notifications.SecondaryDisks {
+					existingSecondary[k] = map[string]interface{}{
+						"enabled":            v.Enabled,
+						"warning_threshold":  v.WarningThreshold,
+						"critical_threshold": v.CriticalThreshold,
+					}
+				}
+
+				if _, ok := existingSecondary[mount]; !ok {
+					existingSecondary[mount] = map[string]interface{}{
+						"enabled":            true,
+						"warning_threshold":  90.0,
+						"critical_threshold": 95.0,
+					}
+				}
+
+				if level == "w" {
+					existingSecondary[mount].(map[string]interface{})["warning_threshold"] = newVal
+				} else {
+					existingSecondary[mount].(map[string]interface{})["critical_threshold"] = newVal
+				}
+
+				patch["notifications"] = map[string]interface{}{
+					"secondary_disks": existingSecondary,
+				}
 			} else {
 				node := "cpu"
 				if res == "ssd" {
@@ -197,7 +233,6 @@ func handleSettingsCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int
 				}
 			}
 
-			// Call applyConfigPatch directly
 			applyConfigPatch(patch)
 
 			text, kb := getThresholdResourceText(ctx, res)

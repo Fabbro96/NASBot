@@ -4,7 +4,7 @@ import "encoding/json"
 
 func defaultConfigTemplate() Config {
 	return Config{
-		Paths:    PathsConfig{SSD: defaultPathSSD, HDD: defaultPathHDD},
+		Paths:    PathsConfig{SSD: defaultPathSSD},
 		Timezone: "Europe/Rome",
 		Reports: ReportsConfig{
 			Enabled:      true,
@@ -13,13 +13,13 @@ func defaultConfigTemplate() Config {
 		},
 		QuietHours: QuietHoursConfig{Enabled: true, StartHour: 23, StartMinute: 30, EndHour: 7, EndMinute: 0},
 		Notifications: NotificationsConfig{
-			CPU:     ResourceConfig{Enabled: true, WarningThreshold: 90, CriticalThreshold: 95},
-			RAM:     ResourceConfig{Enabled: true, WarningThreshold: 90, CriticalThreshold: 95},
-			Swap:    ResourceConfig{Enabled: false, WarningThreshold: 50, CriticalThreshold: 80},
-			DiskSSD: ResourceConfig{Enabled: true, WarningThreshold: 90, CriticalThreshold: 95},
-			DiskHDD: ResourceConfig{Enabled: true, WarningThreshold: 90, CriticalThreshold: 95},
-			DiskIO:  DiskIOConfig{Enabled: true, WarningThreshold: 95},
-			SMART:   SmartConfig{Enabled: true},
+			CPU:            ResourceConfig{Enabled: true, WarningThreshold: 90, CriticalThreshold: 95},
+			RAM:            ResourceConfig{Enabled: true, WarningThreshold: 90, CriticalThreshold: 95},
+			Swap:           ResourceConfig{Enabled: false, WarningThreshold: 50, CriticalThreshold: 80},
+			DiskSSD:        ResourceConfig{Enabled: true, WarningThreshold: 90, CriticalThreshold: 95},
+			SecondaryDisks: map[string]ResourceConfig{},
+			DiskIO:         DiskIOConfig{Enabled: true, WarningThreshold: 95},
+			SMART:          SmartConfig{Enabled: true},
 		},
 		Temperature:        TemperatureConfig{Enabled: true, WarningThreshold: 70, CriticalThreshold: 85},
 		CriticalContainers: []string{},

@@ -18,7 +18,6 @@ var (
 
 	// Default paths
 	defaultPathSSD = "/Volume1"
-	defaultPathHDD = "/Volume2"
 
 	// Config file
 	configFile = "config.json"
@@ -71,13 +70,13 @@ func loadConfig() {
 	if cfg.Paths.SSD == "" {
 		cfg.Paths.SSD = defaultPathSSD
 	}
-	if cfg.Paths.HDD == "" {
-		cfg.Paths.HDD = defaultPathHDD
+
+	if cfg.Notifications.SecondaryDisks == nil {
+		cfg.Notifications.SecondaryDisks = make(map[string]ResourceConfig)
 	}
 
 	slog.Info("Configuration loaded successfully",
 		"ssd", cfg.Paths.SSD,
-		"hdd", cfg.Paths.HDD,
 		"stats_interval", time.Duration(cfg.Intervals.StatsSeconds)*time.Second,
 		"monitor_interval", time.Duration(cfg.Intervals.MonitorSeconds)*time.Second)
 }
@@ -154,14 +153,9 @@ func sanitizeConfig(c *Config) []string {
 
 	trimField("timezone", &c.Timezone)
 	trimField("paths.ssd", &c.Paths.SSD)
-	trimField("paths.hdd", &c.Paths.HDD)
 	if c.Paths.SSD == "" {
 		c.Paths.SSD = defaultPathSSD
 		add("paths.ssd", c.Paths.SSD)
-	}
-	if c.Paths.HDD == "" {
-		c.Paths.HDD = defaultPathHDD
-		add("paths.hdd", c.Paths.HDD)
 	}
 
 	// Reports
@@ -196,7 +190,16 @@ func sanitizeConfig(c *Config) []string {
 	sanitizeResourceConfig(&c.Notifications.RAM, "notifications.ram", clampFloatField, add)
 	sanitizeResourceConfig(&c.Notifications.Swap, "notifications.swap", clampFloatField, add)
 	sanitizeResourceConfig(&c.Notifications.DiskSSD, "notifications.disk_ssd", clampFloatField, add)
-	sanitizeResourceConfig(&c.Notifications.DiskHDD, "notifications.disk_hdd", clampFloatField, add)
+
+	if c.Notifications.SecondaryDisks == nil {
+		c.Notifications.SecondaryDisks = make(map[string]ResourceConfig)
+	}
+	for k, v := range c.Notifications.SecondaryDisks {
+		vCopy := v
+		sanitizeResourceConfig(&vCopy, "notifications.secondary_disks."+k, clampFloatField, add)
+		c.Notifications.SecondaryDisks[k] = vCopy
+	}
+
 	clampFloatField("notifications.disk_io.warning_threshold", &c.Notifications.DiskIO.WarningThreshold, 0, 100)
 
 	// SMART devices

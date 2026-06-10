@@ -25,8 +25,7 @@ func getDiskPredictionText(ctx *AppContext) string {
 	}
 
 	// Calculate trend for SSD
-	ssdPred := predictDiskFull(history, true)
-	hddPred := predictDiskFull(history, false)
+	ssdPred := predictDiskFull(history, "SSD")
 
 	s, _ := ctx.Stats.Get()
 
@@ -49,7 +48,10 @@ func getDiskPredictionText(ctx *AppContext) string {
 	}
 
 	writeDiskPred("💿", "SSD", ssdPred, s.VolSSD.Used)
-	writeDiskPred("🗄", "HDD", hddPred, s.VolHDD.Used)
+	for mount, vol := range s.SecondaryVols {
+		pred := predictDiskFull(history, mount)
+		writeDiskPred("🗄", mount, pred, vol.Used)
+	}
 
 	b.WriteString(fmt.Sprintf("\n_Based on %d data points (%s of data)_",
 		len(history),
@@ -61,7 +63,7 @@ func getDiskPredictionText(ctx *AppContext) string {
 func GetDiskPredictionText(ctx *AppContext) string { return getDiskPredictionText(ctx) }
 
 // predictDiskFull calculates days until disk is full using linear regression
-func predictDiskFull(history []DiskUsagePoint, isSSD bool) DiskPrediction {
+func predictDiskFull(history []DiskUsagePoint, diskName string) DiskPrediction {
 	if len(history) < 2 {
 		return DiskPrediction{DaysUntilFull: -1}
 	}
@@ -70,12 +72,16 @@ func predictDiskFull(history []DiskUsagePoint, isSSD bool) DiskPrediction {
 	last := history[len(history)-1]
 
 	var firstFree, lastFree uint64
-	if isSSD {
+	if diskName == "SSD" {
 		firstFree = first.SSDFree
 		lastFree = last.SSDFree
 	} else {
-		firstFree = first.HDDFree
-		lastFree = last.HDDFree
+		if first.SecondaryFree != nil {
+			firstFree = first.SecondaryFree[diskName]
+		}
+		if last.SecondaryFree != nil {
+			lastFree = last.SecondaryFree[diskName]
+		}
 	}
 
 	timeDiff := last.Time.Sub(first.Time).Hours() / 24 // Days
@@ -113,12 +119,19 @@ func recordDiskUsage(ctx *AppContext) {
 	ctx.State.Mu.Lock()
 	defer ctx.State.Mu.Unlock()
 
+	secUsed := make(map[string]float64)
+	secFree := make(map[string]uint64)
+	for mount, vol := range s.SecondaryVols {
+		secUsed[mount] = vol.Used
+		secFree[mount] = vol.Free
+	}
+
 	point := DiskUsagePoint{
-		Time:    time.Now(),
-		SSDUsed: s.VolSSD.Used,
-		HDDUsed: s.VolHDD.Used,
-		SSDFree: s.VolSSD.Free,
-		HDDFree: s.VolHDD.Free,
+		Time:          time.Now(),
+		SSDUsed:       s.VolSSD.Used,
+		SSDFree:       s.VolSSD.Free,
+		SecondaryUsed: secUsed,
+		SecondaryFree: secFree,
 	}
 
 	ctx.State.DiskHistory = append(ctx.State.DiskHistory, point)

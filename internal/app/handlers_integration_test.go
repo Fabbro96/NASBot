@@ -16,7 +16,9 @@ func TestCommandHandlersSmoke(t *testing.T) {
 		Swap:   0,
 		Uptime: 3600,
 		VolSSD: VolumeStats{Used: 10, Free: 50 * giB},
-		VolHDD: VolumeStats{Used: 20, Free: 100 * giB},
+		SecondaryVols: map[string]VolumeStats{
+			"/mnt/data": {Used: 20, Free: 100 * giB},
+		},
 	})
 	ctx.Settings.Language = "en"
 	ctx.Bot.StartTime = time.Now().Add(-10 * time.Minute)
