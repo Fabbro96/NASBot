@@ -149,8 +149,6 @@ func statsCollector(ctx *AppContext, runCtx context.Context) {
 				}
 				// Also skip if it's clearly not a real device/mount
 				if p.Device == "none" || p.Device == "sunrpc" || p.Device == "devpts" {
-					continue
-				}
 				if p.Mountpoint == ctx.Config.Paths.SSD || p.Mountpoint == "/boot" || p.Mountpoint == "/boot/efi" {
 					continue
 				}
