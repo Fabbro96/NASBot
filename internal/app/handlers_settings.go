@@ -331,7 +331,9 @@ func getThresholdResourceText(ctx *AppContext, resource string) (string, tgbotap
 	warningInc := fmt.Sprintf("thresh_inc_w_%s", resource)
 	criticalDec := fmt.Sprintf("thresh_dec_c_%s", resource)
 	criticalInc := fmt.Sprintf("thresh_inc_c_%s", resource)
-	for _, cb := range []*string{&warningDec, &warningInc, &criticalDec, &criticalInc} {
+	warningCustom := fmt.Sprintf("thresh_custom_w_%s", resource)
+	criticalCustom := fmt.Sprintf("thresh_custom_c_%s", resource)
+	for _, cb := range []*string{&warningDec, &warningInc, &criticalDec, &criticalInc, &warningCustom, &criticalCustom} {
 		if len(*cb) > 64 {
 			*cb = (*cb)[:64]
 		}
@@ -344,9 +346,15 @@ func getThresholdResourceText(ctx *AppContext, resource string) (string, tgbotap
 			tgbotapi.NewInlineKeyboardButtonData("➕ Warning", warningInc),
 		),
 		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("thresh_custom_btn"), warningCustom),
+		),
+		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("➖ Critical", criticalDec),
 			tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("%.0f%s", c, unit), "noop"),
 			tgbotapi.NewInlineKeyboardButtonData("➕ Critical", criticalInc),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("thresh_custom_btn"), criticalCustom),
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("back"), "settings_change_thresholds"),
