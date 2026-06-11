@@ -5,6 +5,7 @@ package app
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -250,7 +251,27 @@ func getThresholdsMenuText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMark
 		),
 	}
 
+	diskMap := make(map[string]ResourceConfig)
 	for mount, diskCfg := range cfg.Notifications.SecondaryDisks {
+		diskMap[mount] = diskCfg
+	}
+
+	if s, ready := ctx.Stats.Get(); ready {
+		for mount := range s.SecondaryVols {
+			if _, ok := diskMap[mount]; !ok {
+				diskMap[mount] = ResourceConfig{Enabled: true, WarningThreshold: 90, CriticalThreshold: 95}
+			}
+		}
+	}
+
+	var mounts []string
+	for mount := range diskMap {
+		mounts = append(mounts, mount)
+	}
+	sort.Strings(mounts)
+
+	for _, mount := range mounts {
+		diskCfg := diskMap[mount]
 		btnText := fmt.Sprintf("🗄 Disk %s: %.0f%% / %.0f%%", mount, diskCfg.WarningThreshold, diskCfg.CriticalThreshold)
 		cbData := "thresh_edit_disk:" + mount
 		// Telegram inline callback data is limited to 64 bytes
