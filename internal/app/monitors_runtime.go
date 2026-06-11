@@ -151,6 +151,10 @@ func statsCollector(ctx *AppContext, runCtx context.Context) {
 				if p.Device == "none" || p.Device == "sunrpc" || p.Device == "devpts" {
 					continue
 				}
+				// Only include specific data mount points (internal/external HDDs)
+				if !(strings.HasPrefix(p.Mountpoint, "/mnt") || strings.HasPrefix(p.Mountpoint, "/media")) {
+					continue
+				}
 				if p.Mountpoint == ctx.Config.Paths.SSD || p.Mountpoint == "/boot" || p.Mountpoint == "/boot/efi" {
 					continue
 				}
