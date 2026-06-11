@@ -101,6 +101,11 @@ func handleSettingsCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int
 		editMessage(bot, chatID, msgID, text, &kb)
 		return true
 	}
+	if strings.HasPrefix(data, "thresh_custom_") {
+		ctx.Bot.SetPendingAction(data)
+		safeSend(bot, tgbotapi.NewMessage(chatID, ctx.Tr("thresh_custom_prompt")))
+		return true
+	}
 	if strings.HasPrefix(data, "thresh_inc_") || strings.HasPrefix(data, "thresh_dec_") {
 		var action, level, res string
 		if strings.HasPrefix(data, "thresh_inc_w_") {

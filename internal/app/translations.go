@@ -345,6 +345,10 @@ var translations = map[string]map[string]string{
 		"ai_gathering_context":   "⏳ Gathering context (syslog, top, docker stats) and asking AI...",
 		"mac_manual_btn":         "✍️ Manual Entry",
 		"mac_select_prompt":      "💻 Select a device from the network or enter manually:",
+
+		"analyze_with_ai":      "Analyze with AI",
+		"thresh_custom_btn":    "✏️ Custom Value",
+		"thresh_custom_prompt": "⚠️ Type the new threshold value in percentage (e.g., 85):",
 	},
 	"it": {
 		"status_title": "🖥 *NAS* alle %s\n\n",
@@ -693,6 +697,10 @@ var translations = map[string]map[string]string{
 		"ai_gathering_context":   "⏳ Sto raccogliendo il contesto (syslog, top, docker stats) e chiedendo all'AI...",
 		"mac_manual_btn":         "✍️ Inserimento Manuale",
 		"mac_select_prompt":      "💻 Seleziona un dispositivo in rete o inserisci a mano:",
+
+		"analyze_with_ai":      "Analizza con AI",
+		"thresh_custom_btn":    "✏️ Valore Custom",
+		"thresh_custom_prompt": "⚠️ Scrivi il nuovo valore della soglia in percentuale (es. 85):",
 	},
 	"es": {
 		"status_title":      "🖥 *NAS* a las %s\n\n",
@@ -794,6 +802,10 @@ var translations = map[string]map[string]string{
 		"ai_gathering_context":   "⏳ Gathering context (syslog, top, docker stats) and asking AI...",
 		"mac_manual_btn":         "✍️ Manual Entry",
 		"mac_select_prompt":      "💻 Select a device from the network or enter manually:",
+
+		"analyze_with_ai":      "Analizar con IA",
+		"thresh_custom_btn":    "✏️ Valor Personalizado",
+		"thresh_custom_prompt": "⚠️ Escribe el nuevo valor de umbral en porcentaje (ej. 85):",
 	},
 	"de": {
 		"status_title":      "🖥 *NAS* um %s\n\n",
@@ -895,6 +907,10 @@ var translations = map[string]map[string]string{
 		"ai_gathering_context":   "⏳ Gathering context (syslog, top, docker stats) and asking AI...",
 		"mac_manual_btn":         "✍️ Manual Entry",
 		"mac_select_prompt":      "💻 Select a device from the network or enter manually:",
+
+		"analyze_with_ai":      "Mit KI analysieren",
+		"thresh_custom_btn":    "✏️ Eigener Wert",
+		"thresh_custom_prompt": "⚠️ Geben Sie den neuen Schwellenwert in Prozent ein (z. B. 85):",
 	},
 	"zh": {
 		"status_title":      "🖥 *NAS* 时间 %s\n\n",
@@ -996,6 +1012,10 @@ var translations = map[string]map[string]string{
 		"ai_gathering_context":   "⏳ Gathering context (syslog, top, docker stats) and asking AI...",
 		"mac_manual_btn":         "✍️ Manual Entry",
 		"mac_select_prompt":      "💻 Select a device from the network or enter manually:",
+
+		"analyze_with_ai":      "使用 AI 分析",
+		"thresh_custom_btn":    "✏️ 自定义值",
+		"thresh_custom_prompt": "⚠️ 请输入新的阈值百分比（例如 85）：",
 	},
 	"uk": {
 		"status_title":      "🖥 *NAS* о %s\n\n",
@@ -1097,5 +1117,9 @@ var translations = map[string]map[string]string{
 		"ai_gathering_context":   "⏳ Gathering context (syslog, top, docker stats) and asking AI...",
 		"mac_manual_btn":         "✍️ Manual Entry",
 		"mac_select_prompt":      "💻 Select a device from the network or enter manually:",
+
+		"analyze_with_ai":      "Аналізувати з ШІ",
+		"thresh_custom_btn":    "✏️ Власне значення",
+		"thresh_custom_prompt": "⚠️ Введіть нове порогове значення у відсотках (наприклад, 85):",
 	},
 }

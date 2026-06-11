@@ -76,7 +76,7 @@ func monitorAlerts(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 
 				kb := tgbotapi.NewInlineKeyboardMarkup(
 					tgbotapi.NewInlineKeyboardRow(
-						tgbotapi.NewInlineKeyboardButtonData("🤖 Analizza con AI", "ai_analyze_critical"),
+						tgbotapi.NewInlineKeyboardButtonData("🤖 "+ctx.Tr("analyze_with_ai"), "ai_analyze_critical"),
 					),
 				)
 				m.ReplyMarkup = kb
