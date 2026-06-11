@@ -151,6 +151,10 @@ func statsCollector(ctx *AppContext, runCtx context.Context) {
 				if p.Device == "none" || p.Device == "sunrpc" || p.Device == "devpts" {
 					continue
 				}
+				// Skip pseudo-filesystems by mountpoint
+				if strings.HasPrefix(p.Mountpoint, "/sys") || strings.HasPrefix(p.Mountpoint, "/proc") || strings.HasPrefix(p.Mountpoint, "/dev") || strings.HasPrefix(p.Mountpoint, "/run") {
+					continue
+				}
 				if p.Mountpoint == ctx.Config.Paths.SSD || p.Mountpoint == "/boot" || p.Mountpoint == "/boot/efi" {
 					continue
 				}
