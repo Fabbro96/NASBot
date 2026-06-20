@@ -6,6 +6,7 @@ fswatchdog_bin
 
 # Config with secrets (contains bot token!)
 config.json
+nasbot.config.local
 
 # State files
 nasbot_state.json
@@ -32,6 +33,13 @@ dist/
 build/
 bin/
 var/
+
+# Scratch files
+commit.txt
+commit_msg.txt
+available_keys.txt
+used_keys.txt
+patch_translations.py
 
 # Test coverage
 coverage.out

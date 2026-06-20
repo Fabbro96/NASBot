@@ -308,7 +308,18 @@ func restartWithStartScript() error {
 		}
 	}
 	if script == "" {
-		return fmt.Errorf("start script not found in expected paths")
+		// Standalone or Docker fallback: replace binary directly and exit to let Docker/system restart it
+		target, errPath := updaterTargetPath()
+		if errPath == nil {
+			// Overwrite the current binary
+			if errRename := os.Rename(target, exe); errRename == nil {
+				os.Chmod(exe, 0755)
+			}
+		}
+		// Exit cleanly so Docker's `restart: unless-stopped` brings it back up
+		slog.Info("Restart script not found, exiting to let environment (Docker) restart the bot...")
+		os.Exit(0)
+		return nil
 	}
 	return runCommand(context.Background(), script, "restart")
 }

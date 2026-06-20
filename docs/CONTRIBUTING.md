@@ -36,22 +36,21 @@ Feature requests are welcome! Please:
 
 ```bash
 # Clone your fork
-git clone https://github.com/YOUR_USERNAME/nasbot.git
-cd nasbot
+git clone https://github.com/YOUR_USERNAME/NASBot.git
+cd NASBot
 
 # Install dependencies
 go mod download
 
 # Enable hardening hooks (required)
-git config core.hooksPath .githooks
-chmod +x .githooks/pre-commit scripts/secret_scan.sh
+./scripts/setup_hooks.sh
 
 # Create config
 cp config.example.json config.json
 # Edit config.json with your bot token and user ID
 
 # Build
-go build -o nasbot .
+go build -o nasbot ./...
 
 # Run
 ./nasbot
@@ -75,27 +74,32 @@ go build -o nasbot .
 
 ```
 .
-├── handlers*.go         # Command/callback handling
-├── monitors_*.go        # Monitoring runtime/raid/stress manager
-├── reports*.go          # Runtime/schedule/AI report generation
-├── translations*.go     # i18n dictionaries/runtime helpers
-├── config.json          # Your config (gitignored)
-├── config.example.json  # Example config for new users
-├── docs/SECURITY.md     # Hardening policy and leak response
+├── internal/
+│   ├── app/             # Core application logic, handlers, monitors
+│   ├── cmdexec/         # Command execution wrapper
+│   ├── format/          # Formatting utilities
+│   └── model/           # Internal models
+├── pkg/
+│   ├── commands/        # Command registration and parsing
+│   ├── config/          # Configuration loading and types
+│   └── model/           # Public models and types
+├── scripts/             # Tooling and operational scripts
+├── docs/                # Documentation and governance
 ├── .githooks/           # Local commit hooks (secret scanner)
+├── config.example.json  # Example config for new users
+├── config.json          # Your config (gitignored)
 ├── go.mod               # Go module definition
 ├── go.sum               # Dependency checksums
 ├── README.md            # Documentation
-├── LICENSE              # MIT License
-└── scripts/             # Tooling and operational scripts
+└── LICENSE              # MIT License
 ```
 
 ## Adding New Commands
 
-1. Add the command to `handleCommand()` switch statement
-2. Create a function `getXxxText()` for text generation or `handleXxx()` for actions
-3. Update `getHelpText()` to document the new command
-4. Update README.md with the new command
+1. Register the command in `pkg/commands/registry.go`
+2. Create a handler function `handleXxx()` or `getXxxText()` in `internal/app/`
+3. Bind the handler in `internal/app/commands_runtime_bindings.go`
+4. Update README.md and `BOTFATHER_COMMANDS.txt` with the new command
 
 ## Questions?
 

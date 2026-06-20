@@ -16,15 +16,11 @@ This means each user can adapt the system to their specific needs without modify
 ## Configuration Hierarchy (Priority Order)
 
 ```
-Environment Variables (NASBOT_*)
-         ↑
-    Command-line Flags
-         ↑
-   nasbot.config.local (local file)
-         ↑
-   nasbot.config.template (default template)
-         ↑
-   Hard-coded Defaults (in scripts)
+Command-line Flags
+  ↳ OVERRIDES Environment Variables (NASBOT_*)
+      ↳ OVERRIDES nasbot.config.local (local file)
+          ↳ OVERRIDES nasbot.config.template (default template)
+              ↳ OVERRIDES Hard-coded Defaults (in scripts)
 ```
 
 ## Quick Start
@@ -373,15 +369,11 @@ Il sistema di deployment NASBot è ora completamente modulare e personalizzabile
 ## Gerarchia di Configurazione (Ordine di Priorità)
 
 ```
-Variabili d'Ambiente (NASBOT_*)
-         ↑
-    Flag da linea di comando
-         ↑
-   nasbot.config.local (file locale)
-         ↑
-   nasbot.config.template (template predefinito)
-         ↑
-   Valori Hard-coded (negli script)
+Command-line Flags (Flag da linea di comando)
+  ↳ SOVRASCRIVE Variabili d'Ambiente (NASBOT_*)
+      ↳ SOVRASCRIVE nasbot.config.local (file locale)
+          ↳ SOVRASCRIVE nasbot.config.template (template predefinito)
+              ↳ SOVRASCRIVE Valori Hard-coded (negli script)
 ```
 
 ## Inizio Rapido

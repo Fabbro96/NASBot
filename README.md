@@ -70,9 +70,28 @@ All scripts (package, deploy, runtime) use a hierarchical configuration system w
 - ⚙️ **Template**: [nasbot.config.template](nasbot.config.template) - Default configuration (documented)
 - 📋 **Examples**: [nasbot.config.example](nasbot.config.example) - Real-world scenarios
 
-### 1. Download & Install
+### 1. Docker Deployment (Recommended)
 
-The official and **recommended** method to install, run, and maintain the bot is using the provided `start_bot.sh` script.
+The easiest way to run NASBot is via Docker Compose.
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/Fabbro96/NASBot.git
+   cd NASBot
+   ```
+2. Create your `config.json` based on the example:
+   ```bash
+   cp config.example.json config.json
+   ```
+   Edit `config.json` and set at least `bot_token` and `allowed_user_id`.
+3. Start the bot:
+   ```bash
+   docker-compose up -d
+   ```
+
+### 2. Manual Binary Install
+
+If you prefer not to use Docker, use the provided `start_bot.sh` script.
 
 ```bash
 chmod +x scripts/start_bot.sh
@@ -103,7 +122,7 @@ This creates `dist/runtime` with only:
 
 On NAS, keep just these plus runtime-generated files (`nasbot.log`, `nasbot.pid`, `nasbot_state.json`).
 
-### 2. Configuration (`config.json`)
+### 3. Configuration (`config.json`)
 Edit `config.json` with your details.
 *You must set at least `bot_token` and `allowed_user_id`.*
 
@@ -113,7 +132,7 @@ Edit `config.json` with your details.
   "allowed_user_id": 12345678,
   "gemini_api_key": "",
   "timezone": "Europe/Rome",
-  "paths": { "ssd": "/", "hdd": "/mnt/data" }
+  "paths": { "ssd": "/" }
 }
 ```
 
@@ -124,41 +143,41 @@ Edit `config.json` with your details.
 ### 📊 Status & Info
 | Command | Action |
 |:--------|--------|
-| `/status`, `/start` | Stato generale e riepilogo del sistema |
-| `/top`, `/processes` | Monitoraggio delle risorse e gestione interattiva dei processi |
-| `/sysinfo` | Informazioni dettagliate sull'hardware |
-| `/temp` | Temperature hardware (CPU, dischi, ecc.) |
+| `/status`, `/start` | General status and system summary |
+| `/top`, `/processes` | Resource monitoring and interactive process management |
+| `/sysinfo` | Detailed hardware information |
+| `/temp` | Hardware temperatures (CPU, disks, etc.) |
 
 ### 🐳 Docker
 | Command | Action |
 |:--------|--------|
-| `/docker` | Menu interattivo di gestione Docker |
-| `/dstats`, `/container`, `/restartdocker`, `/kill` | Comandi rapidi per gestione container |
+| `/docker` | Interactive Docker management menu |
+| `/dstats`, `/container`, `/restartdocker`, `/kill` | Quick commands for container management |
 
 ### ⚡ System & Power
 | Command | Action |
 |:--------|--------|
-| `/reboot`, `/shutdown`, `/forcereboot` | Gestione alimentazione NAS |
-| `/diskpred` (o `/prediction`) | Previsione esaurimento spazio su disco |
-| `/health` (o `/healthchecks`) | Stato dei controlli di salute automatici |
-| `/backup` | Backup automatico dei file di configurazione (`config.json`) |
-| `/wol` | Invia pacchetto Wake-on-LAN per risvegliare dispositivi locali |
-| `/update` | Aggiorna automaticamente il bot scaricando l'ultima release |
+| `/reboot`, `/shutdown`, `/forcereboot` | NAS power management |
+| `/diskpred` (or `/prediction`) | Disk space exhaustion prediction |
+| `/health` (or `/healthchecks`) | Status of automatic health checks |
+| `/backup` | Automatic backup of configuration files (`config.json`) |
+| `/wol` | Send Wake-on-LAN packet to wake local devices |
+| `/update` | Automatically update the bot by downloading the latest release |
 
 ### 🌐 Network & Logs
 | Command | Action |
 |:--------|--------|
-| `/net`, `/speedtest` | Stato della rete ed esecuzione speedtest |
-| `/ping` | Verifica latenza |
-| `/logs`, `/logsearch` | Lettura e ricerca nei log di sistema o del bot |
+| `/net`, `/speedtest` | Network status and speedtest execution |
+| `/ping` | Check latency |
+| `/logs`, `/logsearch` | Read and search system or bot logs |
 
 ### 🤖 AI, Config & Tools
 | Command | Action |
 |:--------|--------|
-| `/ask` | Assistente AI (Gemini) per chiedere informazioni |
-| `/quick` (o `/q`) | Menu comandi rapidi personalizzati |
-| `/report` | Genera un report diagnostico completo del NAS |
-| `/config`, `/settings`, `/language` | Gestione delle impostazioni e della lingua |
+| `/ask` | AI assistant (Gemini) to ask for information |
+| `/quick` (or `/q`) | Custom quick commands menu |
+| `/report` | Generate a full NAS diagnostic report |
+| `/config`, `/settings`, `/language` | Manage settings and language |
 
 ---
 
@@ -201,6 +220,10 @@ The `config.json` allows granular control over thresholds and automation:
 See `config.example.json` for the full schema.
 </details>
 
+## 📖 Changelog
+
+See the full list of changes and feature history in [docs/CHANGELOG.md](docs/CHANGELOG.md).
+
 ## 🛡️ Security
 This bot executes commands like `docker` and `reboot`. Ensure `allowed_user_id` is correct. The bot ignores all other users.
 
@@ -209,8 +232,7 @@ This bot executes commands like `docker` and `reboot`. Ensure `allowed_user_id` 
 Enable local hardening hooks:
 
 ```bash
-git config core.hooksPath .githooks
-chmod +x .githooks/pre-commit scripts/secret_scan.sh
+./scripts/setup_hooks.sh
 ```
 
 See [docs/SECURITY.md](docs/SECURITY.md) for full hardening policy and leak response steps.
@@ -227,6 +249,7 @@ go test -race ./...
 GitHub Actions pipelines:
 
 - **CI** (push/PR): secret scan, `gofmt` check, `go vet`, race tests, build, release script smoke.
-- **Security** (PR + weekly): Dependency Review + CodeQL.
+- **Deadlock Gate** (push/PR): targeted deadlock and race condition testing (`deadlock-race-gate.yml`).
+- **Security** (PR + weekly): Dependency Review, CodeQL, and `govulncheck`.
 - **Release** (push to `main` or tag `v*`): auto-tag via [github-tag-action](https://github.com/mathieudutour/github-tag-action), build ARM64/AMD64 binaries, generate checksums, attest provenance, publish GitHub Release.
 - **Dependabot**: weekly updates for `gomod` and GitHub Actions.
