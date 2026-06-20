@@ -58,6 +58,12 @@ type DockerManager struct {
 	PruneDoneToday    bool
 }
 
+// SmartResult holds the last known SMART status for a disk
+type SmartResult struct {
+	Temp   int
+	Health string
+}
+
 // MonitorState holds historical trends and alert states
 type MonitorState struct {
 	Mu                         Mutex
@@ -71,6 +77,8 @@ type MonitorState struct {
 	RaidAlertTime              time.Time
 	LastCriticalAlert          time.Time
 	LastCriticalContainerAlert map[string]time.Time
+	SmartLastCheckTime         time.Time
+	SmartCache                 map[string]SmartResult
 	NetFailCount               int
 	NetLastCheckTime           time.Time
 	NetConsecutiveDegraded     int
@@ -187,6 +195,7 @@ func InitApp(cfg *Config) *AppContext {
 			CPUTrend:                   make([]TrendPoint, 0, 72),
 			RAMTrend:                   make([]TrendPoint, 0, 72),
 			LastCriticalContainerAlert: make(map[string]time.Time),
+			SmartCache:                 make(map[string]SmartResult),
 			KwLastSignatures:           make(map[string]string),
 		},
 		Settings: &UserSettings{

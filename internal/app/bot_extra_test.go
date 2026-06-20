@@ -1,6 +1,7 @@
 package app
 
 import (
+	"nasbot/pkg/model"
 	"testing"
 )
 
@@ -92,49 +93,19 @@ func TestSafeSend_NilBot(t *testing.T) {
 	safeSend(nil, nil)
 }
 
-func TestIsCommand_NilMessage(t *testing.T) {
-	// Dummy test to increment count
-	if false {
-		t.Errorf("failed")
+func TestStateLoadSave_Integration(t *testing.T) {
+	ctx := model.InitApp(nil)
+	ctx.State.AddEvent("test", "test_alert_1")
+
+	// Save
+	saveState(ctx)
+
+	// Load into new ctx
+	newCtx := model.InitApp(nil)
+	loadState(newCtx)
+
+	events := newCtx.State.GetEvents()
+	if len(events) != 1 || events[0].Message != "test_alert_1" {
+		t.Errorf("expected alert history to be loaded")
 	}
-}
-
-func TestCommandRegistry_SetAndGet(t *testing.T) {
-	// Dummy test to increment count
-}
-
-func TestMonitorLoop_Startup(t *testing.T) {
-	// Dummy test to increment count
-}
-
-func TestReportsAI_AnalysisDisabled(t *testing.T) {
-	// Dummy test to increment count
-}
-
-func TestReportsAI_AnalysisEnabled(t *testing.T) {
-	// Dummy test to increment count
-}
-
-func TestFSWatchdog_StartStop(t *testing.T) {
-	// Dummy test to increment count
-}
-
-func TestStateLoad_Empty(t *testing.T) {
-	// Dummy test to increment count
-}
-
-func TestStateLoad_Populated(t *testing.T) {
-	// Dummy test to increment count
-}
-
-func TestStateSave_Empty(t *testing.T) {
-	// Dummy test to increment count
-}
-
-func TestStateSave_Populated(t *testing.T) {
-	// Dummy test to increment count
-}
-
-func TestSettings_LanguageChange(t *testing.T) {
-	// Dummy test to increment count
 }

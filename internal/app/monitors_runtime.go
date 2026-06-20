@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"nasbot/internal/format"
+	"nasbot/pkg/model"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -50,11 +51,37 @@ func monitorAlerts(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 				}
 			}
 			if cfg.Notifications.SMART.Enabled {
-				for _, dev := range getSmartDevices(ctx) {
-					_, health := readDiskSMART(dev)
-					if strings.Contains(strings.ToUpper(health), "FAIL") {
-						criticalAlerts = append(criticalAlerts, fmt.Sprintf("🚨 Disk %s FAILING — backup now!", dev))
+				ctx.Monitor.Mu.Lock()
+				needsCheck := time.Since(ctx.Monitor.SmartLastCheckTime) >= 10*time.Minute
+				ctx.Monitor.Mu.Unlock()
+
+				if needsCheck {
+					newCache := make(map[string]model.SmartResult)
+					for _, dev := range getSmartDevices(ctx) {
+						temp, health := readDiskSMART(dev)
+						newCache[dev] = model.SmartResult{Temp: temp, Health: health}
+						if strings.Contains(strings.ToUpper(health), "FAIL") {
+							criticalAlerts = append(criticalAlerts, fmt.Sprintf("🚨 Disk %s FAILING — backup now!", dev))
+						}
+						if temp > 0 && float64(temp) >= cfg.Temperature.CriticalThreshold {
+							criticalAlerts = append(criticalAlerts, fmt.Sprintf("🔥 Disk %s temp critical: %d°C", dev, temp))
+						}
 					}
+					ctx.Monitor.Mu.Lock()
+					ctx.Monitor.SmartCache = newCache
+					ctx.Monitor.SmartLastCheckTime = time.Now()
+					ctx.Monitor.Mu.Unlock()
+				} else {
+					ctx.Monitor.Mu.Lock()
+					for dev, res := range ctx.Monitor.SmartCache {
+						if strings.Contains(strings.ToUpper(res.Health), "FAIL") {
+							criticalAlerts = append(criticalAlerts, fmt.Sprintf("🚨 Disk %s FAILING — backup now!", dev))
+						}
+						if res.Temp > 0 && float64(res.Temp) >= cfg.Temperature.CriticalThreshold {
+							criticalAlerts = append(criticalAlerts, fmt.Sprintf("🔥 Disk %s temp critical: %d°C", dev, res.Temp))
+						}
+					}
+					ctx.Monitor.Mu.Unlock()
 				}
 			}
 			if cfg.Notifications.CPU.Enabled && s.CPU >= cfg.Notifications.CPU.CriticalThreshold {

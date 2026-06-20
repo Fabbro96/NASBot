@@ -49,8 +49,8 @@ func TestSanitizeConfig_DefaultsAndClamps(t *testing.T) {
 
 	sanitizeConfig(&cfg)
 
-	if cfg.Paths.SSD != defaultPathSSD || cfg.Paths.HDD != defaultPathHDD {
-		t.Fatalf("expected default paths, got ssd=%q hdd=%q", cfg.Paths.SSD, cfg.Paths.HDD)
+	if cfg.Paths.SSD != defaultPathSSD {
+		t.Fatalf("expected default paths, got ssd=%q", cfg.Paths.SSD)
 	}
 	if cfg.Reports.IntervalDays != 1 {
 		t.Errorf("Expected Reports.IntervalDays to be clamped to 1, got %d", cfg.Reports.IntervalDays)

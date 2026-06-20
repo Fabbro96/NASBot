@@ -3,8 +3,7 @@
   "allowed_user_id": 12345678,
   "gemini_api_key": "",
   "paths": {
-    "ssd": "/Volume1",
-    "hdd": "/Volume2"
+    "ssd": "/Volume1"
   },
   "timezone": "Europe/Rome",
   "reports": {
@@ -48,11 +47,7 @@
       "warning_threshold": 90.0,
       "critical_threshold": 95.0
     },
-    "disk_hdd": {
-      "enabled": true,
-      "warning_threshold": 90.0,
-      "critical_threshold": 95.0
-    },
+    "secondary_disks": {},
     "disk_io": {
       "enabled": true,
       "warning_threshold": 95.0
@@ -122,6 +117,24 @@
   "kernel_watchdog": {
     "enabled": true,
     "check_interval_seconds": 60
+  },
+  "network_watchdog": {
+    "enabled": true,
+    "check_interval_seconds": 60,
+    "targets": ["9.9.9.9", "1.1.1.1"],
+    "dns_host": "quad9.net",
+    "gateway": "",
+    "failure_threshold": 3,
+    "cooldown_minutes": 10,
+    "recovery_notify": true,
+    "force_reboot_on_prolonged_down": true,
+    "force_reboot_after_minutes": 3
+  },
+  "raid_watchdog": {
+    "enabled": true,
+    "check_interval_seconds": 300,
+    "cooldown_minutes": 30,
+    "recovery_notify": true
   },
   "update": {
     "auto_apply": false

@@ -44,14 +44,15 @@ func readCPUTemp() float64 {
 
 // readDiskSMART reads disk SMART data
 func readDiskSMART(device string) (temp int, health string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
 	temp = -1
 	health = "UNKNOWN"
 
-	out, attrErr := runCommandStdout(ctx, "sudo", "-n", "smartctl", "-A", "/dev/"+device)
-	for _, line := range strings.Split(string(out), "\n") {
+	// Use separate contexts for sequential commands to avoid timeout overlaps
+	ctxA, cancelA := context.WithTimeout(context.Background(), 2*time.Second)
+	outA, attrErr := runCommandStdout(ctxA, "sudo", "-n", "smartctl", "-A", "/dev/"+device)
+	cancelA()
+
+	for _, line := range strings.Split(string(outA), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if strings.Contains(line, "Temperature_Celsius") || strings.Contains(line, "Temperature_Internal") {
 			fields := strings.Fields(line)
@@ -69,19 +70,40 @@ func readDiskSMART(device string) (temp int, health string) {
 					temp = t
 				}
 			}
+		} else if strings.HasPrefix(trimmed, "Temperature Sensor") { // NVMe extended sensors
+			fields := strings.Fields(trimmed)
+			// Example: "Temperature Sensor 1:   35 Celsius"
+			for i, f := range fields {
+				if f == "Celsius" && i > 0 {
+					t, _ := strconv.Atoi(fields[i-1])
+					if t > 0 {
+						temp = t
+					}
+				}
+			}
 		}
 	}
 
-	out, healthErr := runCommandStdout(ctx, "sudo", "-n", "smartctl", "-H", "/dev/"+device)
-	if healthErr == nil {
-		health = "OK"
-	}
-	for _, line := range strings.Split(string(out), "\n") {
+	ctxH, cancelH := context.WithTimeout(context.Background(), 2*time.Second)
+	outH, healthErr := runCommandStdout(ctxH, "sudo", "-n", "smartctl", "-H", "/dev/"+device)
+	cancelH()
+
+	passed := false
+	failed := false
+	for _, line := range strings.Split(string(outH), "\n") {
 		if strings.Contains(line, "PASSED") {
-			health = "PASSED"
+			passed = true
 		} else if strings.Contains(line, "FAILED") {
-			health = "FAILED!"
+			failed = true
 		}
+	}
+
+	if failed {
+		health = "FAILED!"
+	} else if passed {
+		health = "PASSED"
+	} else if healthErr == nil {
+		health = "OK"
 	}
 
 	if attrErr != nil {

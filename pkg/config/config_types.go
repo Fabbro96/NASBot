@@ -33,12 +33,12 @@ type BackupConfig struct {
 type UpdateConfig struct {
 	// If true, NASBot will automatically download and apply new GitHub releases
 	// when detected, and then restart itself.
-	AutoApply bool `json:"auto_apply"`
+	AutoApply          bool `json:"auto_apply"`
+	CheckIntervalHours int  `json:"check_interval_hours"`
 }
 
 type PathsConfig struct {
 	SSD string `json:"ssd"`
-	HDD string `json:"hdd"`
 }
 
 type ReportsConfig struct {
@@ -61,13 +61,13 @@ type QuietHoursConfig struct {
 }
 
 type NotificationsConfig struct {
-	CPU     ResourceConfig `json:"cpu"`
-	RAM     ResourceConfig `json:"ram"`
-	Swap    ResourceConfig `json:"swap"`
-	DiskSSD ResourceConfig `json:"disk_ssd"`
-	DiskHDD ResourceConfig `json:"disk_hdd"`
-	DiskIO  DiskIOConfig   `json:"disk_io"`
-	SMART   SmartConfig    `json:"smart"`
+	CPU            ResourceConfig            `json:"cpu"`
+	RAM            ResourceConfig            `json:"ram"`
+	Swap           ResourceConfig            `json:"swap"`
+	DiskSSD        ResourceConfig            `json:"disk_ssd"`
+	SecondaryDisks map[string]ResourceConfig `json:"secondary_disks"`
+	DiskIO         DiskIOConfig              `json:"disk_io"`
+	SMART          SmartConfig               `json:"smart"`
 }
 
 type ResourceConfig struct {

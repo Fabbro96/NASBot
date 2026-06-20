@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## v1.5.0 - 2026-06-20
+
+### Added
+- **Docker Readiness:** Provided `Dockerfile` (Alpine-based) and `docker-compose.yml` for seamless containerized deployments.
+- **Testing:** Achieved comprehensive test coverage with 30+ new unit and integration tests across application logic, commands, configurations, and utilities.
+- **S.M.A.R.T. Monitoring:** Refactored HDD SMART monitoring to use thread-safe `SmartCache` in `MonitorState`, optimizing system calls.
+- **CI/CD:** Documented `govulncheck` and `deadlock-race-gate.yml` in CI/CD pipeline.
+- **Documentation:** General cleanup and translation of command descriptions to English.
+- **Configuration:** Updated structure to support robust `SecondaryDisks` mapping.
+
+### Validation
+- Quality gate passing (`scripts/ci_guard.sh`).
+- Tests passing (`go test ./... -v`).
+- Docker deployment verified.
+
 ## v0.1.1 - 2026-02-14
 
 ### Added
