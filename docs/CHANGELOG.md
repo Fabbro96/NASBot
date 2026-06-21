@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## v1.5.0 - 2026-06-20
+## v2.0.0 - 2026-06-20
 
 ### Added
 - **Docker Readiness:** Provided `Dockerfile` (Alpine-based) and `docker-compose.yml` for seamless containerized deployments.
