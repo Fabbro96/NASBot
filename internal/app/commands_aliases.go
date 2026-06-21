@@ -6,8 +6,12 @@ import (
 )
 
 type CommandRegistry = pcommands.CommandRegistry
+type CallbackRegistry = pcommands.CallbackRegistry
+type CallbackHandler = pcommands.CallbackHandler
+type CallbackFunc = pcommands.CallbackFunc
 
-func NewCommandRegistry() *CommandRegistry { return pcommands.NewCommandRegistry() }
+func NewCommandRegistry() *CommandRegistry   { return pcommands.NewCommandRegistry() }
+func NewCallbackRegistry() *CallbackRegistry { return pcommands.NewCallbackRegistry() }
 
 type StatusCmd = pcommands.StatusCmd
 type TopCmd = pcommands.TopCmd

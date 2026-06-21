@@ -329,189 +329,69 @@ func handleSettingsCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int
 	return false
 }
 
-func handlePowerAndDockerCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int, data string) bool {
-	if data == "update_apply_latest" {
-		applyLatestRelease(ctx, bot, chatID, msgID)
-		return true
-	}
-	if data == "update_cancel" {
-		editMessage(bot, chatID, msgID, ctx.Tr("update_cancel_text"), nil)
-		return true
-	}
-
-	if data == "confirm_reboot" || data == "confirm_shutdown" {
-		handlePowerConfirm(ctx, bot, chatID, msgID, data)
-		return true
-	}
-	if data == "cancel_power" {
-		editMessage(bot, chatID, msgID, ctx.Tr("cancelled"), nil)
-		return true
-	}
-	if data == "pre_confirm_reboot" || data == "pre_confirm_shutdown" {
-		action := strings.TrimPrefix(data, "pre_confirm_")
-		askPowerConfirmation(ctx, bot, chatID, msgID, action)
-		return true
-	}
-	if data == "force_reboot_now" {
-		executeForcedReboot(ctx, bot, chatID, msgID, "manual-force-button")
-		return true
-	}
-
-	if data == "confirm_restart_docker" {
-		executeDockerServiceRestart(ctx, bot, chatID, msgID)
-		return true
-	}
-	if data == "cancel_restart_docker" {
-		editMessage(bot, chatID, msgID, ctx.Tr("docker_restart_cancel"), nil)
-		return true
-	}
-	if data == "docker_restart_service" {
-		askDockerRestartConfirmationEdit(ctx, bot, chatID, msgID)
-		return true
-	}
-	if data == "docker_restart_all" {
-		askRestartAllContainersConfirmation(ctx, bot, chatID, msgID)
-		return true
-	}
-	if data == "confirm_restart_all" {
-		executeRestartAllContainers(ctx, bot, chatID, msgID)
-		return true
-	}
-	if data == "cancel_restart_all" {
-		text, kb := getDockerMenuText(ctx)
-		editMessage(bot, chatID, msgID, text, kb)
-		return true
-	}
-
-	return false
-}
-
-func handleScopedCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int, query *tgbotapi.CallbackQuery, data string) bool {
-	if strings.HasPrefix(data, "health_") {
-		handleHealthCallback(ctx, bot, query, data)
-		return true
-	}
-	if strings.HasPrefix(data, "adblock_") {
-		handleAdBlockCallback(ctx, bot, chatID, msgID, data)
-		return true
-	}
-	if strings.HasPrefix(data, "container_") {
-		handleContainerCallback(ctx, bot, chatID, msgID, data)
-		return true
-	}
-
-	if data == "ai_analyze_critical" {
-		msg := tgbotapi.NewMessage(chatID, ctx.Tr("ai_gathering_context"))
-		sentMsg, err := bot.Send(msg)
-		if err == nil {
-			go func() {
-				// We don't have onModelChange visually integrated right here, but we can pass nil or a simple closure.
-				diagnosis, errDiag := AnalyzeCriticalAlerts(ctx, func(model string) {
-					// Optionally update "Trying model..." here, skipping for simplicity
-				})
-
-				if errDiag != nil {
-					bot.Send(tgbotapi.NewEditMessageText(chatID, sentMsg.MessageID, fmt.Sprintf("❌ Errore AI: %v", errDiag)))
-				} else {
-					bot.Send(tgbotapi.NewEditMessageText(chatID, sentMsg.MessageID, diagnosis))
-				}
-			}()
-		}
-		return true
-	}
-
-	if strings.HasPrefix(data, "proc_manage_") {
-		pid := strings.TrimPrefix(data, "proc_manage_")
-		text := fmt.Sprintf("⚙️ *Gestore Processi*\n\nCosa vuoi fare con il processo `%s`?", pid)
-		kb := tgbotapi.NewInlineKeyboardMarkup(
-			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("🛑 Termina (SIGTERM)", "proc_kill_term_"+pid),
-			),
-			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("💀 Forza Chiusura (SIGKILL)", "proc_kill_kill_"+pid),
-			),
-			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("cancel"), "proc_refresh"),
-			),
-		)
-		editMessage(bot, chatID, msgID, text, &kb)
-		return true
-	}
-	if strings.HasPrefix(data, "proc_kill_") {
-		parts := strings.Split(data, "_")
-		if len(parts) >= 4 {
-			signal := parts[2]
-			pid := parts[3]
-
-			sigArg := "-15"
-			if signal == "kill" {
-				sigArg = "-9"
-			}
-
-			ctxExec, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			defer cancel()
-			cmd := exec.CommandContext(ctxExec, "kill", sigArg, pid)
-			err := cmd.Run()
-
-			if err != nil {
-				safeSend(bot, tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Errore durante l'uccisione del processo %s: %v", pid, err)))
+func handleAIAnalyzeCritical(ctx *AppContext, bot BotAPI, chatID int64, msgID int, query *tgbotapi.CallbackQuery, data string) bool {
+	msg := tgbotapi.NewMessage(chatID, ctx.Tr("ai_gathering_context"))
+	sentMsg, err := bot.Send(msg)
+	if err == nil {
+		go func() {
+			diagnosis, errDiag := AnalyzeCriticalAlerts(ctx, func(model string) {})
+			if errDiag != nil {
+				bot.Send(tgbotapi.NewEditMessageText(chatID, sentMsg.MessageID, fmt.Sprintf("❌ Errore AI: %v", errDiag)))
 			} else {
-				safeSend(bot, tgbotapi.NewMessage(chatID, fmt.Sprintf("✅ Processo %s ucciso con successo.", pid)))
+				bot.Send(tgbotapi.NewEditMessageText(chatID, sentMsg.MessageID, diagnosis))
 			}
-		}
-		text, kb := getProcessesMenu(ctx)
-		editMessage(bot, chatID, msgID, text, &kb)
-		return true
+		}()
 	}
-	if data == "proc_refresh" {
-		text, kb := getProcessesMenu(ctx)
-		editMessage(bot, chatID, msgID, text, &kb)
-		return true
-	}
-
-	return false
+	return true
 }
 
-func handleMainMenuCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int, data string) {
-	var text string
-	var kb *tgbotapi.InlineKeyboardMarkup
+func handleProcManage(ctx *AppContext, bot BotAPI, chatID int64, msgID int, query *tgbotapi.CallbackQuery, data string) bool {
+	pid := strings.TrimPrefix(data, "proc_manage_")
+	text := fmt.Sprintf("⚙️ *Gestore Processi*\n\nCosa vuoi fare con il processo `%s`?", pid)
+	kb := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🛑 Termina (SIGTERM)", "proc_kill_term_"+pid),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("💀 Forza Chiusura (SIGKILL)", "proc_kill_kill_"+pid),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("cancel"), "proc_refresh"),
+		),
+	)
+	editMessage(bot, chatID, msgID, text, &kb)
+	return true
+}
 
-	switch data {
-	case "refresh_status":
-		text = getStatusText(ctx)
-		mainKb := getMainKeyboard(ctx)
-		kb = &mainKb
-	case "show_temp":
-		text = getTempText(ctx)
-		mainKb := getMainKeyboard(ctx)
-		kb = &mainKb
-	case "show_docker":
-		text, kb = getDockerMenuText(ctx)
-	case "show_dstats":
-		text = getDockerStatsText(ctx)
-		mainKb := getMainKeyboard(ctx)
-		kb = &mainKb
-	case "show_top":
-		text = getTopProcText(ctx)
-		mainKb := getMainKeyboard(ctx)
-		kb = &mainKb
-	case "show_net":
-		text = getNetworkText(ctx)
-		mainKb := getMainKeyboard(ctx)
-		kb = &mainKb
-	case "show_report":
-		text = generateReport(ctx, true, nil)
-		mainKb := getMainKeyboard(ctx)
-		kb = &mainKb
-	case "show_power":
-		text, kb = getPowerMenuText(ctx)
-	case "back_main":
-		text = getStatusText(ctx)
-		mainKb := getMainKeyboard(ctx)
-		kb = &mainKb
-	default:
-		return
+func handleProcKill(ctx *AppContext, bot BotAPI, chatID int64, msgID int, query *tgbotapi.CallbackQuery, data string) bool {
+	parts := strings.Split(data, "_")
+	if len(parts) >= 4 {
+		signal := parts[2]
+		pid := parts[3]
+
+		sigArg := "-15"
+		if signal == "kill" {
+			sigArg = "-9"
+		}
+
+		ctxExec, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctxExec, "kill", sigArg, pid)
+		err := cmd.Run()
+
+		if err != nil {
+			safeSend(bot, tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Errore durante l'uccisione del processo %s: %v", pid, err)))
+		} else {
+			safeSend(bot, tgbotapi.NewMessage(chatID, fmt.Sprintf("✅ Processo %s ucciso con successo.", pid)))
+		}
 	}
+	text, kb := getProcessesMenu(ctx)
+	editMessage(bot, chatID, msgID, text, &kb)
+	return true
+}
 
-	editMessage(bot, chatID, msgID, text, kb)
+func handleProcRefresh(ctx *AppContext, bot BotAPI, chatID int64, msgID int, query *tgbotapi.CallbackQuery, data string) bool {
+	text, kb := getProcessesMenu(ctx)
+	editMessage(bot, chatID, msgID, text, &kb)
+	return true
 }
