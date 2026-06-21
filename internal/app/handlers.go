@@ -12,9 +12,11 @@ import (
 )
 
 var cmdRegistry *CommandRegistry
+var cbRegistry *CallbackRegistry
 
 func init() {
 	cmdRegistry = SetupCommandRegistry()
+	cbRegistry = SetupCallbackRegistry()
 }
 
 func handleCommand(bot BotAPI, msg *tgbotapi.Message) {
@@ -200,18 +202,10 @@ func handleCallback(bot BotAPI, query *tgbotapi.CallbackQuery) {
 		slog.Warn("Unauthorized callback ignored")
 		return
 	}
-	chatID := query.Message.Chat.ID
-	msgID := query.Message.MessageID
 	data := query.Data
 
-	if handleSettingsCallback(app, bot, chatID, msgID, data) {
+	if cbRegistry.Execute(app, bot, query) {
 		return
 	}
-	if handlePowerAndDockerCallback(app, bot, chatID, msgID, data) {
-		return
-	}
-	if handleScopedCallback(app, bot, chatID, msgID, query, data) {
-		return
-	}
-	handleMainMenuCallback(app, bot, chatID, msgID, data)
+	slog.Warn("Unknown callback data", "data", data)
 }

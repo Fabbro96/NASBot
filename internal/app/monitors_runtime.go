@@ -20,9 +20,154 @@ import (
 	"github.com/shirou/gopsutil/v3/process"
 )
 
+type MonitorAlert struct {
+	Level   string // "critical", "warning"
+	Message string
+}
+
+type ResourceMonitor interface {
+	Check(ctx *AppContext, s *Stats) []MonitorAlert
+}
+
+type CPUMonitor struct{}
+
+func (m *CPUMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
+	var alerts []MonitorAlert
+	cfg := ctx.Config.Notifications.CPU
+	if !cfg.Enabled {
+		return alerts
+	}
+	if s.CPU >= cfg.CriticalThreshold {
+		alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf("🧠 CPU critical: `%.1f%%`", s.CPU)})
+	} else if s.CPU >= cfg.WarningThreshold {
+		alerts = append(alerts, MonitorAlert{"warning", fmt.Sprintf("CPU high: %.1f%%", s.CPU)})
+	}
+	return alerts
+}
+
+type RAMMonitor struct{}
+
+func (m *RAMMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
+	var alerts []MonitorAlert
+	cfg := ctx.Config.Notifications.RAM
+	if !cfg.Enabled {
+		return alerts
+	}
+	if s.RAM >= cfg.CriticalThreshold {
+		alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf("💾 RAM critical: `%.1f%%`", s.RAM)})
+	} else if s.RAM >= cfg.WarningThreshold {
+		alerts = append(alerts, MonitorAlert{"warning", fmt.Sprintf("RAM high: %.1f%%", s.RAM)})
+	}
+	return alerts
+}
+
+type SwapMonitor struct{}
+
+func (m *SwapMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
+	var alerts []MonitorAlert
+	cfg := ctx.Config.Notifications.Swap
+	if !cfg.Enabled {
+		return alerts
+	}
+	// Note: Swap has no critical threshold check currently
+	if s.Swap >= cfg.WarningThreshold {
+		alerts = append(alerts, MonitorAlert{"warning", fmt.Sprintf("Swap high: %.1f%%", s.Swap)})
+	}
+	return alerts
+}
+
+type SSDMonitor struct{}
+
+func (m *SSDMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
+	var alerts []MonitorAlert
+	cfg := ctx.Config.Notifications.DiskSSD
+	if !cfg.Enabled {
+		return alerts
+	}
+	if s.VolSSD.Used >= cfg.CriticalThreshold {
+		alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf("💿 SSD critical: `%.1f%%`", s.VolSSD.Used)})
+	} else if s.VolSSD.Used >= cfg.WarningThreshold {
+		alerts = append(alerts, MonitorAlert{"warning", fmt.Sprintf("SSD at %.1f%%", s.VolSSD.Used)})
+	}
+	return alerts
+}
+
+type SecondaryDiskMonitor struct{}
+
+func (m *SecondaryDiskMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
+	var alerts []MonitorAlert
+	for mountPoint, volStats := range s.SecondaryVols {
+		diskCfg, ok := ctx.Config.Notifications.SecondaryDisks[mountPoint]
+		if !ok {
+			diskCfg = ResourceConfig{Enabled: true, WarningThreshold: 90.0, CriticalThreshold: 95.0}
+		}
+		if diskCfg.Enabled {
+			if volStats.Used >= diskCfg.CriticalThreshold {
+				alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf("🗄 Disk %s critical: `%.1f%%`", mountPoint, volStats.Used)})
+			} else if volStats.Used >= diskCfg.WarningThreshold {
+				alerts = append(alerts, MonitorAlert{"warning", fmt.Sprintf("Disk %s at %.1f%%", mountPoint, volStats.Used)})
+			}
+		}
+	}
+	return alerts
+}
+
+type SMARTMonitor struct{}
+
+func (m *SMARTMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
+	var alerts []MonitorAlert
+	if !ctx.Config.Notifications.SMART.Enabled {
+		return alerts
+	}
+
+	ctx.Monitor.Mu.Lock()
+	needsCheck := time.Since(ctx.Monitor.SmartLastCheckTime) >= 10*time.Minute
+	ctx.Monitor.Mu.Unlock()
+
+	var cache map[string]model.SmartResult
+	if needsCheck {
+		newCache := make(map[string]model.SmartResult)
+		for _, dev := range getSmartDevices(ctx) {
+			temp, health := readDiskSMART(dev)
+			newCache[dev] = model.SmartResult{Temp: temp, Health: health}
+		}
+		ctx.Monitor.Mu.Lock()
+		ctx.Monitor.SmartCache = newCache
+		ctx.Monitor.SmartLastCheckTime = time.Now()
+		ctx.Monitor.Mu.Unlock()
+		cache = newCache
+	} else {
+		ctx.Monitor.Mu.Lock()
+		cache = make(map[string]model.SmartResult)
+		for k, v := range ctx.Monitor.SmartCache {
+			cache[k] = v
+		}
+		ctx.Monitor.Mu.Unlock()
+	}
+
+	for dev, res := range cache {
+		if strings.Contains(strings.ToUpper(res.Health), "FAIL") {
+			alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf("🚨 Disk %s FAILING — backup now!", dev)})
+		}
+		if res.Temp > 0 && float64(res.Temp) >= ctx.Config.Temperature.CriticalThreshold {
+			alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf("🔥 Disk %s temp critical: %d°C", dev, res.Temp)})
+		}
+	}
+	return alerts
+}
+
 func monitorAlerts(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 	ticker := time.NewTicker(time.Duration(ctx.Config.Intervals.MonitorSeconds) * time.Second)
 	defer ticker.Stop()
+
+	monitors := []ResourceMonitor{
+		&CPUMonitor{},
+		&RAMMonitor{},
+		&SwapMonitor{},
+		&SSDMonitor{},
+		&SecondaryDiskMonitor{},
+		&SMARTMonitor{},
+	}
 
 	for {
 		select {
@@ -35,62 +180,19 @@ func monitorAlerts(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 			}
 
 			var criticalAlerts []string
+			var allAlerts []MonitorAlert
+
+			for _, m := range monitors {
+				alerts := m.Check(ctx, &s)
+				allAlerts = append(allAlerts, alerts...)
+				for _, a := range alerts {
+					if a.Level == "critical" {
+						criticalAlerts = append(criticalAlerts, a.Message)
+					}
+				}
+			}
+
 			cfg := ctx.Config
-
-			if cfg.Notifications.DiskSSD.Enabled && s.VolSSD.Used >= cfg.Notifications.DiskSSD.CriticalThreshold {
-				criticalAlerts = append(criticalAlerts, fmt.Sprintf("💿 SSD critical: `%.1f%%`", s.VolSSD.Used))
-			}
-			for mountPoint, volStats := range s.SecondaryVols {
-				diskCfg, ok := cfg.Notifications.SecondaryDisks[mountPoint]
-				if !ok {
-					// Use a default config if not configured
-					diskCfg = ResourceConfig{Enabled: true, WarningThreshold: 90.0, CriticalThreshold: 95.0}
-				}
-				if diskCfg.Enabled && volStats.Used >= diskCfg.CriticalThreshold {
-					criticalAlerts = append(criticalAlerts, fmt.Sprintf("🗄 Disk %s critical: `%.1f%%`", mountPoint, volStats.Used))
-				}
-			}
-			if cfg.Notifications.SMART.Enabled {
-				ctx.Monitor.Mu.Lock()
-				needsCheck := time.Since(ctx.Monitor.SmartLastCheckTime) >= 10*time.Minute
-				ctx.Monitor.Mu.Unlock()
-
-				if needsCheck {
-					newCache := make(map[string]model.SmartResult)
-					for _, dev := range getSmartDevices(ctx) {
-						temp, health := readDiskSMART(dev)
-						newCache[dev] = model.SmartResult{Temp: temp, Health: health}
-						if strings.Contains(strings.ToUpper(health), "FAIL") {
-							criticalAlerts = append(criticalAlerts, fmt.Sprintf("🚨 Disk %s FAILING — backup now!", dev))
-						}
-						if temp > 0 && float64(temp) >= cfg.Temperature.CriticalThreshold {
-							criticalAlerts = append(criticalAlerts, fmt.Sprintf("🔥 Disk %s temp critical: %d°C", dev, temp))
-						}
-					}
-					ctx.Monitor.Mu.Lock()
-					ctx.Monitor.SmartCache = newCache
-					ctx.Monitor.SmartLastCheckTime = time.Now()
-					ctx.Monitor.Mu.Unlock()
-				} else {
-					ctx.Monitor.Mu.Lock()
-					for dev, res := range ctx.Monitor.SmartCache {
-						if strings.Contains(strings.ToUpper(res.Health), "FAIL") {
-							criticalAlerts = append(criticalAlerts, fmt.Sprintf("🚨 Disk %s FAILING — backup now!", dev))
-						}
-						if res.Temp > 0 && float64(res.Temp) >= cfg.Temperature.CriticalThreshold {
-							criticalAlerts = append(criticalAlerts, fmt.Sprintf("🔥 Disk %s temp critical: %d°C", dev, res.Temp))
-						}
-					}
-					ctx.Monitor.Mu.Unlock()
-				}
-			}
-			if cfg.Notifications.CPU.Enabled && s.CPU >= cfg.Notifications.CPU.CriticalThreshold {
-				criticalAlerts = append(criticalAlerts, fmt.Sprintf("🧠 CPU critical: `%.1f%%`", s.CPU))
-			}
-			if cfg.Notifications.RAM.Enabled && s.RAM >= cfg.Notifications.RAM.CriticalThreshold {
-				criticalAlerts = append(criticalAlerts, fmt.Sprintf("💾 RAM critical: `%.1f%%`", s.RAM))
-			}
-
 			cooldown := time.Duration(cfg.Intervals.CriticalAlertCooldownMins) * time.Minute
 			ctx.Monitor.Mu.Lock()
 			lastAlert := ctx.Monitor.LastCriticalAlert
@@ -114,32 +216,12 @@ func monitorAlerts(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 				ctx.Monitor.Mu.Unlock()
 			}
 
-			if len(criticalAlerts) > 0 {
-				for _, alert := range criticalAlerts {
-					ctx.State.AddEvent("critical", alert)
-				}
-			}
-
-			if cfg.Notifications.CPU.Enabled && s.CPU >= cfg.Notifications.CPU.WarningThreshold && s.CPU < cfg.Notifications.CPU.CriticalThreshold {
-				ctx.State.AddEvent("warning", fmt.Sprintf("CPU high: %.1f%%", s.CPU))
-			}
-			if cfg.Notifications.RAM.Enabled && s.RAM >= cfg.Notifications.RAM.WarningThreshold && s.RAM < cfg.Notifications.RAM.CriticalThreshold {
-				ctx.State.AddEvent("warning", fmt.Sprintf("RAM high: %.1f%%", s.RAM))
-			}
-			if cfg.Notifications.Swap.Enabled && s.Swap >= cfg.Notifications.Swap.WarningThreshold {
-				ctx.State.AddEvent("warning", fmt.Sprintf("Swap high: %.1f%%", s.Swap))
-			}
-			if cfg.Notifications.DiskSSD.Enabled && s.VolSSD.Used >= cfg.Notifications.DiskSSD.WarningThreshold && s.VolSSD.Used < cfg.Notifications.DiskSSD.CriticalThreshold {
-				ctx.State.AddEvent("warning", fmt.Sprintf("SSD at %.1f%%", s.VolSSD.Used))
-			}
-			for mountPoint, volStats := range s.SecondaryVols {
-				diskCfg, ok := cfg.Notifications.SecondaryDisks[mountPoint]
-				if !ok {
-					diskCfg = ResourceConfig{Enabled: true, WarningThreshold: 90.0, CriticalThreshold: 95.0}
-				}
-				if diskCfg.Enabled && volStats.Used >= diskCfg.WarningThreshold && volStats.Used < diskCfg.CriticalThreshold {
-					ctx.State.AddEvent("warning", fmt.Sprintf("Disk %s at %.1f%%", mountPoint, volStats.Used))
-				}
+			for _, a := range allAlerts {
+				// We still add them to state, mapping critical string appropriately if needed
+				// For the UI state, it expects "critical" or "warning" with the raw text, but without markdown
+				// We'll clean up markdown for state log slightly, or just use as is.
+				cleanMsg := strings.ReplaceAll(a.Message, "`", "")
+				ctx.State.AddEvent(a.Level, cleanMsg)
 			}
 		}
 	}
