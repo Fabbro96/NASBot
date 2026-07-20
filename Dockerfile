@@ -18,7 +18,8 @@ RUN apk add --no-cache \
     curl \
     iputils \
     lm-sensors \
-    dmidecode
+    dmidecode \
+    util-linux
 
 WORKDIR /app
 COPY --from=builder /app/nasbot .

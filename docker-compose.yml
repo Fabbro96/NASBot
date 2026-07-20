@@ -2,11 +2,12 @@ version: '3.8'
 
 services:
   nasbot:
-    build: .
+    image: ghcr.io/fabbro96/nasbot:latest
     container_name: nasbot
     restart: unless-stopped
     network_mode: "host"
     privileged: true
+    pid: "host"
     volumes:
       - ./config.json:/app/config.json
       - /var/run/docker.sock:/var/run/docker.sock

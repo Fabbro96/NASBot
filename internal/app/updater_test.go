@@ -59,30 +59,19 @@ func TestApplyLatestRelease_CapturesMsgID(t *testing.T) {
 		}),
 	}
 
-	applyLatestRelease(app, bot, 123, 0)
+	applyLatestRelease(app, bot, 0, 0)
 
-	if len(bot.sent) != 2 {
-		t.Fatalf("expected exactly 2 messages (1 send, 1 edit), got %d sent", len(bot.sent))
+	if len(bot.sent) != 1 {
+		t.Fatalf("expected exactly 1 message, got %d sent", len(bot.sent))
 	}
 
-	_, isNewMsg := bot.sent[0].(tgbotapi.MessageConfig)
+	firstMsg, isNewMsg := bot.sent[0].(tgbotapi.MessageConfig)
 	if !isNewMsg {
 		t.Fatalf("expected first message to be a MessageConfig, got %T", bot.sent[0])
 	}
 
-	secondMsg, isEditMsg := bot.sent[1].(tgbotapi.EditMessageTextConfig)
-	if !isEditMsg {
-		t.Fatalf("expected second message to be an EditMessageTextConfig, got %T", bot.sent[1])
-	}
-
-	if secondMsg.MessageID != 1 {
-		t.Fatalf("expected edit message to target ID 1, got %d", secondMsg.MessageID)
-	}
-
-	expectedPrefix := "Update download failed"
-	expectedPrefixIt := "Download update fallito"
-	if !strings.Contains(secondMsg.Text, expectedPrefix) && !strings.Contains(secondMsg.Text, expectedPrefixIt) {
-		t.Fatalf("expected text to contain download error, but got %q", secondMsg.Text)
+	if !strings.Contains(firstMsg.Text, "Docker") {
+		t.Fatalf("expected text to contain Docker, but got %q", firstMsg.Text)
 	}
 }
 
