@@ -140,7 +140,7 @@ func handlePowerConfirm(ctx *AppContext, bot BotAPI, chatID int64, msgID int, da
 
 	goSafe("power-confirm", func() {
 		time.Sleep(1 * time.Second)
-		if err := runCommand(context.Background(), cmd); err != nil {
+		if err := runCommand(context.Background(), "nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "--", cmd); err != nil {
 			slog.Error("Power command failed", "cmd", cmd, "err", err)
 		}
 	})
@@ -162,7 +162,7 @@ func executeForcedReboot(ctx *AppContext, bot BotAPI, chatID int64, msgID int, r
 	goSafe("force-reboot-execution", func() {
 		time.Sleep(1 * time.Second)
 		slog.Warn("Executing reboot", "reason", reason)
-		if err := runCommand(context.Background(), "reboot"); err != nil {
+		if err := runCommand(context.Background(), "nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "--", "reboot"); err != nil {
 			slog.Error("Reboot command failed", "err", err)
 		}
 	})

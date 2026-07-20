@@ -345,48 +345,10 @@ func applyLatestRelease(ctx *AppContext, bot BotAPI, chatID int64, msgID int) {
 		return
 	}
 
-	statusText := fmt.Sprintf(ctx.Tr("update_downloading"), rel.Tag, rel.AssetName)
+	statusText := fmt.Sprintf("🚀 *Update %s Available*\n\nSince NASBot is now running in Docker, updates are handled automatically by WUD or Watchtower.\nIf you want to manually force the update, connect via SSH and run:\n`docker compose pull && docker compose up -d`", rel.Tag)
 	if msgID > 0 {
 		editMessage(bot, chatID, msgID, statusText, nil)
 	} else {
-		// FIX: Capture the sent message ID so we can update it in real-time
-		msg := tgbotapi.NewMessage(chatID, statusText)
-		msg.ParseMode = "Markdown"
-		sentMsg, err := bot.Send(msg)
-		if err != nil {
-			msg.ParseMode = ""
-			sentMsg, _ = bot.Send(msg)
-		}
-		if sentMsg.MessageID != 0 {
-			msgID = sentMsg.MessageID // Assign the ID for subsequent steps (success or failure)
-		}
-		// END FIX
+		sendMarkdown(bot, chatID, statusText)
 	}
-
-	if _, err := downloadReleaseAsset(ctx, rel); err != nil {
-		errText := fmt.Sprintf(ctx.Tr("update_download_failed"), err)
-		if msgID > 0 {
-			editMessage(bot, chatID, msgID, errText, nil)
-		} else {
-			sendMarkdown(bot, chatID, errText)
-		}
-		return
-	}
-	addPowerLifecycleEvent(ctx, "reboot", false, "command", "scripts/start_bot.sh restart", "post-update-"+rel.Tag)
-	saveState(ctx)
-
-	okText := fmt.Sprintf(ctx.Tr("update_success"), rel.Tag)
-	if msgID > 0 {
-		editMessage(bot, chatID, msgID, okText, nil)
-	} else {
-		sendMarkdown(bot, chatID, okText)
-	}
-
-	goSafe("updater-restart", func() {
-		time.Sleep(1200 * time.Millisecond)
-		if err := restartWithStartScript(); err != nil {
-			slog.Error("Update restart failed", "err", err)
-			sendMarkdown(bot, chatID, fmt.Sprintf(ctx.Tr("update_restart_failed"), err))
-		}
-	})
 }

@@ -12,6 +12,7 @@ permissions:
   contents: write
   attestations: write
   id-token: write
+  packages: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -93,3 +94,40 @@ jobs:
             nasbot
             nasbot-arm64
             SHA256SUMS.txt
+
+      - name: Log in to the Container registry
+        if: steps.get_version.outputs.tag != ''
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        if: steps.get_version.outputs.tag != ''
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        if: steps.get_version.outputs.tag != ''
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract metadata (tags, labels) for Docker
+        if: steps.get_version.outputs.tag != ''
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ steps.get_version.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.get_version.outputs.tag }}
+            type=raw,value=latest
+
+      - name: Build and push Docker image
+        if: steps.get_version.outputs.tag != ''
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
