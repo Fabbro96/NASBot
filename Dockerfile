@@ -5,8 +5,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o nasbot ./main.go
-RUN CGO_ENABLED=0 GOOS=linux go build -o fswatchdog ./main_fswatchdog.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o nasbot .
 
 FROM alpine:3.19
 
@@ -23,7 +22,6 @@ RUN apk add --no-cache \
 
 WORKDIR /app
 COPY --from=builder /app/nasbot .
-COPY --from=builder /app/fswatchdog .
 
 # Required so that the user can mount their docker sock
 VOLUME ["/var/run/docker.sock"]

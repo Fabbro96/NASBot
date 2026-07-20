@@ -1,3 +1,5 @@
+//go:build !fswatchdog
+
 package main
 
 import "nasbot/internal/app"
