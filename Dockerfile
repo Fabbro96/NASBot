@@ -5,8 +5,8 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o nasbot cmd/bot/main.go
-RUN CGO_ENABLED=0 GOOS=linux go build -o fswatchdog cmd/fswatchdog/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o nasbot ./main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o fswatchdog ./main_fswatchdog.go
 
 FROM alpine:3.19
 
