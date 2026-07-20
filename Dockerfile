@@ -20,6 +20,7 @@ RUN apk add --no-cache \
     dmidecode \
     util-linux
 
+ENV NASBOT_DOCKER=true
 WORKDIR /app
 COPY --from=builder /app/nasbot .
 
