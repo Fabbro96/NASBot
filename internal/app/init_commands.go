@@ -32,6 +32,10 @@ func SetupCommandRegistry() *CommandRegistry {
 	r.Register("logs", &LogsCmd{})
 	r.Register("logsearch", &LogSearchCmd{})
 	r.Register("ask", &AskCmd{})
+	r.Register("agy", &AgyCmd{})
+	r.Register("cmd", &CmdCmd{})
+	r.Register("shell", &CmdCmd{}) // Alias
+	r.Register("exec", &CmdCmd{})  // Alias
 	r.Register("help", &HelpCmd{})
 	r.Register("quick", &QuickCmd{})
 	r.Register("q", &QuickCmd{}) // Alias

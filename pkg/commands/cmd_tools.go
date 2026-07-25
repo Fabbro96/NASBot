@@ -1,8 +1,11 @@
 package commands
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"strings"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -161,3 +164,51 @@ func (c *ChangelogCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Messag
 	sendMarkdown(bot, msg.Chat.ID, text)
 }
 func (c *ChangelogCmd) Description() string { return "Show the latest release changelog" }
+
+type AgyCmd struct{}
+
+func (c *AgyCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, args string) {
+	cmdArgs := strings.TrimSpace(args)
+	slog.Info("Executing agy command via NASBot", "args", cmdArgs, "user_id", msg.From.ID)
+	var execArgs []string
+	if cmdArgs != "" {
+		execArgs = strings.Fields(cmdArgs)
+	}
+	reqCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	out, err := runCommandOutput(reqCtx, "agy", execArgs...)
+	outputStr := strings.TrimSpace(string(out))
+	if err != nil && outputStr == "" {
+		outputStr = fmt.Sprintf("❌ Error: %v", err)
+	}
+	if len(outputStr) > 4000 {
+		outputStr = outputStr[:4000] + "\n... (truncated)"
+	}
+	result := fmt.Sprintf("🤖 *Antigravity CLI (`agy`)*\n\n```\n%s\n```", outputStr)
+	sendMarkdown(bot, msg.Chat.ID, result)
+}
+func (c *AgyCmd) Description() string { return "Execute Antigravity CLI (agy)" }
+
+type CmdCmd struct{}
+
+func (c *CmdCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, args string) {
+	cmdStr := strings.TrimSpace(args)
+	if cmdStr == "" {
+		sendMarkdown(bot, msg.Chat.ID, "Usage: `/cmd <shell command>` (e.g. `/cmd tailscale up --reset`)")
+		return
+	}
+	slog.Info("Executing shell command via NASBot", "command", cmdStr, "user_id", msg.From.ID)
+	reqCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	out, err := runCommandOutput(reqCtx, "sh", "-c", cmdStr)
+	outputStr := strings.TrimSpace(string(out))
+	if err != nil && outputStr == "" {
+		outputStr = fmt.Sprintf("❌ Error: %v", err)
+	}
+	if len(outputStr) > 4000 {
+		outputStr = outputStr[:4000] + "\n... (truncated)"
+	}
+	result := fmt.Sprintf("💻 *Command Execution*\n\n```\n%s\n```", outputStr)
+	sendMarkdown(bot, msg.Chat.ID, result)
+}
+func (c *CmdCmd) Description() string { return "Execute arbitrary shell command" }

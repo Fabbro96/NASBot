@@ -45,6 +45,8 @@ type VersionCmd = pcommands.VersionCmd
 type BackupCmd = pcommands.BackupCmd
 type ProcessesCmd = pcommands.ProcessesCmd
 type AdBlockCmd = pcommands.AdBlockCmd
+type AgyCmd = pcommands.AgyCmd
+type CmdCmd = pcommands.CmdCmd
 
 func getStatusText(ctx *AppContext) string  { return pcommands.GetStatusText(ctx) }
 func getTempText(ctx *AppContext) string    { return pcommands.GetTempText(ctx) }

@@ -15,10 +15,13 @@ import (
 // This ensures commands like "reboot" or "shutdown" are found even when
 // /sbin and /usr/sbin are absent from the process PATH (e.g. under cron).
 var systemPaths = []string{
+	"/usr/local/bin",
 	"/usr/sbin",
 	"/sbin",
 	"/usr/bin",
 	"/bin",
+	"/root/.local/bin",
+	"/home/fabbro/.local/bin",
 }
 
 // resolveName returns the full path of name, searching the current PATH
