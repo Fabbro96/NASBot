@@ -97,7 +97,7 @@ jobs:
 
       - name: Log in to the Container registry
         if: steps.get_version.outputs.tag != ''
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
