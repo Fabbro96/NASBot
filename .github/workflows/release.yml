@@ -114,7 +114,7 @@ jobs:
       - name: Extract metadata (tags, labels) for Docker
         if: steps.get_version.outputs.tag != ''
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
