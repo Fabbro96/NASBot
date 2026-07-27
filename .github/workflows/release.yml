@@ -105,7 +105,7 @@ jobs:
 
       - name: Set up QEMU
         if: steps.get_version.outputs.tag != ''
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
         if: steps.get_version.outputs.tag != ''
