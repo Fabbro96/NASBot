@@ -408,9 +408,7 @@ func applyConfigPatch(patch map[string]interface{}) (ConfigPatchResult, error) {
 	}
 
 	// Merge patch
-	for k, v := range patch {
-		configMap[k] = v
-	}
+	deepMerge(configMap, patch)
 	_ = fillMissingConfigFields(configMap)
 
 	// Serialize merged map
@@ -440,4 +438,16 @@ func applyConfigPatch(patch map[string]interface{}) (ConfigPatchResult, error) {
 	result.Ignored = ignored
 	result.Corrected = corrected
 	return result, nil
+}
+
+func deepMerge(dest, src map[string]interface{}) {
+	for k, v := range src {
+		if vMap, ok := v.(map[string]interface{}); ok {
+			if destMap, ok := dest[k].(map[string]interface{}); ok {
+				deepMerge(destMap, vMap)
+				continue
+			}
+		}
+		dest[k] = v
+	}
 }

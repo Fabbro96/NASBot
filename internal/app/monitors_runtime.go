@@ -563,7 +563,8 @@ func getCachedContainerList(ctx *AppContext) []ContainerInfo {
 	ctx.Docker.Mu.RLock()
 	ttl := time.Duration(ctx.Config.Cache.DockerTTLSeconds) * time.Second
 	if time.Since(ctx.Docker.Cache.LastUpdate) < ttl && len(ctx.Docker.Cache.Containers) > 0 {
-		result := ctx.Docker.Cache.Containers
+		result := make([]ContainerInfo, len(ctx.Docker.Cache.Containers))
+		copy(result, ctx.Docker.Cache.Containers)
 		ctx.Docker.Mu.RUnlock()
 		return result
 	}
@@ -576,5 +577,7 @@ func getCachedContainerList(ctx *AppContext) []ContainerInfo {
 	ctx.Docker.Cache.LastUpdate = time.Now()
 	ctx.Docker.Mu.Unlock()
 
-	return containers
+	result := make([]ContainerInfo, len(containers))
+	copy(result, containers)
+	return result
 }

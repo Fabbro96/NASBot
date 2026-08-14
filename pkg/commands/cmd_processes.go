@@ -34,10 +34,10 @@ func getProcessesMenu(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
 
 	lines := strings.Split(string(out), "\n")
 	if len(lines) < 2 {
-		return "Nessun processo trovato.", tgbotapi.NewInlineKeyboardMarkup()
+		return ctx.Tr("proc_none_found"), tgbotapi.NewInlineKeyboardMarkup()
 	}
 
-	text := "⚙️ *Gestore Processi*\n\nSeleziona un processo per gestirlo:\n\n`PID   CPU  MEM  NAME`\n"
+	text := ctx.Tr("proc_header")
 
 	count := 0
 	var rows [][]tgbotapi.InlineKeyboardButton
@@ -57,8 +57,9 @@ func getProcessesMenu(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
 		cpuPct := fields[2]
 		memPct := fields[3]
 
-		if len(cmdName) > 12 {
-			cmdName = cmdName[:10] + ".."
+		cmdRunes := []rune(cmdName)
+		if len(cmdRunes) > 12 {
+			cmdName = string(cmdRunes[:10]) + ".."
 		}
 
 		text += fmt.Sprintf("`%-5s %-4s %-4s %s`\n", pid, cpuPct, memPct, cmdName)
@@ -74,7 +75,7 @@ func getProcessesMenu(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
 	}
 
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("🔄 Aggiorna", "proc_refresh"),
+		tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("proc_refresh_btn"), "proc_refresh"),
 	))
 
 	return text, tgbotapi.NewInlineKeyboardMarkup(rows...)

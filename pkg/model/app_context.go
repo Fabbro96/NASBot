@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"sort"
 	"time"
 )
 
@@ -101,6 +102,7 @@ type UserSettings struct {
 	ReportsEnabled bool
 	ReportInterval int
 	ReportTimes    []TimePoint
+	ReportDays     []int // 0=Sunday, 1=Monday, ..., 6=Saturday. Empty = based on ReportInterval
 	QuietHours     QuietSettings
 	DockerPrune    PruneSettings
 }
@@ -300,6 +302,64 @@ func (s *UserSettings) GetReportsSettings() (enabled bool, interval int, times [
 	interval = s.ReportInterval
 	times = make([]TimePoint, len(s.ReportTimes))
 	copy(times, s.ReportTimes)
+	return
+}
+
+func (s *UserSettings) GetReportsDays() []int {
+	s.Mu.RLock()
+	defer s.Mu.RUnlock()
+	days := make([]int, len(s.ReportDays))
+	copy(days, s.ReportDays)
+	return days
+}
+
+func (s *UserSettings) SetReportsDays(days []int) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	s.ReportDays = make([]int, len(days))
+	copy(s.ReportDays, days)
+	sort.Ints(s.ReportDays)
+}
+
+func (s *UserSettings) ToggleReportDay(day int) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	found := false
+	var newDays []int
+	for _, d := range s.ReportDays {
+		if d == day {
+			found = true
+		} else {
+			newDays = append(newDays, d)
+		}
+	}
+	if !found {
+		newDays = append(newDays, day)
+	}
+	sort.Ints(newDays)
+	s.ReportDays = newDays
+}
+
+func (s *UserSettings) HasReportDay(day int) bool {
+	s.Mu.RLock()
+	defer s.Mu.RUnlock()
+	for _, d := range s.ReportDays {
+		if d == day {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *UserSettings) GetReportsDetailedSettings() (enabled bool, interval int, times []TimePoint, days []int) {
+	s.Mu.RLock()
+	defer s.Mu.RUnlock()
+	enabled = s.ReportsEnabled
+	interval = s.ReportInterval
+	times = make([]TimePoint, len(s.ReportTimes))
+	copy(times, s.ReportTimes)
+	days = make([]int, len(s.ReportDays))
+	copy(days, s.ReportDays)
 	return
 }
 

@@ -26,6 +26,7 @@ type BotState struct {
 	ReportsEnabled *bool       `json:"reports_enabled,omitempty"`
 	ReportInterval int         `json:"report_interval,omitempty"`
 	ReportTimes    []TimePoint `json:"report_times,omitempty"`
+	ReportDays     []int       `json:"report_days,omitempty"`
 
 	QuietHoursEnabled bool `json:"quiet_hours_enabled"`
 	QuietStartHour    int  `json:"quiet_start_hour"`
@@ -94,6 +95,9 @@ func loadState(ctx *AppContext) {
 		if len(state.ReportTimes) > 0 {
 			ctx.Settings.ReportTimes = state.ReportTimes
 		}
+		if len(state.ReportDays) > 0 {
+			ctx.Settings.ReportDays = state.ReportDays
+		}
 	} else if state.ReportMode > 0 || state.ReportMode == 0 {
 		// Migrate old format to new format
 		ctx.Settings.ReportsEnabled = state.ReportMode > 0
@@ -116,7 +120,7 @@ func loadState(ctx *AppContext) {
 		}
 	}
 
-	if state.QuietStartHour > 0 || state.QuietStartMinute > 0 {
+	if state.QuietHoursEnabled || state.QuietStartHour > 0 || state.QuietStartMinute > 0 || state.QuietEndHour > 0 || state.QuietEndMinute > 0 {
 		ctx.Settings.QuietHours.Enabled = state.QuietHoursEnabled
 		ctx.Settings.QuietHours.Start = TimePoint{Hour: state.QuietStartHour, Minute: state.QuietStartMinute}
 		ctx.Settings.QuietHours.End = TimePoint{Hour: state.QuietEndHour, Minute: state.QuietEndMinute}
@@ -161,6 +165,8 @@ func saveState(ctx *AppContext) {
 	reportInterval := ctx.Settings.ReportInterval
 	reportTimes := make([]TimePoint, len(ctx.Settings.ReportTimes))
 	copy(reportTimes, ctx.Settings.ReportTimes)
+	reportDays := make([]int, len(ctx.Settings.ReportDays))
+	copy(reportDays, ctx.Settings.ReportDays)
 	quietHours := ctx.Settings.QuietHours
 	dockerPrune := ctx.Settings.DockerPrune
 	ctx.Settings.Mu.RUnlock()
@@ -174,6 +180,7 @@ func saveState(ctx *AppContext) {
 		ReportsEnabled:      &reportsEnabled,
 		ReportInterval:      reportInterval,
 		ReportTimes:         reportTimes,
+		ReportDays:          reportDays,
 		QuietHoursEnabled:   quietHours.Enabled,
 		QuietStartHour:      quietHours.Start.Hour,
 		QuietStartMinute:    quietHours.Start.Minute,

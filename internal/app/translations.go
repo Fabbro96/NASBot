@@ -349,6 +349,52 @@ var translations = map[string]map[string]string{
 		"analyze_with_ai":      "Analyze with AI",
 		"thresh_custom_btn":    "✏️ Custom Value",
 		"thresh_custom_prompt": "⚠️ Type the new threshold value in percentage (e.g., 85):",
+
+		// AdBlock
+		"adblock_disabled":        "AdBlock integration is disabled in configuration.",
+		"adblock_menu_title":      "🛡 *AdBlock Control Panel*",
+		"adblock_pause_5m":        "⏸ Pause AdBlock (5 mins)",
+		"adblock_paused_success":  "AdBlock paused for 5 minutes.",
+		"adblock_resume":          "▶️ Resume AdBlock",
+		"adblock_resumed_success": "AdBlock protection resumed.",
+
+		// Report Schedule & Days
+		"mon_short":              "Mon",
+		"tue_short":              "Tue",
+		"wed_short":              "Wed",
+		"thu_short":              "Thu",
+		"fri_short":              "Fri",
+		"sat_short":              "Sat",
+		"sun_short":              "Sun",
+		"report_days_fmt":        "Days: %s (%d times/day)",
+		"report_mode_days":       "Days Mode",
+		"report_mode_interval":   "Interval Mode",
+		"report_preset_all":      "All Days",
+		"report_preset_workdays": "Mon-Fri",
+		"report_preset_weekend":  "Weekend",
+
+		// Process Manager
+		"proc_mgr_title":   "Process Manager",
+		"proc_mgr_prompt":  "Select action for process",
+		"proc_sigterm":     "Terminate (SIGTERM)",
+		"proc_sigkill":     "Force Kill (SIGKILL)",
+		"proc_kill_err":    "Error killing process",
+		"proc_killed_ok":   "Process killed successfully",
+		"proc_none_found":  "No processes found.",
+		"proc_header":      "⚙️ *Process Manager*\n\nSelect a process to manage:\n\n`PID   CPU  MEM  NAME`\n",
+		"proc_refresh_btn": "🔄 Refresh",
+
+		// Backup
+		"backup_creating":     "📦 Creating backup...",
+		"backup_create_err":   "❌ Error creating backup: %v",
+		"backup_caption":      "📦 NASBot configuration backup",
+		"backup_send_err":     "❌ Error sending backup: %v",
+		"backup_sent_success": "✅ Backup sent successfully to configured user.",
+
+		// Network
+		"net_traffic_title": "\n\n📊 *Network Traffic*\n",
+		"net_rx":            "⬇️ Download: `%.2f Mbps` (Tot: `%s`)\n",
+		"net_tx":            "⬆️ Upload: `%.2f Mbps` (Tot: `%s`)\n",
 	},
 	"it": {
 		"status_title": "🖥 *NAS* alle %s\n\n",
@@ -701,6 +747,55 @@ var translations = map[string]map[string]string{
 		"analyze_with_ai":      "Analizza con AI",
 		"thresh_custom_btn":    "✏️ Valore Custom",
 		"thresh_custom_prompt": "⚠️ Scrivi il nuovo valore della soglia in percentuale (es. 85):",
+
+		// Version
+		"help_version": "/version — mostra la versione del bot\n",
+
+		// AdBlock
+		"adblock_disabled":        "Integrazione AdBlock disabilitata nella configurazione.",
+		"adblock_menu_title":      "🛡 *Pannello Controllo AdBlock*",
+		"adblock_pause_5m":        "⏸ Sospendi AdBlock (5 min)",
+		"adblock_paused_success":  "AdBlock sospeso per 5 minuti.",
+		"adblock_resume":          "▶️ Riattiva AdBlock",
+		"adblock_resumed_success": "Protezione AdBlock riattivata.",
+
+		// Report Schedule & Days
+		"mon_short":              "Lun",
+		"tue_short":              "Mar",
+		"wed_short":              "Mer",
+		"thu_short":              "Gio",
+		"fri_short":              "Ven",
+		"sat_short":              "Sab",
+		"sun_short":              "Dom",
+		"report_days_fmt":        "Giorni: %s (%d orari/giorno)",
+		"report_mode_days":       "Modalità Giorni",
+		"report_mode_interval":   "Modalità Intervallo",
+		"report_preset_all":      "Tutti i giorni",
+		"report_preset_workdays": "Lun-Ven",
+		"report_preset_weekend":  "Weekend",
+
+		// Process Manager
+		"proc_mgr_title":   "Gestore Processi",
+		"proc_mgr_prompt":  "Cosa vuoi fare con il processo",
+		"proc_sigterm":     "Termina (SIGTERM)",
+		"proc_sigkill":     "Forza Chiusura (SIGKILL)",
+		"proc_kill_err":    "Errore durante l'uccisione del processo",
+		"proc_killed_ok":   "Processo terminato con successo",
+		"proc_none_found":  "Nessun processo trovato.",
+		"proc_header":      "⚙️ *Gestore Processi*\n\nSeleziona un processo per gestirlo:\n\n`PID   CPU  MEM  NAME`\n",
+		"proc_refresh_btn": "🔄 Aggiorna",
+
+		// Backup
+		"backup_creating":     "📦 Creazione backup in corso...",
+		"backup_create_err":   "❌ Errore durante la creazione del backup: %v",
+		"backup_caption":      "📦 Backup configurazioni NASBot",
+		"backup_send_err":     "❌ Errore durante l'invio del backup: %v",
+		"backup_sent_success": "✅ Backup inviato con successo all'utente configurato.",
+
+		// Network
+		"net_traffic_title": "\n\n📊 *Traffico di Rete*\n",
+		"net_rx":            "⬇️ Download: `%.2f Mbps` (Tot: `%s`)\n",
+		"net_tx":            "⬆️ Upload: `%.2f Mbps` (Tot: `%s`)\n",
 	},
 	"es": {
 		"status_title":      "🖥 *NAS* a las %s\n\n",

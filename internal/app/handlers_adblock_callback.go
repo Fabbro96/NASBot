@@ -1,9 +1,12 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -14,27 +17,41 @@ func handleAdBlockCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int,
 		return
 	}
 
-	url := ctx.Config.AdBlock.URL
+	baseURL := ctx.Config.AdBlock.URL
 	token := ctx.Config.AdBlock.Token
 
-	if url == "" {
+	if baseURL == "" {
 		safeSend(bot, tgbotapi.NewMessage(chatID, "❌ AdBlock URL not configured."))
 		return
 	}
 
 	// Clean the URL
-	url = strings.TrimSuffix(url, "/")
+	baseURL = strings.TrimSuffix(baseURL, "/")
 
 	var apiURL string
 	if data == "adblock_pause_5m" {
-		apiURL = fmt.Sprintf("%s/admin/api.php?disable=300&auth=%s", url, token)
+		apiURL = fmt.Sprintf("%s/admin/api.php?disable=300&auth=%s", baseURL, url.QueryEscape(token))
 	} else if data == "adblock_resume" {
-		apiURL = fmt.Sprintf("%s/admin/api.php?enable&auth=%s", url, token)
+		apiURL = fmt.Sprintf("%s/admin/api.php?enable&auth=%s", baseURL, url.QueryEscape(token))
 	} else {
 		return
 	}
 
-	resp, err := http.Get(apiURL)
+	reqCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, "GET", apiURL, nil)
+	if err != nil {
+		safeSend(bot, tgbotapi.NewMessage(chatID, "❌ Error creating AdBlock request: "+err.Error()))
+		return
+	}
+
+	client := ctx.HTTP
+	if client == nil {
+		client = &http.Client{Timeout: 10 * time.Second}
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		safeSend(bot, tgbotapi.NewMessage(chatID, "❌ Error contacting AdBlock: "+err.Error()))
 		return

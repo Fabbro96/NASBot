@@ -137,9 +137,9 @@ func getNetworkText(ctx *AppContext) string {
 
 	s, ready := ctx.Stats.Get()
 	if ready {
-		b.WriteString("\n\n📊 *Traffico di Rete*\n")
-		b.WriteString(fmt.Sprintf("⬇️ Download: `%.2f Mbps` (Tot: `%s`)\n", s.NetRxMbps, formatData(s.NetRxTotalMB)))
-		b.WriteString(fmt.Sprintf("⬆️ Upload: `%.2f Mbps` (Tot: `%s`)\n", s.NetTxMbps, formatData(s.NetTxTotalMB)))
+		b.WriteString(tr("net_traffic_title"))
+		b.WriteString(fmt.Sprintf(tr("net_rx"), s.NetRxMbps, formatData(s.NetRxTotalMB)))
+		b.WriteString(fmt.Sprintf(tr("net_tx"), s.NetTxMbps, formatData(s.NetTxTotalMB)))
 	}
 
 	return b.String()

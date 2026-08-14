@@ -37,4 +37,20 @@ func TestTruncate(t *testing.T) {
 	if got := Truncate("abcdef", 4); got != "abc~" {
 		t.Fatalf("Truncate = %q, want %q", got, "abc~")
 	}
+	if got := Truncate("abcdef", 0); got != "" {
+		t.Fatalf("Truncate(0) = %q, want %q", got, "")
+	}
+	if got := Truncate("abcdef", -1); got != "" {
+		t.Fatalf("Truncate(-1) = %q, want %q", got, "")
+	}
+	if got := Truncate("abcdef", 1); got != "~" {
+		t.Fatalf("Truncate(1) = %q, want %q", got, "~")
+	}
+	// UTF-8 multibyte strings & emojis
+	if got := Truncate("🚀🚨📊🖥💿🗄", 4); got != "🚀🚨📊~" {
+		t.Fatalf("Truncate UTF-8 = %q, want %q", got, "🚀🚨📊~")
+	}
+	if got := Truncate("città", 4); got != "cit~" {
+		t.Fatalf("Truncate UTF-8 accent = %q, want %q", got, "cit~")
+	}
 }
