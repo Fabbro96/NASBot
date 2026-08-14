@@ -10,18 +10,17 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-// getNextReportTime calculates the next report time based on settings
+// getNextReportTime calculates the next report time based on settings (interval or specific days of week)
 func getNextReportTime(ctx *AppContext) (time.Time, TimePoint) {
-	enabled, intervalDays, times := ctx.Settings.GetReportsSettings()
+	enabled, intervalDays, times, days := ctx.Settings.GetReportsDetailedSettings()
 	loc := ctx.State.TimeLocation
+	if loc == nil {
+		loc = time.Local
+	}
 	now := time.Now().In(loc)
 
 	if !enabled || len(times) == 0 {
 		return now.Add(24 * 365 * time.Hour), TimePoint{}
-	}
-
-	if intervalDays < 1 {
-		intervalDays = 1
 	}
 
 	// Sort times to process chronologically
@@ -36,10 +35,59 @@ func getNextReportTime(ctx *AppContext) (time.Time, TimePoint) {
 	lastReport := ctx.State.LastReport.In(loc)
 	ctx.State.Mu.Unlock()
 
-	lastReportDate := time.Date(lastReport.Year(), lastReport.Month(), lastReport.Day(), 0, 0, 0, 0, loc)
+	const gracePeriod = 5 * time.Minute
 	nowDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
 
-	// Handle uninitialized lastReport
+	// --- Mode 1: Specific Days of the Week ---
+	if len(days) > 0 {
+		dayMap := make(map[int]bool, len(days))
+		for _, d := range days {
+			dayMap[d] = true
+		}
+
+		for offset := 0; offset <= 14; offset++ {
+			candidateDate := nowDate.AddDate(0, 0, offset)
+			weekday := int(candidateDate.Weekday()) // 0=Sunday, 1=Monday, ..., 6=Saturday
+			if !dayMap[weekday] {
+				continue
+			}
+
+			for _, tp := range times {
+				reportTime := time.Date(candidateDate.Year(), candidateDate.Month(), candidateDate.Day(), tp.Hour, tp.Minute, 0, 0, loc)
+
+				if offset == 0 {
+					sameDay := !lastReport.IsZero() &&
+						lastReport.Year() == now.Year() &&
+						lastReport.Month() == now.Month() &&
+						lastReport.Day() == now.Day()
+
+					alreadySent := sameDay && (lastReport.Hour() > tp.Hour || (lastReport.Hour() == tp.Hour && lastReport.Minute() >= tp.Minute))
+					if alreadySent {
+						continue
+					}
+
+					if now.After(reportTime) && now.Before(reportTime.Add(gracePeriod)) {
+						slog.Info("Report: Missed report on scheduled day, triggering now (grace period)")
+						return now, tp
+					}
+
+					if now.Before(reportTime) {
+						return reportTime, tp
+					}
+				} else {
+					return reportTime, tp
+				}
+			}
+		}
+		return now.Add(24 * 365 * time.Hour), TimePoint{}
+	}
+
+	// --- Mode 2: Interval of Days ---
+	if intervalDays < 1 {
+		intervalDays = 1
+	}
+
+	lastReportDate := time.Date(lastReport.Year(), lastReport.Month(), lastReport.Day(), 0, 0, 0, 0, loc)
 	if lastReport.IsZero() {
 		lastReportDate = nowDate.AddDate(0, 0, -intervalDays)
 	}
@@ -49,19 +97,18 @@ func getNextReportTime(ctx *AppContext) (time.Time, TimePoint) {
 		daysSinceLast = intervalDays // force recalculation for clock skew
 	}
 
-	const gracePeriod = 5 * time.Minute
 	isReportDay := daysSinceLast >= intervalDays || daysSinceLast == 0
 
 	if isReportDay {
 		for _, tp := range times {
 			reportTime := time.Date(now.Year(), now.Month(), now.Day(), tp.Hour, tp.Minute, 0, 0, loc)
 
-			sameDay := lastReport.Year() == now.Year() &&
+			sameDay := !lastReport.IsZero() &&
+				lastReport.Year() == now.Year() &&
 				lastReport.Month() == now.Month() &&
 				lastReport.Day() == now.Day()
 
 			alreadySent := sameDay && (lastReport.Hour() > tp.Hour || (lastReport.Hour() == tp.Hour && lastReport.Minute() >= tp.Minute))
-
 			if alreadySent {
 				continue
 			}
@@ -91,21 +138,48 @@ func getNextReportTime(ctx *AppContext) (time.Time, TimePoint) {
 }
 
 func getNextReportDescription(ctx *AppContext) string {
-	enabled, _, _ := ctx.Settings.GetReportsSettings()
+	enabled, _, _, _ := ctx.Settings.GetReportsDetailedSettings()
 	if !enabled {
 		return ctx.Tr("report_disabled")
 	}
 
 	nextReport, tp := getNextReportTime(ctx)
-	now := time.Now().In(ctx.State.TimeLocation)
+	loc := ctx.State.TimeLocation
+	if loc == nil {
+		loc = time.Local
+	}
+	now := time.Now().In(loc)
+	tmr := now.AddDate(0, 0, 1)
 
 	if nextReport.Year() == now.Year() && nextReport.Month() == now.Month() && nextReport.Day() == now.Day() {
 		return fmt.Sprintf(ctx.Tr("report_next"), tp.Hour, tp.Minute)
-	} else if nextReport.Year() == now.Year() && nextReport.Month() == now.Month() && nextReport.Day() == now.AddDate(0, 0, 1).Day() {
+	} else if nextReport.Year() == tmr.Year() && nextReport.Month() == tmr.Month() && nextReport.Day() == tmr.Day() {
 		return fmt.Sprintf(ctx.Tr("report_next_tmr"), tp.Hour, tp.Minute)
 	}
 
-	return fmt.Sprintf(ctx.Tr("report_next_date"), nextReport.Day(), nextReport.Month().String()[:3], tp.Hour, tp.Minute)
+	weekdayName := getWeekdayShortName(ctx, int(nextReport.Weekday()))
+	return fmt.Sprintf("%s %02d/%02d %02d:%02d", weekdayName, nextReport.Day(), int(nextReport.Month()), tp.Hour, tp.Minute)
+}
+
+func getWeekdayShortName(ctx *AppContext, weekday int) string {
+	switch weekday {
+	case 1:
+		return ctx.Tr("mon_short")
+	case 2:
+		return ctx.Tr("tue_short")
+	case 3:
+		return ctx.Tr("wed_short")
+	case 4:
+		return ctx.Tr("thu_short")
+	case 5:
+		return ctx.Tr("fri_short")
+	case 6:
+		return ctx.Tr("sat_short")
+	case 0:
+		return ctx.Tr("sun_short")
+	default:
+		return ""
+	}
 }
 
 func periodicReport(ctx *AppContext, bot BotAPI, runCtx context.Context) {

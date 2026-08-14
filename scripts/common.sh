@@ -236,7 +236,7 @@ get_go_arch() {
         amd64)
             echo "linux:amd64" ;;
         armv7)
-            echo "linux:armv7l" ;;
+            echo "linux:arm" ;;
         386)
             echo "linux:386" ;;
         *)

@@ -15,6 +15,7 @@ nasbot_state.json
 
 # Logs
 *.log
+build_errors.log
 logs/
 
 # IDE

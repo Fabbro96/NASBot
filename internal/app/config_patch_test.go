@@ -76,3 +76,62 @@ func containsString(list []string, needle string) bool {
 	}
 	return false
 }
+
+func TestApplyConfigPatch_DeepMergePreservesNestedNotifications(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	originalConfigFile := configFile
+	configFile = path
+	defer func() {
+		configFile = originalConfigFile
+	}()
+
+	initialConfig := Config{
+		Notifications: NotificationsConfig{
+			CPU:     ResourceConfig{Enabled: true, WarningThreshold: 80, CriticalThreshold: 90},
+			RAM:     ResourceConfig{Enabled: true, WarningThreshold: 75, CriticalThreshold: 85},
+			DiskSSD: ResourceConfig{Enabled: true, WarningThreshold: 82, CriticalThreshold: 92},
+		},
+	}
+	initBytes, _ := json.MarshalIndent(initialConfig, "", "  ")
+	if err := os.WriteFile(path, initBytes, 0600); err != nil {
+		t.Fatalf("write initial config: %v", err)
+	}
+
+	// Patch ONLY CPU notification threshold
+	patch := map[string]interface{}{
+		"notifications": map[string]interface{}{
+			"cpu": map[string]interface{}{
+				"warning_threshold":  85,
+				"critical_threshold": 95,
+			},
+		},
+	}
+
+	_, err := applyConfigPatch(patch)
+	if err != nil {
+		t.Fatalf("apply config patch: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	var saved Config
+	if err := json.Unmarshal(data, &saved); err != nil {
+		t.Fatalf("unmarshal config: %v", err)
+	}
+
+	// CPU was updated
+	if saved.Notifications.CPU.WarningThreshold != 85 || saved.Notifications.CPU.CriticalThreshold != 95 {
+		t.Fatalf("expected CPU thresholds 85/95, got %v/%v", saved.Notifications.CPU.WarningThreshold, saved.Notifications.CPU.CriticalThreshold)
+	}
+	// RAM and SSD were preserved and NOT overwritten by factory defaults!
+	if saved.Notifications.RAM.WarningThreshold != 75 || saved.Notifications.RAM.CriticalThreshold != 85 {
+		t.Fatalf("expected RAM thresholds 75/85 preserved, got %v/%v", saved.Notifications.RAM.WarningThreshold, saved.Notifications.RAM.CriticalThreshold)
+	}
+	if saved.Notifications.DiskSSD.WarningThreshold != 82 || saved.Notifications.DiskSSD.CriticalThreshold != 92 {
+		t.Fatalf("expected SSD thresholds 82/92 preserved, got %v/%v", saved.Notifications.DiskSSD.WarningThreshold, saved.Notifications.DiskSSD.CriticalThreshold)
+	}
+}

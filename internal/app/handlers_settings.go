@@ -1,6 +1,3 @@
-//go:build !fswatchdog
-// +build !fswatchdog
-
 package app
 
 import (
@@ -116,10 +113,14 @@ func getSettingsMenuText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup
 	currentLang := ctx.Settings.GetLanguage()
 	langName := ctx.Tr(languageNameKey(currentLang)) + " " + languageFlag(currentLang)
 
-	repEnabled, repInterval, repTimes := ctx.Settings.GetReportsSettings()
+	repEnabled, repInterval, repTimes, repDays := ctx.Settings.GetReportsDetailedSettings()
 	reportText := ctx.Tr("report_disabled")
 	if repEnabled {
-		reportText = fmt.Sprintf(ctx.Tr("report_enabled_fmt"), repInterval, len(repTimes))
+		if len(repDays) > 0 {
+			reportText = fmt.Sprintf("%s (%d orari)", formatDaysList(ctx, repDays), len(repTimes))
+		} else {
+			reportText = fmt.Sprintf(ctx.Tr("report_enabled_fmt"), repInterval, len(repTimes))
+		}
 	}
 
 	ctx.Settings.Mu.RLock()
@@ -172,14 +173,33 @@ func getSettingsMenuText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup
 	return text, kb
 }
 
+func formatDaysList(ctx *AppContext, days []int) string {
+	if len(days) == 0 || len(days) == 7 {
+		return ctx.Tr("report_preset_all")
+	}
+	dayNames := make([]string, 0, len(days))
+	for _, d := range days {
+		dayNames = append(dayNames, getWeekdayShortName(ctx, d))
+	}
+	return strings.Join(dayNames, ", ")
+}
+
 func getReportSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
 	text := ctx.Tr("report_settings_title")
-	enabled, interval, times := ctx.Settings.GetReportsSettings()
+	enabled, interval, times, days := ctx.Settings.GetReportsDetailedSettings()
 
 	if !enabled {
 		text += "\n" + ctx.Tr("status_disabled")
 	} else {
-		text += "\n" + fmt.Sprintf(ctx.Tr("report_freq_fmt"), interval)
+		if len(days) > 0 {
+			text += "\n" + fmt.Sprintf(ctx.Tr("report_days_fmt"), formatDaysList(ctx, days), len(times))
+		} else {
+			text += "\n" + fmt.Sprintf(ctx.Tr("report_freq_fmt"), interval)
+		}
+		desc := getNextReportDescription(ctx)
+		if desc != "" {
+			text += fmt.Sprintf("\n⏱ %s", desc)
+		}
 	}
 
 	rows := [][]tgbotapi.InlineKeyboardButton{}
@@ -196,12 +216,58 @@ func getReportSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMark
 	))
 
 	if enabled {
+		modeBtnText := ctx.Tr("report_mode_days")
+		modeBtnData := "report_mode_days"
+		if len(days) > 0 {
+			modeBtnText = ctx.Tr("report_mode_interval")
+			modeBtnData = "report_mode_interval"
+		}
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("➖", "report_interval_dec"),
-			tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf(ctx.Tr("report_interval_btn"), interval), "noop"),
-			tgbotapi.NewInlineKeyboardButtonData("➕", "report_interval_inc"),
+			tgbotapi.NewInlineKeyboardButtonData("🔀 "+modeBtnText, modeBtnData),
 		))
 
+		if len(days) == 0 {
+			// Interval Mode controls
+			rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("➖", "report_interval_dec"),
+				tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf(ctx.Tr("report_interval_btn"), interval), "noop"),
+				tgbotapi.NewInlineKeyboardButtonData("➕", "report_interval_inc"),
+			))
+		} else {
+			// Days of Week Mode controls
+			// Presets row
+			rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("report_preset_workdays"), "report_preset_workdays"),
+				tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("report_preset_weekend"), "report_preset_weekend"),
+				tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("report_preset_all"), "report_preset_all"),
+			))
+
+			// Days toggle checkboxes row 1 (Mon, Tue, Wed, Thu)
+			row1 := []tgbotapi.InlineKeyboardButton{}
+			for _, d := range []int{1, 2, 3, 4} {
+				check := "⬜"
+				if ctx.Settings.HasReportDay(d) {
+					check = "✅"
+				}
+				label := fmt.Sprintf("%s %s", check, getWeekdayShortName(ctx, d))
+				row1 = append(row1, tgbotapi.NewInlineKeyboardButtonData(label, fmt.Sprintf("report_toggle_day_%d", d)))
+			}
+			rows = append(rows, row1)
+
+			// Days toggle checkboxes row 2 (Fri, Sat, Sun)
+			row2 := []tgbotapi.InlineKeyboardButton{}
+			for _, d := range []int{5, 6, 0} {
+				check := "⬜"
+				if ctx.Settings.HasReportDay(d) {
+					check = "✅"
+				}
+				label := fmt.Sprintf("%s %s", check, getWeekdayShortName(ctx, d))
+				row2 = append(row2, tgbotapi.NewInlineKeyboardButtonData(label, fmt.Sprintf("report_toggle_day_%d", d)))
+			}
+			rows = append(rows, row2)
+		}
+
+		// Time points rows
 		timeRow := []tgbotapi.InlineKeyboardButton{}
 		for i, tp := range times {
 			btnText := fmt.Sprintf("✖ %02d:%02d", tp.Hour, tp.Minute)

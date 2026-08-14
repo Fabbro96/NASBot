@@ -1,12 +1,9 @@
-//go:build !fswatchdog
-// +build !fswatchdog
-
 package app
 
 import (
 	"context"
 	"fmt"
-	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -54,6 +51,53 @@ func handleSettingsCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int
 		saveState(ctx)
 		text, kb := getReportSettingsText(ctx)
 		editMessage(bot, chatID, msgID, text, &kb)
+		return true
+	}
+	if data == "report_mode_days" {
+		if len(ctx.Settings.GetReportsDays()) == 0 {
+			ctx.Settings.SetReportsDays([]int{1, 2, 3, 4, 5})
+		}
+		saveState(ctx)
+		text, kb := getReportSettingsText(ctx)
+		editMessage(bot, chatID, msgID, text, &kb)
+		return true
+	}
+	if data == "report_mode_interval" {
+		ctx.Settings.SetReportsDays([]int{})
+		saveState(ctx)
+		text, kb := getReportSettingsText(ctx)
+		editMessage(bot, chatID, msgID, text, &kb)
+		return true
+	}
+	if data == "report_preset_all" {
+		ctx.Settings.SetReportsDays([]int{0, 1, 2, 3, 4, 5, 6})
+		saveState(ctx)
+		text, kb := getReportSettingsText(ctx)
+		editMessage(bot, chatID, msgID, text, &kb)
+		return true
+	}
+	if data == "report_preset_workdays" {
+		ctx.Settings.SetReportsDays([]int{1, 2, 3, 4, 5})
+		saveState(ctx)
+		text, kb := getReportSettingsText(ctx)
+		editMessage(bot, chatID, msgID, text, &kb)
+		return true
+	}
+	if data == "report_preset_weekend" {
+		ctx.Settings.SetReportsDays([]int{0, 6})
+		saveState(ctx)
+		text, kb := getReportSettingsText(ctx)
+		editMessage(bot, chatID, msgID, text, &kb)
+		return true
+	}
+	if strings.HasPrefix(data, "report_toggle_day_") {
+		var day int
+		if _, err := fmt.Sscanf(data, "report_toggle_day_%d", &day); err == nil && day >= 0 && day <= 6 {
+			ctx.Settings.ToggleReportDay(day)
+			saveState(ctx)
+			text, kb := getReportSettingsText(ctx)
+			editMessage(bot, chatID, msgID, text, &kb)
+		}
 		return true
 	}
 	if data == "report_interval_inc" || data == "report_interval_dec" {
@@ -333,27 +377,27 @@ func handleAIAnalyzeCritical(ctx *AppContext, bot BotAPI, chatID int64, msgID in
 	msg := tgbotapi.NewMessage(chatID, ctx.Tr("ai_gathering_context"))
 	sentMsg, err := bot.Send(msg)
 	if err == nil {
-		go func() {
+		goSafe("ai-analyze-critical", func() {
 			diagnosis, errDiag := AnalyzeCriticalAlerts(ctx, func(model string) {})
 			if errDiag != nil {
-				bot.Send(tgbotapi.NewEditMessageText(chatID, sentMsg.MessageID, fmt.Sprintf("❌ Errore AI: %v", errDiag)))
+				bot.Send(tgbotapi.NewEditMessageText(chatID, sentMsg.MessageID, fmt.Sprintf("❌ %s: %v", ctx.Tr("docker_ai_error"), errDiag)))
 			} else {
 				bot.Send(tgbotapi.NewEditMessageText(chatID, sentMsg.MessageID, diagnosis))
 			}
-		}()
+		})
 	}
 	return true
 }
 
 func handleProcManage(ctx *AppContext, bot BotAPI, chatID int64, msgID int, query *tgbotapi.CallbackQuery, data string) bool {
 	pid := strings.TrimPrefix(data, "proc_manage_")
-	text := fmt.Sprintf("⚙️ *Gestore Processi*\n\nCosa vuoi fare con il processo `%s`?", pid)
+	text := fmt.Sprintf("⚙️ *%s*\n\n%s `%s`?", ctx.Tr("proc_mgr_title"), ctx.Tr("proc_mgr_prompt"), pid)
 	kb := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🛑 Termina (SIGTERM)", "proc_kill_term_"+pid),
+			tgbotapi.NewInlineKeyboardButtonData("🛑 "+ctx.Tr("proc_sigterm"), "proc_kill_term_"+pid),
 		),
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("💀 Forza Chiusura (SIGKILL)", "proc_kill_kill_"+pid),
+			tgbotapi.NewInlineKeyboardButtonData("💀 "+ctx.Tr("proc_sigkill"), "proc_kill_kill_"+pid),
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("cancel"), "proc_refresh"),
@@ -369,6 +413,11 @@ func handleProcKill(ctx *AppContext, bot BotAPI, chatID int64, msgID int, query 
 		signal := parts[2]
 		pid := parts[3]
 
+		if _, parseErr := strconv.Atoi(pid); parseErr != nil {
+			safeSend(bot, tgbotapi.NewMessage(chatID, "❌ Invalid PID"))
+			return true
+		}
+
 		sigArg := "-15"
 		if signal == "kill" {
 			sigArg = "-9"
@@ -376,13 +425,12 @@ func handleProcKill(ctx *AppContext, bot BotAPI, chatID int64, msgID int, query 
 
 		ctxExec, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		cmd := exec.CommandContext(ctxExec, "kill", sigArg, pid)
-		err := cmd.Run()
+		err := runCommand(ctxExec, "kill", sigArg, pid)
 
 		if err != nil {
-			safeSend(bot, tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Errore durante l'uccisione del processo %s: %v", pid, err)))
+			safeSend(bot, tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ %s %s: %v", ctx.Tr("proc_kill_err"), pid, err)))
 		} else {
-			safeSend(bot, tgbotapi.NewMessage(chatID, fmt.Sprintf("✅ Processo %s ucciso con successo.", pid)))
+			safeSend(bot, tgbotapi.NewMessage(chatID, fmt.Sprintf("✅ %s %s.", ctx.Tr("proc_killed_ok"), pid)))
 		}
 	}
 	text, kb := getProcessesMenu(ctx)

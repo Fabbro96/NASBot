@@ -73,12 +73,19 @@ func FormatPeriod(seconds int) string {
 	return fmt.Sprintf("%d hours", hours)
 }
 
-// Truncate truncates a string to max length.
+// Truncate truncates a string to max length in runes safely.
 func Truncate(s string, max int) string {
-	if len(s) <= max {
+	if max <= 0 {
+		return ""
+	}
+	r := []rune(s)
+	if len(r) <= max {
 		return s
 	}
-	return s[:max-1] + "~"
+	if max == 1 {
+		return "~"
+	}
+	return string(r[:max-1]) + "~"
 }
 
 // SafeFloat safely gets a float from an array.

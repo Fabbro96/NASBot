@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"strings"
 	"time"
 )
@@ -63,8 +62,8 @@ func fetchSystemContextForAI() string {
 
 	// Top processes
 	ctxExec, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctxExec, "ps", "-Ao", "pid,comm,pcpu,pmem", "--sort=-pcpu").CombinedOutput()
+	out, err := runCommandOutput(ctxExec, "ps", "-Ao", "pid,comm,pcpu,pmem", "--sort=-pcpu")
+	cancel()
 	if err == nil {
 		lines := strings.Split(string(out), "\n")
 		limit := 10
@@ -78,8 +77,8 @@ func fetchSystemContextForAI() string {
 
 	// Syslog
 	ctxExec2, cancel2 := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel2()
-	outSyslog, err := exec.CommandContext(ctxExec2, "journalctl", "-n", "30", "--no-pager").CombinedOutput()
+	outSyslog, err := runCommandOutput(ctxExec2, "journalctl", "-n", "30", "--no-pager")
+	cancel2()
 	if err == nil {
 		sb.WriteString("Recent Syslog:\n")
 		sb.WriteString(string(outSyslog))
@@ -88,8 +87,8 @@ func fetchSystemContextForAI() string {
 
 	// Docker stats
 	ctxExec3, cancel3 := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel3()
-	outDocker, err := exec.CommandContext(ctxExec3, "docker", "stats", "--no-stream", "--format", "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}").CombinedOutput()
+	outDocker, err := runCommandOutput(ctxExec3, "docker", "stats", "--no-stream", "--format", "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}")
+	cancel3()
 	if err == nil {
 		sb.WriteString("Docker Stats:\n")
 		sb.WriteString(string(outDocker))

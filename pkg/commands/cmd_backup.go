@@ -14,7 +14,7 @@ import (
 type BackupCmd struct{}
 
 func (c *BackupCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, args string) {
-	sendMarkdown(bot, msg.Chat.ID, "📦 Creazione backup in corso...")
+	sendMarkdown(bot, msg.Chat.ID, ctx.Tr("backup_creating"))
 
 	targetID := ctx.Config.Backup.TargetUserID
 	if targetID == 0 {
@@ -24,22 +24,22 @@ func (c *BackupCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, 
 	zipPath := filepath.Join(os.TempDir(), fmt.Sprintf("nasbot_backup_%s.zip", time.Now().Format("20060102_150405")))
 	err := createBackupArchive(ctx, zipPath)
 	if err != nil {
-		sendMarkdown(bot, msg.Chat.ID, fmt.Sprintf("❌ Errore durante la creazione del backup: %v", err))
+		sendMarkdown(bot, msg.Chat.ID, fmt.Sprintf(ctx.Tr("backup_create_err"), err))
 		return
 	}
 	defer os.Remove(zipPath) // Clean up after sending
 
 	// Send document
 	doc := tgbotapi.NewDocument(targetID, tgbotapi.FilePath(zipPath))
-	doc.Caption = "📦 Backup configurazioni NASBot"
+	doc.Caption = ctx.Tr("backup_caption")
 	_, err = bot.Send(doc)
 	if err != nil {
-		sendMarkdown(bot, msg.Chat.ID, fmt.Sprintf("❌ Errore durante l'invio del backup: %v", err))
+		sendMarkdown(bot, msg.Chat.ID, fmt.Sprintf(ctx.Tr("backup_send_err"), err))
 		return
 	}
 
 	if targetID != msg.Chat.ID {
-		sendMarkdown(bot, msg.Chat.ID, "✅ Backup inviato con successo all'utente configurato.")
+		sendMarkdown(bot, msg.Chat.ID, ctx.Tr("backup_sent_success"))
 	}
 }
 
@@ -55,8 +55,10 @@ func createBackupArchive(ctx *AppContext, zipPath string) error {
 
 	filesToBackup := []string{
 		"config.json",
-		"nasbot.db",
+		"var/nasbot_state.json",
+		"nasbot_state.json",
 		"var/nasbot.log",
+		"nasbot.log",
 	}
 
 	for _, f := range filesToBackup {

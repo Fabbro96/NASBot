@@ -168,16 +168,16 @@ func networkForceRebootAfter(cfg *Config) time.Duration {
 }
 
 func pingHost(host string) bool {
-	// Prova fino a 4 volte con 5 secondi di pausa (circa 15-20 sec di tolleranza)
-	for i := 0; i < 4; i++ {
+	// Try up to 2 times with 1 second pause to avoid blocking the monitor loop
+	for i := 0; i < 2; i++ {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		err := runCommand(ctx, "ping", "-c", "1", "-W", "2", host)
 		cancel()
 		if err == nil {
-			return true // Successo
+			return true // Success
 		}
-		if i < 3 {
-			time.Sleep(5 * time.Second)
+		if i < 1 {
+			time.Sleep(1 * time.Second)
 		}
 	}
 	return false
@@ -187,11 +187,7 @@ func checkDNS(host string) bool {
 	if doCheckDNS(host) {
 		return true
 	}
-	time.Sleep(10 * time.Second)
-	if doCheckDNS(host) {
-		return true
-	}
-	time.Sleep(15 * time.Second)
+	time.Sleep(1 * time.Second)
 	return doCheckDNS(host)
 }
 
