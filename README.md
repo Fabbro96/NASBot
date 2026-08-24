@@ -1,6 +1,6 @@
 # 🖥️ NASBot
 
-> A lightweight Telegram bot to monitor and control your home server/NAS.
+> A lightweight, self-hosted Telegram bot to monitor, manage, and protect your Linux NAS/Home Server.
 
 ![Platform](https://img.shields.io/badge/Platform-Linux%20ARM64%20%7C%20AMD64-orange)
 ![License](https://img.shields.io/badge/License-MIT-green)
@@ -9,247 +9,156 @@
 [![Release](https://github.com/Fabbro96/NASBot/actions/workflows/release.yml/badge.svg)](https://github.com/Fabbro96/NASBot/actions/workflows/release.yml)
 ![Provenance](https://img.shields.io/badge/Release%20Provenance-Attested-blue)
 
-A self-hosted bot that gives you a **live dashboard** (CPU, RAM, Disks, Docker) directly in Telegram. No web UI, just a single binary.
-
-## TL;DR
-
-- NASBot is a self-hosted Telegram bot for your NAS/home server: monitor health, manage Docker, receive alerts, and run quick actions.
-- Setup is simple: one binary + one `config.json` (minimum required: `bot_token` and `allowed_user_id`).
-- Main daily flow: use `/status` for dashboard, `/quick` for snapshot, `/report` for full report, `/settings` for tuning.
-- **Auto-updates**: when a new release is published, NASBot downloads and installs it automatically (configurable).
-- Optional AI summaries are available with Gemini by setting `gemini_api_key`.
-- Designed for production-style usage: tests, CI, security scans, release artifacts, and update automation are included.
-
-Quick start in ~60 seconds:
-
-```bash
-cp config.example.json config.json
-# edit config.json: set bot_token and allowed_user_id
-go build -o nasbot ./...
-./nasbot
-```
-
-## ✨ Key Features
-
-- **📊 Live Stats**: CPU, RAM, Swap, Disk (SSD/HDD), Real-Time Network (Mbps), Temperatures.
-- **⚙️ Process Manager**: Interactive `/processes` dashboard with inline SIGTERM/SIGKILL buttons.
-- **🐳 Docker Manager**: Start, stop, restart, and kill containers via inline buttons.
-- **🤖 Self-Healing AI**: Diagnose critical alerts in real-time with **Gemini**, analyzing `syslog` and `top` processes automatically via the `[Analizza con AI]` button.
-- **🌍 Multi-language**: EN, IT, ES, DE, ZH, UK (full key coverage with EN fallback).
-- **🔔 Smart Alerts**: Notify on high usage, stopped containers, or critical errors.
-- **🛡️ Watchdogs**: Network, Kernel, RAID, and Docker watchdogs with auto-recovery.
-- **🔄 Auto-Updates**: Checks GitHub releases periodically and downloads new versions. Notifies you on Telegram when an update is applied.
-- **⚙️ Legacy Config Auto-Heal**: Missing fields in old `config.json` are auto-added with defaults.
-- **📨 Reports**: Scheduled summary (morning/evening) with trends and events.
-- **💓 Healthchecks.io**: Built-in integration for uptime monitoring.
-- **💾 Backup & WOL**: Integrated tools for NAS configuration backups (`/backup`) and Wake-on-LAN routing.
-
-## 🧩 Code Layout (Short)
-
-- `internal/app/handlers.go`: bot entrypoints (`handleCommand`, `handleCallback`)
-- `internal/app/handlers_callback_routes.go`: callback routing logic (settings, docker/power, scoped handlers)
-- `internal/app/handlers_settings.go`: language + settings keyboards/text helpers
-- `internal/app/config.go`: load/sanitize/patch flow
-- `internal/app/config_defaults.go`: default template + recursive missing-field merge
-- `internal/app/translations.go`: translations + automatic key coverage sync
-- `internal/app/runtime_main.go`: boot sequence, goroutine lifecycle, `goSafe` panic recovery
-- `internal/app/updater.go`: auto-update from GitHub releases
+A single Go binary that provides a **live server dashboard**, proactive hardware alerts, and Docker management directly inside Telegram—no web UI or heavy daemon required.
 
 ---
 
-## 🚀 Quick Install
+## ✨ Key Features
 
-### Modular Configuration System
+- **📊 Live Dashboard**: Real-time CPU, RAM, Swap, Storage (SSD & secondary disks), Network throughput, and Temperatures.
+- **🗄️ Disk & Mount Watchdog**: Detects newly attached/removed disks, device node swaps (e.g. `sda1` ➔ `sdb1`), Docker ghost-mount issues with running containers (Plex, Bazarr, etc.), and I/O access errors.
+- **🐳 Docker Management**: Start, stop, restart, and kill containers with interactive inline buttons.
+- **⚙️ Process Manager**: Interactive `/processes` view with CPU/RAM ranking and signal dispatching (SIGTERM/SIGKILL).
+- **🤖 AI Diagnostics (Gemini)**: Optional automated analysis of critical alerts and system logs with Google Gemini.
+- **🛡️ Proactive Watchdogs**: Continuous monitoring for Network dropouts, Kernel OOMs/hung tasks, RAID degradation, and Docker daemon stalls with automated self-healing.
+- **🔄 Auto-Updates**: In-place background upgrades from GitHub Releases with instant Telegram restart notifications.
+- **🌍 Multi-Language**: Full native localization for English, Italian, Spanish, German, Chinese, and Ukrainian.
+- **📨 Scheduled Reports & Healthchecks**: Morning/evening summaries and built-in [Healthchecks.io](https://healthchecks.io) integration.
 
-**NEW: NASBot now has a fully modular and customizable deployment system!**
+---
 
-All scripts (package, deploy, runtime) use a hierarchical configuration system with environment variable overrides. No script editing needed.
+## 🚀 Quick Start
 
-- 📖 **Start here**: [MODULAR_CONFIG_GUIDE.md](MODULAR_CONFIG_GUIDE.md) - Usage guide and examples
-- 🏗️ **Deep dive**: [MODULAR_ARCHITECTURE.md](MODULAR_ARCHITECTURE.md) - System design and extensibility
-- ⚙️ **Template**: [nasbot.config.template](nasbot.config.template) - Default configuration (documented)
-- 📋 **Examples**: [nasbot.config.example](nasbot.config.example) - Real-world scenarios
+### Option 1: Docker Compose (Recommended)
 
-### 1. Docker Deployment (Recommended)
-
-The easiest way to run NASBot is via Docker Compose.
-
-1. Clone the repository:
+1. Clone and navigate to the project:
    ```bash
    git clone https://github.com/Fabbro96/NASBot.git
    cd NASBot
    ```
-2. Create your `config.json` based on the example:
+2. Create your configuration:
    ```bash
    cp config.example.json config.json
+   # Edit config.json and set bot_token and allowed_user_id
    ```
-   Edit `config.json` and set at least `bot_token` and `allowed_user_id`.
-3. Start the bot:
+3. Start the container:
    ```bash
    docker-compose up -d
    ```
 
-### 2. Manual Binary Install
+---
 
-If you prefer not to use Docker, use the provided `start_bot.sh` script.
+### Option 2: Minimal Standalone Runtime (No Source / No Go Toolchain)
 
-```bash
-chmod +x scripts/start_bot.sh
-./scripts/start_bot.sh install
-```
+For clean NAS setups where you only want the executable binary and runner script:
 
-> [!WARNING]
-> **Do not use `systemd` to run NASBot.**
-> Using `systemd` conflicts with the bot's internal auto-update architecture. When the bot attempts to restart itself after an update via `start_bot.sh restart`, `systemd` will detect the killed process and try to restart it simultaneously, resulting in parallel conflicting instances.
-
-Running `./scripts/start_bot.sh install` will automatically:
-- Setup a watchdog via `crontab` (runs every 5 minutes to ensure the bot is alive).
-- Manage log rotation.
-- Start the process cleanly in the background.
-
-### Minimal NAS Runtime (No Source Files)
-
-If you want a clean NAS folder with only runtime essentials (no Go source), build a runtime bundle:
+👉 **[Read the Runtime Deployment Guide (docs/RUNTIME.md)](docs/RUNTIME.md)**
 
 ```bash
+# Build the bundle on your workstation
 ./scripts/package_runtime.sh --arch arm64
+
+# Copy dist/runtime to your NAS and start
+./start_bot.sh install
 ```
 
-This creates `dist/runtime` with only:
-- `nasbot`
-- `start_bot.sh`
-- `config.example.json`
+---
 
-On NAS, keep just these plus runtime-generated files (`nasbot.log`, `nasbot.pid`, `nasbot_state.json`).
+### Option 3: Build from Source
 
-### 3. Configuration (`config.json`)
-Edit `config.json` with your details.
-*You must set at least `bot_token` and `allowed_user_id`.*
+```bash
+cp config.example.json config.json
+# Edit config.json with your credentials
+go build -o nasbot .
+./nasbot
+```
+
+---
+
+## ⚙️ Configuration
+
+Only two fields in `config.json` are required to get started:
 
 ```json
 {
-  "bot_token": "TOKEN",
-  "allowed_user_id": 12345678,
+  "bot_token": "YOUR_TELEGRAM_BOT_TOKEN",
+  "allowed_user_id": 123456789,
   "gemini_api_key": "",
   "timezone": "Europe/Rome",
-  "paths": { "ssd": "/" }
+  "paths": {
+    "ssd": "/"
+  }
 }
 ```
 
----
-
-## 🎮 Commands
-
-### 📊 Status & Info
-| Command | Action |
-|:--------|--------|
-| `/status`, `/start` | General status and system summary |
-| `/top`, `/processes` | Resource monitoring and interactive process management |
-| `/sysinfo` | Detailed hardware information |
-| `/temp` | Hardware temperatures (CPU, disks, etc.) |
-
-### 🐳 Docker
-| Command | Action |
-|:--------|--------|
-| `/docker` | Interactive Docker management menu |
-| `/dstats`, `/container`, `/restartdocker`, `/kill` | Quick commands for container management |
-
-### ⚡ System & Power
-| Command | Action |
-|:--------|--------|
-| `/reboot`, `/shutdown`, `/forcereboot` | NAS power management |
-| `/diskpred` (or `/prediction`) | Disk space exhaustion prediction |
-| `/health` (or `/healthchecks`) | Status of automatic health checks |
-| `/backup` | Automatic backup of configuration files (`config.json`) |
-| `/wol` | Send Wake-on-LAN packet to wake local devices |
-| `/update` | Automatically update the bot by downloading the latest release |
-
-### 🌐 Network & Logs
-| Command | Action |
-|:--------|--------|
-| `/net`, `/speedtest` | Network status and speedtest execution |
-| `/ping` | Check latency |
-| `/logs`, `/logsearch` | Read and search system or bot logs |
-
-### 🤖 AI, Config & Tools
-| Command | Action |
-|:--------|--------|
-| `/ask` | AI assistant (Gemini) to ask for information |
-| `/quick` (or `/q`) | Custom quick commands menu |
-| `/report` | Generate a full NAS diagnostic report |
-| `/config`, `/settings`, `/language` | Manage settings and language |
+> [!TIP]
+> **Modular Deployments:** NASBot supports environment variable overrides and configuration inheritance. Check out [MODULAR_CONFIG_GUIDE.md](MODULAR_CONFIG_GUIDE.md) and [nasbot.config.template](nasbot.config.template) for advanced setups.
 
 ---
 
-## 🤖 AI & Reports
+## 🎮 Commands Reference
 
-NASBot can use **Google Gemini** to write friendly daily reports ("Everything looks good, but Disk IO was high at 3 AM").
-1. Get a key from [Google AI Studio](https://aistudio.google.com/).
-2. Add it to `gemini_api_key` in `config.json`.
-3. Enjoy human-readable server updates!
+### 📊 System & Monitoring
+| Command | Description |
+|:--------|:------------|
+| `/status`, `/start` | Live system overview (CPU, RAM, Disks, Docker, Uptime) |
+| `/quick`, `/q` | Compact diagnostic snapshot |
+| `/top`, `/processes` | Top processes with interactive process control buttons |
+| `/sysinfo` | Detailed OS, kernel, CPU model, and hardware specifications |
+| `/temp` | Hardware temperatures (CPU cores, NVMe/SATA drives) |
+| `/diskpred` | Linear regression disk space exhaustion prediction |
+| `/net`, `/speedtest` | Network interface statistics and on-demand speedtest |
+
+### 🐳 Docker & Power
+| Command | Description |
+|:--------|:------------|
+| `/docker` | Interactive container management dashboard |
+| `/dstats` | Real-time container resource usage metrics |
+| `/restartdocker` | Restart the system Docker daemon |
+| `/reboot`, `/shutdown` | NAS power management (with confirmation) |
+| `/forcereboot` | Immediate forced restart without confirmation |
+
+### 🤖 AI, Logs & Utilities
+| Command | Description |
+|:--------|:------------|
+| `/ask <query>` | Ask Gemini AI about recent log events and system behavior |
+| `/report` | Generate a full diagnostic and health report |
+| `/logs`, `/logsearch` | View recent system logs or search by pattern |
+| `/config`, `/settings` | Inspect settings, change language, or toggle quiet hours |
+| `/health` | Healthchecks.io ping status and watchdog history |
+| `/backup` | Create a timestamped backup of NASBot configuration |
+| `/wol` | Send Wake-on-LAN magic packets to local devices |
+| `/update` | Check for and apply the latest GitHub release |
 
 ---
 
 ## 🔄 Auto-Updates
 
-NASBot includes a built-in updater that periodically checks GitHub releases:
-
-1. **Automatic check**: every 6 hours, NASBot queries the latest release on GitHub.
-2. **Auto-apply** (if `update.auto_apply` is `true` in config): downloads and installs the new binary automatically.
-3. **Notification**: after restarting, the bot sends a Telegram message: *"✅ Bot updated! `v0.1.3` → `v0.2.0`"*.
-4. **Manual trigger**: use `/update` to check and apply updates on demand.
+NASBot features a built-in updater that periodically queries GitHub Releases:
+- Automatically downloads compatible binaries for your architecture (`arm64`, `amd64`).
+- Verifies checksums, replaces the active binary, and reboots cleanly.
+- Sends a confirmation message on Telegram with the version diff upon restart.
 
 ---
 
-## ⚙️ Advanced Configuration (Optional)
+## 🛡️ Security & Hardening
 
-<details>
-<summary>Click to view full config options</summary>
+- **Access Control:** The bot strictly restricts execution to the Telegram ID configured in `allowed_user_id`. All unauthorized messages are dropped.
+- **Secret Isolation:** `config.json` is git-ignored and sanitized in logs and configuration previews.
+- **Git Hooks:** Install local pre-commit and pre-push quality guards with `./scripts/setup_hooks.sh`.
+- Read [docs/SECURITY.md](docs/SECURITY.md) for vulnerability reporting and leak response protocols.
 
-The `config.json` allows granular control over thresholds and automation:
+---
 
-- **Notifications**: Set warning/critical % for CPU, RAM, Disk.
-- **Quiet Hours**: Silence notifications at night.
-- **Docker Watchdog**: Auto-restart Docker service if it hangs.
-- **Auto-Prune**: Weekly cleanup of unused Docker images.
-- **Network Watchdog**: Force reboot if network is down for too long.
-- **Kernel Watchdog**: Detect OOM kills, kernel panics, hung tasks.
-- **RAID Watchdog**: Alert on degraded RAID arrays.
-- **Healthchecks.io**: External uptime monitoring integration.
-
-See `config.example.json` for the full schema.
-</details>
-
-## 📖 Changelog
-
-See the full list of changes and feature history in [docs/CHANGELOG.md](docs/CHANGELOG.md).
-
-## 🛡️ Security
-This bot executes commands like `docker` and `reboot`. Ensure `allowed_user_id` is correct. The bot ignores all other users.
-
-`config.json` is ignored by git on purpose. Keep API keys and tokens there locally, and rotate them if they ever leak.
-
-Enable local hardening hooks:
+## 🧪 Testing & CI/CD
 
 ```bash
-./scripts/setup_hooks.sh
-```
-
-See [docs/SECURITY.md](docs/SECURITY.md) for full hardening policy and leak response steps.
-
-## 🧪 Testing
-Run all tests (with race detector):
-
-```bash
+# Run all tests with race detector
 go test -race ./...
+
+# Run the complete CI quality gate locally
+./scripts/ci_guard.sh
 ```
 
-## 🔁 CI/CD
-
-GitHub Actions pipelines:
-
-- **CI** (push/PR): secret scan, `gofmt` check, `go vet`, race tests, build, release script smoke.
-- **Deadlock Gate** (push/PR): targeted deadlock and race condition testing (`deadlock-race-gate.yml`).
-- **Security** (PR + weekly): Dependency Review, CodeQL, and `govulncheck`.
-- **Release** (push to `main` or tag `v*`): auto-tag via [github-tag-action](https://github.com/mathieudutour/github-tag-action), build ARM64/AMD64 binaries, generate checksums, attest provenance, publish GitHub Release.
-- **Dependabot**: weekly updates for `gomod` and GitHub Actions.
+- **CI Pipeline:** Automated formatting, static analysis (`go vet`), race detection, and GitHub release generation with attested build provenance.
+- **Full History:** See [docs/CHANGELOG.md](docs/CHANGELOG.md) for release notes.

@@ -172,73 +172,53 @@ fi
 
 # Create README if requested
 if [[ "${INCLUDE_README_RUNTIME}" == "true" ]]; then
-	log_debug "Creating README_RUNTIME.txt"
-	cat >"${PACKAGE_OUT_DIR}/README_RUNTIME.txt" <<'READMEOF'
-NASBot Runtime Bundle (Minimal - No Source Code)
+	log_debug "Creating README_RUNTIME.md"
+	cat >"${PACKAGE_OUT_DIR}/README_RUNTIME.md" <<'READMEOF'
+# 📦 NASBot Runtime Bundle (Minimal)
 
 ## Quick Start
 
-1. Copy config.example.json to config.json:
+1. Copy `config.example.json` to `config.json`:
+   ```bash
    cp config.example.json config.json
+   ```
 
-2. Edit config.json with your settings:
-   - bot_token: Your Telegram bot token
-   - allowed_user_id: Your Telegram user ID
-   - Other settings as needed
+2. Edit `config.json` with your settings:
+   - `bot_token`: Your Telegram bot token
+   - `allowed_user_id`: Your Telegram user ID
 
 3. Start the bot:
+   ```bash
    ./start_bot.sh start
+   ```
 
 ## Supported Commands
 
-./start_bot.sh start       - Start the bot
-./start_bot.sh stop        - Stop the bot gracefully
-./start_bot.sh restart     - Restart the bot
-./start_bot.sh status      - Show bot status and PID
-./start_bot.sh logs        - Show recent logs
-./start_bot.sh watch       - Watch logs in real-time
+- `./start_bot.sh start`       - Start the bot in background
+- `./start_bot.sh stop`        - Stop the bot gracefully
+- `./start_bot.sh restart`     - Restart the bot
+- `./start_bot.sh status`      - Show bot status and PID
+- `./start_bot.sh logs`        - Show recent logs
+- `./start_bot.sh watch`       - Watch logs in real-time
 
 ## Runtime Files
 
 Generated automatically:
-- nasbot.log          - Application logs
-- nasbot.pid          - Process ID file
-- nasbot_state.json   - Bot state backup
+- `nasbot.log`          - Application logs
+- `nasbot.pid`          - Process ID file
+- `nasbot_state.json`   - Bot state backup
 
 ## Updates
 
 To update the bot:
-1. Place new binary as: nasbot-update (or nasbot-update-arm64 for ARM)
-2. Run: ./start_bot.sh restart
-3. The script will detect the update and restart with new version
-
-## Configuration via Environment Variables
-
-Override default paths using environment variables:
-  NASBOT_LOG_FILE        - Path to log file
-  NASBOT_PID_FILE        - Path to PID file
-  NASBOT_STATE_FILE      - Path to state file
-
-Example:
-  export NASBOT_LOG_FILE=/var/log/nasbot.log
-  export NASBOT_PID_FILE=/var/run/nasbot.pid
-  ./start_bot.sh start
+1. Place new binary as: `nasbot-update` (or `nasbot-update-arm64` / `nasbot-update-amd64`)
+2. Run: `./start_bot.sh restart`
+3. The script will detect the update, back up the old binary, and restart with the new version.
 
 ## Troubleshooting
 
-### Bot won't start
-- Check config.json exists and is valid JSON
-- Check bot_token is correct
-- View logs: ./start_bot.sh logs
-
-### Permission errors
-- Ensure start_bot.sh is executable: chmod +x start_bot.sh
-- Ensure nasbot binary is executable: chmod +x nasbot
-
-### Can't find binary
-- Ensure nasbot binary is in the same directory as start_bot.sh
-- Check file permissions: ls -la nasbot
-
+- **Bot won't start:** Check that `config.json` exists and contains valid JSON. View logs with `./start_bot.sh logs`.
+- **Permission errors:** Ensure files are executable: `chmod +x start_bot.sh nasbot`.
 READMEOF
 fi
 
