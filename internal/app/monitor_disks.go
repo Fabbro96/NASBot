@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"nasbot/internal/format"
@@ -16,10 +18,29 @@ import (
 // Cooldown duration for repeated disk I/O error alerts
 const diskErrorAlertCooldown = 30 * time.Minute
 
+// Maximum number of container names shown in alert messages to stay within Telegram limits
+const maxContainersInAlert = 15
+
+// diskCheckRunning guards against overlapping checkDiskMounts executions
+var diskCheckRunning atomic.Bool
+
 // checkDiskMounts inspects mounted filesystems and detects added, removed,
 // reconnected/device-changed disks or I/O errors.
 func checkDiskMounts(ctx *AppContext, bot BotAPI) {
+	// Prevent overlapping executions if previous check is still running
+	if !diskCheckRunning.CompareAndSwap(false, true) {
+		return
+	}
+	defer diskCheckRunning.Store(false)
+
 	currentMounts := getCurrentDiskMounts(ctx)
+
+	// Guard against first-boot flap: if we got zero mounts, don't initialize
+	// the snapshot as empty (it would cause a flood of "disk added" alerts on
+	// the next tick when partitions are properly enumerated).
+	if len(currentMounts) == 0 {
+		return
+	}
 
 	ctx.Monitor.Mu.Lock()
 	if !ctx.Monitor.DiskMountsInitialized {
@@ -62,9 +83,15 @@ func checkDiskMounts(ctx *AppContext, bot BotAPI) {
 		}
 	}
 
-	// Update snapshot
+	// Update snapshot and clean up stale cooldown entries
 	ctx.Monitor.Mu.Lock()
 	ctx.Monitor.DiskMountsSnapshot = currentMounts
+	// Purge cooldown entries for mounts no longer present
+	for mount := range ctx.Monitor.DiskMountAlertCooldown {
+		if _, exists := currentMounts[mount]; !exists {
+			delete(ctx.Monitor.DiskMountAlertCooldown, mount)
+		}
+	}
 	ctx.Monitor.Mu.Unlock()
 }
 
@@ -124,6 +151,16 @@ func getCurrentDiskMounts(ctx *AppContext) map[string]DiskMountInfo {
 						TotalBytes: d.Total,
 						FreeBytes:  d.Free,
 						Accessible: true,
+					}
+				} else {
+					// Configured path is inaccessible - record it so the diff
+					// logic can fire an I/O error alert instead of a generic
+					// "disk unmounted" alert.
+					result[path] = DiskMountInfo{
+						Mountpoint: path,
+						Device:     "configured",
+						Accessible: false,
+						ErrorMsg:   usageErr.Error(),
 					}
 				}
 			}
@@ -195,6 +232,20 @@ func isVirtualOrIgnoredFS(device, fstype, mountpoint string) bool {
 	return false
 }
 
+// formatContainerList builds a Telegram-safe container list string, truncating if needed
+func formatContainerList(affected []string) string {
+	if len(affected) == 0 {
+		return ""
+	}
+	display := affected
+	suffix := ""
+	if len(affected) > maxContainersInAlert {
+		display = affected[:maxContainersInAlert]
+		suffix = fmt.Sprintf(" _+%d altri_", len(affected)-maxContainersInAlert)
+	}
+	return "`" + strings.Join(display, "`, `") + "`" + suffix
+}
+
 // handleDiskRemoved notifies the user when a disk is unmounted or disconnected
 func handleDiskRemoved(ctx *AppContext, bot BotAPI, mount string, oldInfo DiskMountInfo) {
 	slog.Warn("Disk unmounted/removed", "mount", mount, "device", oldInfo.Device)
@@ -203,7 +254,7 @@ func handleDiskRemoved(ctx *AppContext, bot BotAPI, mount string, oldInfo DiskMo
 	affected := getContainersUsingMount(ctx, mount)
 	affectedText := ""
 	if len(affected) > 0 {
-		affectedText = "\n\n" + fmt.Sprintf(ctx.Tr("disk_affected_containers"), "`"+strings.Join(affected, "`, `")+"`")
+		affectedText = "\n\n" + fmt.Sprintf(ctx.Tr("disk_affected_containers"), formatContainerList(affected))
 	}
 
 	devName := oldInfo.Device
@@ -256,7 +307,7 @@ func handleDiskReconnected(ctx *AppContext, bot BotAPI, mount string, oldInfo, n
 	affected := getContainersUsingMount(ctx, mount)
 	affectedText := ""
 	if len(affected) > 0 {
-		affectedText = "\n\n" + fmt.Sprintf(ctx.Tr("disk_affected_containers"), "`"+strings.Join(affected, "`, `")+"`")
+		affectedText = "\n\n" + fmt.Sprintf(ctx.Tr("disk_affected_containers"), formatContainerList(affected))
 	}
 
 	msg := fmt.Sprintf(ctx.Tr("disk_reconnected_alert"), mount, oldInfo.Device, newInfo.Device) +
@@ -346,4 +397,14 @@ func getDiskAlertKeyboard(ctx *AppContext) tgbotapi.InlineKeyboardMarkup {
 			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("btn_refresh"), "refresh_status"),
 		),
 	)
+}
+
+// SortedSecondaryVolKeys returns secondary volume mount points in stable sorted order
+func SortedSecondaryVolKeys(vols map[string]interface{}) []string {
+	keys := make([]string, 0, len(vols))
+	for k := range vols {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }

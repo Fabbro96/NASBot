@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"time"
 
@@ -57,7 +58,13 @@ func getStatusText(ctx *AppContext) string {
 	// Section 3: Storage (SSD & Secondary Disks)
 	var storageLines []string
 	storageLines = append(storageLines, fmt.Sprintf(tr("ssd_fmt"), s.VolSSD.Used, format.FormatBytes(s.VolSSD.Free)))
-	for m, vol := range s.SecondaryVols {
+	secKeys := make([]string, 0, len(s.SecondaryVols))
+	for m := range s.SecondaryVols {
+		secKeys = append(secKeys, m)
+	}
+	sort.Strings(secKeys)
+	for _, m := range secKeys {
+		vol := s.SecondaryVols[m]
 		shortName := escapeMarkdown(mountShortName(m))
 		storageLines = append(storageLines, fmt.Sprintf(tr("disk_sec_fmt"), shortName, vol.Used, format.FormatBytes(vol.Free)))
 	}
