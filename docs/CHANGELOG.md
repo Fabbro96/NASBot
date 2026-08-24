@@ -2,11 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
-<<<<<<< HEAD
-## v2.0.0 - 2026-06-20
-=======
+## Unreleased
+
+### Added
+- **Disk & Mount Point Watchdog:** Added real-time disk mount monitoring (`internal/app/monitor_disks.go`) to detect added, removed, unmounted disks, and I/O errors.
+- **Docker Ghost Mount Detection:** Automatically detects disk reconnections/device node changes (e.g. `sda1` -> `sdb1`) and warns when running Docker containers (Plex, Bazarr, FileBrowser) hold stale mount references.
+- **Container Impact Inspection:** Identifies running containers mapping affected mount points and provides Telegram action buttons to restart containers.
+- **UI/UX & Status Refactoring:** Restructured `/status` output with clean section layout, consistent storage formatting, safe Markdown escaping, and eliminated stray newlines (`\n`).
+- **Translations:** Added new disk monitoring keys across all 6 languages (`it`, `en`, `es`, `de`, `zh`, `uk`) with 100% test coverage.
+
 ## v1.5.0 - 2026-06-20
->>>>>>> origin/main
 
 ### Added
 - **Docker Readiness:** Provided `Dockerfile` (Alpine-based) and `docker-compose.yml` for seamless containerized deployments.

@@ -117,7 +117,8 @@ func getSettingsMenuText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup
 	reportText := ctx.Tr("report_disabled")
 	if repEnabled {
 		if len(repDays) > 0 {
-			reportText = fmt.Sprintf("%s (%d orari)", formatDaysList(ctx, repDays), len(repTimes))
+			timesCount := fmt.Sprintf(ctx.Tr("report_times_count"), len(repTimes))
+			reportText = fmt.Sprintf("%s (%s)", formatDaysList(ctx, repDays), timesCount)
 		} else {
 			reportText = fmt.Sprintf(ctx.Tr("report_enabled_fmt"), repInterval, len(repTimes))
 		}

@@ -414,7 +414,7 @@ func handleProcKill(ctx *AppContext, bot BotAPI, chatID int64, msgID int, query 
 		pid := parts[3]
 
 		if _, parseErr := strconv.Atoi(pid); parseErr != nil {
-			safeSend(bot, tgbotapi.NewMessage(chatID, "❌ Invalid PID"))
+			safeSend(bot, tgbotapi.NewMessage(chatID, ctx.Tr("err_invalid_pid")))
 			return true
 		}
 

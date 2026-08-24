@@ -101,8 +101,8 @@ func askPowerConfirmation(ctx *AppContext, bot BotAPI, chatID int64, msgID int, 
 
 	kb := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("✅ Yes, do it", "confirm_"+action),
-			tgbotapi.NewInlineKeyboardButtonData("❌ Cancel", "cancel_power"),
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("btn_confirm_power"), "confirm_"+action),
+			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("cancel"), "cancel_power"),
 		),
 	)
 

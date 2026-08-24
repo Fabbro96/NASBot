@@ -205,9 +205,13 @@ func goSafeResilient(name string, runCtx context.Context, restartDelay time.Dura
 }
 
 func sendStartupNotification(ctx *AppContext, bot BotAPI) {
-	// Wait a bit for report time to be calculated if needed,
-	// but getNextReportDescription typically calculates it on the fly.
-	nextReportStr := getNextReportDescription(ctx)
+	var nextReportStr string
+	enabled, _, _, _ := ctx.Settings.GetReportsDetailedSettings()
+	if enabled {
+		nextReportStr = getNextReportDescription(ctx)
+	} else {
+		nextReportStr = ctx.Tr("boot_reports_disabled")
+	}
 
 	var quietInfo string
 	ctx.Settings.Mu.RLock()

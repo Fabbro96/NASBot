@@ -93,6 +93,9 @@ type MonitorState struct {
 	KwConsecutiveCheckErrors   int
 	KwLastCheckError           string
 	RecentOOMs                 []time.Time
+	DiskMountsSnapshot         map[string]DiskMountInfo
+	DiskMountsInitialized      bool
+	DiskMountAlertCooldown     map[string]time.Time
 }
 
 // UserSettings holds persistent user preferences (loaded from JSON)
@@ -199,6 +202,8 @@ func InitApp(cfg *Config) *AppContext {
 			LastCriticalContainerAlert: make(map[string]time.Time),
 			SmartCache:                 make(map[string]SmartResult),
 			KwLastSignatures:           make(map[string]string),
+			DiskMountsSnapshot:         make(map[string]DiskMountInfo),
+			DiskMountAlertCooldown:     make(map[string]time.Time),
 		},
 		Settings: &UserSettings{
 			Language:       "en",
