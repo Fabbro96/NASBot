@@ -165,6 +165,10 @@ func isVirtualOrIgnoredFS(device, fstype, mountpoint string) bool {
 		"fusectl":     true,
 		"efivarfs":    true,
 		"rpc_pipefs":  true,
+		"ramfs":       true,
+		"rootfs":      true,
+		"devfs":       true,
+		"selinuxfs":   true,
 	}
 	if ignoredFSTypes[fstype] {
 		return true
@@ -317,9 +321,14 @@ func getContainersUsingMount(ctx *AppContext, mountpoint string) []string {
 		parts := strings.Split(line, "\t")
 		if len(parts) >= 2 {
 			cName := strings.TrimSpace(parts[0])
-			cMounts := parts[1]
-			if strings.Contains(cMounts, cleanMount) {
-				affected = append(affected, cName)
+			cMounts := strings.Split(parts[1], ",")
+			for _, m := range cMounts {
+				m = strings.TrimSpace(m)
+				m = strings.TrimRight(m, "/")
+				if m == cleanMount || strings.HasPrefix(m, cleanMount+"/") {
+					affected = append(affected, cName)
+					break
+				}
 			}
 		}
 	}
