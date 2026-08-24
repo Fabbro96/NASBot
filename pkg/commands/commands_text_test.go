@@ -49,18 +49,33 @@ func TestGetStatusText(t *testing.T) {
 	if !strings.Contains(text, "0G") { // SSD free space as formatted
 		t.Errorf("Expected SSD free space, got text: \n%s", text)
 	}
+	if strings.Contains(text, `\n`) {
+		t.Errorf("Status text contains literal '\\n': %s", text)
+	}
+	if strings.Contains(text, "\n\n\n") {
+		t.Errorf("Status text contains redundant triple newlines: %q", text)
+	}
 }
 
-func TestGetHelpText(t *testing.T) {
-	ctx := setupTestContext()
+func TestGetHelpText(ctx *testing.T) {
+	appCtx := setupTestContext()
 
-	text := GetHelpText(ctx)
+	text := GetHelpText(appCtx)
 
 	if !strings.Contains(text, "[help_intro]") {
-		t.Errorf("Expected help intro, got: %s", text)
+		ctx.Errorf("Expected help intro, got: %s", text)
 	}
 	if !strings.Contains(text, "/docker") {
-		t.Errorf("Expected docker command in help, got: %s", text)
+		ctx.Errorf("Expected docker command in help, got: %s", text)
+	}
+	if !strings.Contains(text, "[cmd_status_desc]") {
+		ctx.Errorf("Expected status command description key, got: %s", text)
+	}
+	if !strings.Contains(text, "[cmd_docker_desc]") {
+		ctx.Errorf("Expected docker command description key, got: %s", text)
+	}
+	if !strings.Contains(text, "[cmd_settings_desc]") {
+		ctx.Errorf("Expected settings command description key, got: %s", text)
 	}
 }
 

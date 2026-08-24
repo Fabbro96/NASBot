@@ -7,6 +7,7 @@ import (
 
 // Aliases to shared internal model types.
 type VolumeStats = imodel.VolumeStats
+type DiskMountInfo = imodel.DiskMountInfo
 type Stats = imodel.Stats
 type ProcInfo = imodel.ProcInfo
 type ContainerInfo = imodel.ContainerInfo

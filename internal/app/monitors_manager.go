@@ -96,6 +96,7 @@ func autonomousManager(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 
 			checkContainerStates(ctx, bot)
 			checkCriticalContainers(ctx, bot)
+			checkDiskMounts(ctx, bot)
 
 			if cfg.Docker.WeeklyPrune.Enabled {
 				checkWeeklyPrune(ctx, bot)

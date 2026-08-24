@@ -8,6 +8,17 @@ type VolumeStats struct {
 	Free uint64
 }
 
+// DiskMountInfo holds information about a mounted filesystem / block device
+type DiskMountInfo struct {
+	Mountpoint string
+	Device     string
+	Fstype     string
+	TotalBytes uint64
+	FreeBytes  uint64
+	Accessible bool
+	ErrorMsg   string
+}
+
 // Stats holds all system statistics
 type Stats struct {
 	CPU, RAM, Swap              float64

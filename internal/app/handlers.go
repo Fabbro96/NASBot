@@ -39,12 +39,12 @@ func handleMessage(bot BotAPI, msg *tgbotapi.Message) {
 
 		var hour, minute int
 		if _, err := fmt.Sscanf(msg.Text, "%d:%d", &hour, &minute); err != nil {
-			safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, "❌ Invalid format. Use HH:MM (e.g., 14:30)"))
+			safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, app.Tr("err_invalid_time_fmt")))
 			return
 		}
 
 		if hour < 0 || hour > 23 || minute < 0 || minute > 59 {
-			safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, "❌ Invalid time. Hours: 0-23, Minutes: 0-59"))
+			safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, app.Tr("err_invalid_time_range")))
 			return
 		}
 
@@ -54,7 +54,7 @@ func handleMessage(bot BotAPI, msg *tgbotapi.Message) {
 		saveState(app)
 
 		text, kb := getReportSettingsText(app)
-		safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, "✅ Time added successfully."))
+		safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, app.Tr("time_added_success")))
 		msgSettings := tgbotapi.NewMessage(msg.Chat.ID, text)
 		msgSettings.ParseMode = "Markdown"
 		msgSettings.ReplyMarkup = kb
@@ -66,7 +66,7 @@ func handleMessage(bot BotAPI, msg *tgbotapi.Message) {
 		app.Bot.ClearPendingAction()
 		uid := int64(0)
 		if _, err := fmt.Sscanf(strings.TrimSpace(msg.Text), "%d", &uid); err != nil {
-			safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, "❌ Formato non valido. Devi inserire un numero (es. `123456789`)."))
+			safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, app.Tr("err_invalid_uid_fmt")))
 			return
 		}
 
@@ -77,7 +77,7 @@ func handleMessage(bot BotAPI, msg *tgbotapi.Message) {
 		}
 		applyConfigPatch(patch)
 
-		safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, "✅ ID Destinatario Backup aggiornato con successo."))
+		safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, app.Tr("backup_uid_updated")))
 		text, kb := getBackupSettingsText(app)
 		msgSettings := tgbotapi.NewMessage(msg.Chat.ID, text)
 		msgSettings.ParseMode = "Markdown"
@@ -91,7 +91,7 @@ func handleMessage(bot BotAPI, msg *tgbotapi.Message) {
 
 		var val float64
 		if _, err := fmt.Sscanf(strings.TrimSpace(msg.Text), "%f", &val); err != nil || val < 0 || val > 100 {
-			safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, "❌ Invalid value. Must be a number between 0 and 100."))
+			safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, app.Tr("err_invalid_percent_val")))
 			return
 		}
 
@@ -173,7 +173,7 @@ func handleMessage(bot BotAPI, msg *tgbotapi.Message) {
 		}
 		applyConfigPatch(patch)
 
-		safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, "✅ Threshold updated successfully."))
+		safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, app.Tr("thresh_updated_success")))
 		text, kb := getThresholdResourceText(app, res)
 		msgSettings := tgbotapi.NewMessage(msg.Chat.ID, text)
 		msgSettings.ParseMode = "Markdown"

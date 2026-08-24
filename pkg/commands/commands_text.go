@@ -27,45 +27,53 @@ func getStatusText(ctx *AppContext) string {
 		return tr("loading")
 	}
 
-	var b strings.Builder
+	var sections []string
 	now := time.Now().In(ctx.State.TimeLocation)
 
-	b.WriteString(fmt.Sprintf(tr("status_title"), now.Format("15:04")))
+	// Section 1: Header
+	sections = append(sections, fmt.Sprintf(tr("status_title"), now.Format("15:04")))
 
-	// CPU with trend sparkline
-	cpuLine := fmt.Sprintf(tr("cpu_fmt"), format.MakeProgressBar(s.CPU), s.CPU)
+	// Section 2: Compute (CPU, RAM, Swap)
+	var computeLines []string
 	cpuGraph, ramGraph := getTrendSummary(ctx)
-	if cpuGraph != "" {
-		cpuLine = strings.TrimRight(cpuLine, "\n") + "  `" + cpuGraph + "`\n"
-	}
-	b.WriteString(cpuLine)
 
-	// RAM with trend sparkline
+	cpuLine := fmt.Sprintf(tr("cpu_fmt"), format.MakeProgressBar(s.CPU), s.CPU)
+	if cpuGraph != "" {
+		cpuLine += "  `" + cpuGraph + "`"
+	}
+	computeLines = append(computeLines, cpuLine)
+
 	ramLine := fmt.Sprintf(tr("ram_fmt"), format.MakeProgressBar(s.RAM), s.RAM)
 	if ramGraph != "" {
-		ramLine = strings.TrimRight(ramLine, "\n") + "  `" + ramGraph + "`\n"
+		ramLine += "  `" + ramGraph + "`"
 	}
-	b.WriteString(ramLine)
+	computeLines = append(computeLines, ramLine)
 
 	if s.Swap > 5 {
-		b.WriteString(fmt.Sprintf(tr("swap_fmt"), format.MakeProgressBar(s.Swap), s.Swap))
+		computeLines = append(computeLines, fmt.Sprintf(tr("swap_fmt"), format.MakeProgressBar(s.Swap), s.Swap))
 	}
+	sections = append(sections, strings.Join(computeLines, "\n"))
 
-	b.WriteString(fmt.Sprintf(tr("ssd_fmt"), s.VolSSD.Used, format.FormatBytes(s.VolSSD.Free)))
+	// Section 3: Storage (SSD & Secondary Disks)
+	var storageLines []string
+	storageLines = append(storageLines, fmt.Sprintf(tr("ssd_fmt"), s.VolSSD.Used, format.FormatBytes(s.VolSSD.Free)))
 	for m, vol := range s.SecondaryVols {
-		shortName := mountShortName(m)
-		b.WriteString(fmt.Sprintf("🗄 *%s:* %.1f%% | %s free\n", shortName, vol.Used, format.FormatBytes(vol.Free)))
+		shortName := escapeMarkdown(mountShortName(m))
+		storageLines = append(storageLines, fmt.Sprintf(tr("disk_sec_fmt"), shortName, vol.Used, format.FormatBytes(vol.Free)))
 	}
+	sections = append(sections, strings.Join(storageLines, "\n"))
 
+	// Section 4: Disk I/O (if active)
 	if s.DiskUtil > 10 {
-		b.WriteString(fmt.Sprintf(tr("disk_io_fmt"), s.DiskUtil))
+		ioLine := fmt.Sprintf(tr("disk_io_fmt"), s.DiskUtil)
 		if s.ReadMBs > 1 || s.WriteMBs > 1 {
-			b.WriteString(fmt.Sprintf(tr("disk_rw_fmt"), s.ReadMBs, s.WriteMBs))
+			ioLine += fmt.Sprintf(tr("disk_rw_fmt"), s.ReadMBs, s.WriteMBs)
 		}
-		b.WriteString("\n")
+		sections = append(sections, ioLine)
 	}
 
-	// Docker container summary
+	// Section 5: Docker Container Summary & Uptime footer
+	var footerLines []string
 	containers := getCachedContainerList(ctx)
 	if len(containers) > 0 {
 		running, stopped := 0, 0
@@ -81,15 +89,23 @@ func getStatusText(ctx *AppContext) string {
 			containerLabel = tr("container_running")
 		}
 		if stopped > 0 {
-			b.WriteString(fmt.Sprintf("\n🐳 %d %s · %d %s", running, containerLabel, stopped, tr("containers_stopped")))
+			footerLines = append(footerLines, fmt.Sprintf("🐳 %d %s · %d %s", running, containerLabel, stopped, tr("containers_stopped")))
 		} else {
-			b.WriteString(fmt.Sprintf("\n🐳 %d %s", running, containerLabel))
+			footerLines = append(footerLines, fmt.Sprintf("🐳 %d %s", running, containerLabel))
 		}
 	}
+	footerLines = append(footerLines, fmt.Sprintf(tr("uptime_fmt"), format.FormatUptime(s.Uptime)))
+	sections = append(sections, strings.Join(footerLines, "\n"))
 
-	b.WriteString(fmt.Sprintf(tr("uptime_fmt"), format.FormatUptime(s.Uptime)))
+	return strings.Join(sections, "\n\n")
+}
 
-	return b.String()
+func escapeMarkdown(s string) string {
+	s = strings.ReplaceAll(s, "_", "\\_")
+	s = strings.ReplaceAll(s, "*", "\\*")
+	s = strings.ReplaceAll(s, "`", "\\`")
+	s = strings.ReplaceAll(s, "[", "\\[")
+	return s
 }
 
 func GetStatusText(ctx *AppContext) string { return getStatusText(ctx) }
@@ -210,38 +226,38 @@ func getHelpText(ctx *AppContext) string {
 	b.WriteString(tr("help_intro"))
 
 	b.WriteString(tr("help_mon"))
-	b.WriteString("/status — quick system overview\n")
-	b.WriteString("/quick — ultra-compact one-liner\n")
-	b.WriteString("/temp — check temperatures\n")
-	b.WriteString("/top — top processes by CPU\n")
-	b.WriteString("/sysinfo — detailed system info\n")
-	b.WriteString("/diskpred — disk space prediction\n\n")
+	b.WriteString(fmt.Sprintf("/status — %s\n", tr("cmd_status_desc")))
+	b.WriteString(fmt.Sprintf("/quick — %s\n", tr("cmd_quick_desc")))
+	b.WriteString(fmt.Sprintf("/temp — %s\n", tr("cmd_temp_desc")))
+	b.WriteString(fmt.Sprintf("/top — %s\n", tr("cmd_top_desc")))
+	b.WriteString(fmt.Sprintf("/sysinfo — %s\n", tr("cmd_sysinfo_desc")))
+	b.WriteString(fmt.Sprintf("/diskpred — %s\n\n", tr("cmd_diskpred_desc")))
 
 	b.WriteString(tr("help_docker"))
-	b.WriteString("/docker — manage containers\n")
-	b.WriteString("/dstats — container resources\n")
-	b.WriteString("/kill `name` — force kill container\n")
-	b.WriteString("/logsearch `name` `keyword` — search logs\n")
-	b.WriteString("/restartdocker — restart Docker service\n\n")
+	b.WriteString(fmt.Sprintf("/docker — %s\n", tr("cmd_docker_desc")))
+	b.WriteString(fmt.Sprintf("/dstats — %s\n", tr("cmd_dstats_desc")))
+	b.WriteString(fmt.Sprintf("/kill `name` — %s\n", tr("cmd_kill_desc")))
+	b.WriteString(fmt.Sprintf("/logsearch `name` `keyword` — %s\n", tr("cmd_logsearch_desc")))
+	b.WriteString(fmt.Sprintf("/restartdocker — %s\n\n", tr("cmd_restartdocker_desc")))
 
 	b.WriteString(tr("help_net"))
-	b.WriteString("/net — network info\n")
-	b.WriteString("/speedtest — run speed test\n\n")
+	b.WriteString(fmt.Sprintf("/net — %s\n", tr("cmd_net_desc")))
+	b.WriteString(fmt.Sprintf("/speedtest — %s\n\n", tr("cmd_speedtest_desc")))
 
 	b.WriteString(tr("help_settings"))
-	b.WriteString("/settings — *configure everything*\n")
-	b.WriteString("/report — full detailed report\n")
-	b.WriteString("/ping — check if bot is alive\n")
-	b.WriteString("/version — show bot version\n")
-	b.WriteString("/health — healthchecks.io status\n")
-	b.WriteString("/config — show current config\n")
-	b.WriteString("/configjson — show full config.json (redacted)\n")
-	b.WriteString("/configset <json> — update config.json\n")
-	b.WriteString("/logs — recent system logs\n")
-	b.WriteString("/ask <question> — ask AI about recent logs\n")
-	b.WriteString("/update — install latest GitHub release\n")
-	b.WriteString("/reboot · /shutdown — power control\n")
-	b.WriteString("/reboot force · /forcereboot — forced reboot (no confirm)\n\n")
+	b.WriteString(fmt.Sprintf("/settings — *%s*\n", tr("cmd_settings_desc")))
+	b.WriteString(fmt.Sprintf("/report — %s\n", tr("cmd_report_desc")))
+	b.WriteString(fmt.Sprintf("/ping — %s\n", tr("cmd_ping_desc")))
+	b.WriteString(fmt.Sprintf("/version — %s\n", tr("cmd_version_desc")))
+	b.WriteString(fmt.Sprintf("/health — %s\n", tr("cmd_health_desc")))
+	b.WriteString(fmt.Sprintf("/config — %s\n", tr("cmd_config_desc")))
+	b.WriteString(fmt.Sprintf("/configjson — %s\n", tr("cmd_configjson_desc")))
+	b.WriteString(fmt.Sprintf("/configset <json> — %s\n", tr("cmd_configset_desc")))
+	b.WriteString(fmt.Sprintf("/logs — %s\n", tr("cmd_logs_desc")))
+	b.WriteString(fmt.Sprintf("/ask <question> — %s\n", tr("cmd_ask_desc")))
+	b.WriteString(fmt.Sprintf("/update — %s\n", tr("cmd_update_desc")))
+	b.WriteString(fmt.Sprintf("/reboot · /shutdown — %s\n", tr("cmd_power_desc")))
+	b.WriteString(fmt.Sprintf("/reboot force · /forcereboot — %s\n\n", tr("cmd_forcereboot_desc")))
 
 	reportsEnabled, reportInterval, reportTimes := ctx.Settings.GetReportsSettings()
 
@@ -254,7 +270,7 @@ func getHelpText(ctx *AppContext) string {
 		for _, t := range reportTimes {
 			b.WriteString(fmt.Sprintf("%02d:%02d ", t.Hour, t.Minute))
 		}
-		b.WriteString(fmt.Sprintf("(every %d days)\n", reportInterval))
+		b.WriteString(fmt.Sprintf("%s\n", fmt.Sprintf(tr("help_every_days"), reportInterval)))
 	}
 
 	if quiet.Enabled {
@@ -309,7 +325,7 @@ func getConfigText(ctx *AppContext) string {
 	// Reports
 	b.WriteString(tr("cfg_reports"))
 	if ctx.Config.Reports.Enabled {
-		b.WriteString(fmt.Sprintf(" ✅ Every %d days at ", ctx.Config.Reports.IntervalDays))
+		b.WriteString(fmt.Sprintf(tr("cfg_every_days"), ctx.Config.Reports.IntervalDays))
 		for _, t := range ctx.Config.Reports.Times {
 			b.WriteString(fmt.Sprintf("%02d:%02d ", t.Hour, t.Minute))
 		}

@@ -15,6 +15,7 @@ type MonitorState = pmodel.MonitorState
 type UserSettings = pmodel.UserSettings
 type HealthchecksState = pmodel.HealthchecksState
 type DowntimeLog = pmodel.DowntimeLog
+type DiskMountInfo = pmodel.DiskMountInfo
 
 func InitApp(cfg *Config) *AppContext {
 	return pmodel.InitApp(cfg)

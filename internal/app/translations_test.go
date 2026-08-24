@@ -35,6 +35,16 @@ func TestTranslationsCompleteAndValid(t *testing.T) {
 					lang, key, enVerbs, langVerbs, langText)
 			}
 		}
+
+		// 3. Ensure no double-escaped newlines or quotes
+		for key, langText := range langMap {
+			if strings.Contains(langText, `\n`) {
+				t.Errorf("Language '%s', key '%s' contains literal '\\n' instead of actual newline: %q", lang, key, langText)
+			}
+			if strings.Contains(langText, `\"`) {
+				t.Errorf("Language '%s', key '%s' contains literal '\\\"' instead of actual quote: %q", lang, key, langText)
+			}
+		}
 	}
 }
 

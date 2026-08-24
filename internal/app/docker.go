@@ -155,7 +155,7 @@ func getDockerStatsText(ctx *AppContext) string {
 
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 	if len(lines) == 0 || (len(lines) == 1 && lines[0] == "") {
-		return "_No containers running_"
+		return ctx.Tr("docker_stats_none")
 	}
 
 	var b strings.Builder
