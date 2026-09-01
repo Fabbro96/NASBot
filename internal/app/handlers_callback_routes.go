@@ -380,9 +380,13 @@ func handleAIAnalyzeCritical(ctx *AppContext, bot BotAPI, chatID int64, msgID in
 		goSafe("ai-analyze-critical", func() {
 			diagnosis, errDiag := AnalyzeCriticalAlerts(ctx, func(model string) {})
 			if errDiag != nil {
-				bot.Send(tgbotapi.NewEditMessageText(chatID, sentMsg.MessageID, fmt.Sprintf("❌ %s: %v", ctx.Tr("docker_ai_error"), errDiag)))
+				edit := tgbotapi.NewEditMessageText(chatID, sentMsg.MessageID, fmt.Sprintf("❌ %s: %v", ctx.Tr("docker_ai_error"), errDiag))
+				edit.ParseMode = "Markdown"
+				safeSend(bot, edit)
 			} else {
-				bot.Send(tgbotapi.NewEditMessageText(chatID, sentMsg.MessageID, diagnosis))
+				edit := tgbotapi.NewEditMessageText(chatID, sentMsg.MessageID, diagnosis)
+				edit.ParseMode = "Markdown"
+				safeSend(bot, edit)
 			}
 		})
 	}

@@ -38,9 +38,9 @@ func (m *CPUMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
 		return alerts
 	}
 	if s.CPU >= cfg.CriticalThreshold {
-		alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf("🧠 CPU critical: `%.1f%%`", s.CPU)})
+		alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf(ctx.Tr("mon_cpu_crit"), s.CPU)})
 	} else if s.CPU >= cfg.WarningThreshold {
-		alerts = append(alerts, MonitorAlert{"warning", fmt.Sprintf("CPU high: %.1f%%", s.CPU)})
+		alerts = append(alerts, MonitorAlert{"warning", fmt.Sprintf(ctx.Tr("mon_cpu_high"), s.CPU)})
 	}
 	return alerts
 }
@@ -54,9 +54,9 @@ func (m *RAMMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
 		return alerts
 	}
 	if s.RAM >= cfg.CriticalThreshold {
-		alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf("💾 RAM critical: `%.1f%%`", s.RAM)})
+		alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf(ctx.Tr("mon_ram_crit"), s.RAM)})
 	} else if s.RAM >= cfg.WarningThreshold {
-		alerts = append(alerts, MonitorAlert{"warning", fmt.Sprintf("RAM high: %.1f%%", s.RAM)})
+		alerts = append(alerts, MonitorAlert{"warning", fmt.Sprintf(ctx.Tr("mon_ram_high"), s.RAM)})
 	}
 	return alerts
 }
@@ -71,7 +71,7 @@ func (m *SwapMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
 	}
 	// Note: Swap has no critical threshold check currently
 	if s.Swap >= cfg.WarningThreshold {
-		alerts = append(alerts, MonitorAlert{"warning", fmt.Sprintf("Swap high: %.1f%%", s.Swap)})
+		alerts = append(alerts, MonitorAlert{"warning", fmt.Sprintf(ctx.Tr("mon_swap_high"), s.Swap)})
 	}
 	return alerts
 }
@@ -85,9 +85,9 @@ func (m *SSDMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
 		return alerts
 	}
 	if s.VolSSD.Used >= cfg.CriticalThreshold {
-		alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf("💿 SSD critical: `%.1f%%`", s.VolSSD.Used)})
+		alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf(ctx.Tr("mon_ssd_crit"), s.VolSSD.Used)})
 	} else if s.VolSSD.Used >= cfg.WarningThreshold {
-		alerts = append(alerts, MonitorAlert{"warning", fmt.Sprintf("SSD at %.1f%%", s.VolSSD.Used)})
+		alerts = append(alerts, MonitorAlert{"warning", fmt.Sprintf(ctx.Tr("mon_ssd_high"), s.VolSSD.Used)})
 	}
 	return alerts
 }
@@ -103,9 +103,9 @@ func (m *SecondaryDiskMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
 		}
 		if diskCfg.Enabled {
 			if volStats.Used >= diskCfg.CriticalThreshold {
-				alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf("🗄 Disk %s critical: `%.1f%%`", mountPoint, volStats.Used)})
+				alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf(ctx.Tr("mon_disk_crit"), mountPoint, volStats.Used)})
 			} else if volStats.Used >= diskCfg.WarningThreshold {
-				alerts = append(alerts, MonitorAlert{"warning", fmt.Sprintf("Disk %s at %.1f%%", mountPoint, volStats.Used)})
+				alerts = append(alerts, MonitorAlert{"warning", fmt.Sprintf(ctx.Tr("mon_disk_high"), mountPoint, volStats.Used)})
 			}
 		}
 	}
@@ -147,10 +147,10 @@ func (m *SMARTMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
 
 	for dev, res := range cache {
 		if strings.Contains(strings.ToUpper(res.Health), "FAIL") {
-			alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf("🚨 Disk %s FAILING — backup now!", dev)})
+			alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf(ctx.Tr("mon_disk_failing"), dev)})
 		}
 		if res.Temp > 0 && float64(res.Temp) >= ctx.Config.Temperature.CriticalThreshold {
-			alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf("🔥 Disk %s temp critical: %d°C", dev, res.Temp)})
+			alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf(ctx.Tr("mon_disk_temp_crit"), dev, res.Temp)})
 		}
 	}
 	return alerts
@@ -199,7 +199,7 @@ func monitorAlerts(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 			ctx.Monitor.Mu.Unlock()
 
 			if len(criticalAlerts) > 0 && time.Since(lastAlert) >= cooldown && !ctx.IsQuietHours() {
-				msg := "🚨 *Critical*\n\n" + strings.Join(criticalAlerts, "\n")
+				msg := ctx.Tr("critical_title") + strings.Join(criticalAlerts, "\n")
 				m := tgbotapi.NewMessage(cfg.AllowedUserID, msg)
 				m.ParseMode = "Markdown"
 
@@ -421,7 +421,7 @@ func checkTemperatureAlert(ctx *AppContext, bot BotAPI) {
 		var m tgbotapi.MessageConfig
 		sendMsg := false
 		if !ctx.IsQuietHours() {
-			msg := fmt.Sprintf("🔥 *CPU Temperature Critical!*\n\nCurrent: `%.1f°C`\nThreshold: `%.0f°C`\n\n_Consider checking cooling or reducing load_", temp, cfg.Temperature.CriticalThreshold)
+			msg := fmt.Sprintf(ctx.Tr("temp_crit_alert"), temp, cfg.Temperature.CriticalThreshold)
 			m = tgbotapi.NewMessage(cfg.AllowedUserID, msg)
 			m.ParseMode = "Markdown"
 			sendMsg = true
@@ -439,7 +439,7 @@ func checkTemperatureAlert(ctx *AppContext, bot BotAPI) {
 		var m tgbotapi.MessageConfig
 		sendMsg := false
 		if !ctx.IsQuietHours() {
-			msg := fmt.Sprintf("🌡 *CPU Temperature Warning*\n\nCurrent: `%.1f°C`\nThreshold: `%.0f°C`", temp, cfg.Temperature.WarningThreshold)
+			msg := fmt.Sprintf(ctx.Tr("temp_warn_alert"), temp, cfg.Temperature.WarningThreshold)
 			m = tgbotapi.NewMessage(cfg.AllowedUserID, msg)
 			m.ParseMode = "Markdown"
 			sendMsg = true

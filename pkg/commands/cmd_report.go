@@ -43,7 +43,7 @@ func (c *ReportCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, 
 	report := generateReport(ctx, true, onModelChange)
 
 	if strings.TrimSpace(report) == "" {
-		report = "⚠️ Error: Generated report is empty."
+		report = ctx.Tr("report_empty_err")
 	}
 
 	if sentMsg.MessageID != 0 {

@@ -21,7 +21,7 @@ func handleAdBlockCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int,
 	token := ctx.Config.AdBlock.Token
 
 	if baseURL == "" {
-		safeSend(bot, tgbotapi.NewMessage(chatID, "❌ AdBlock URL not configured."))
+		safeSend(bot, tgbotapi.NewMessage(chatID, ctx.Tr("adblock_no_url")))
 		return
 	}
 
@@ -59,7 +59,7 @@ func handleAdBlockCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int,
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		safeSend(bot, tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ AdBlock returned error status: %d", resp.StatusCode)))
+		safeSend(bot, tgbotapi.NewMessage(chatID, fmt.Sprintf(ctx.Tr("adblock_err_status"), resp.StatusCode)))
 		return
 	}
 

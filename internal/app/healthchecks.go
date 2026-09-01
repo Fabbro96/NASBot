@@ -125,11 +125,7 @@ func recordHealthcheckSuccess(ctx *AppContext, bot BotAPI) {
 			}
 			periodStr := format.FormatPeriod(period)
 
-			msg := fmt.Sprintf("🟢 *Healthchecks UP*\n\n"+
-				"_The check is now receiving pings normally._\n\n"+
-				"⏱ Downtime: `%s`\n"+
-				"📊 Total Pings: `%d`\n"+
-				"🔄 Period: `%s`",
+			msg := fmt.Sprintf(ctx.Tr("hc_up_alert"),
 				downtimeStr,
 				totalPings,
 				periodStr)
@@ -196,12 +192,7 @@ func recordHealthcheckFailure(ctx *AppContext, bot BotAPI, reason string) {
 				lastPingAgo = format.FormatDuration(time.Since(lastPingTime))
 			}
 
-			msg := fmt.Sprintf("🔴 *Healthchecks DOWN*\n\n"+
-				"_Ping failed: `%s`_\n\n"+
-				"🔄 Period: `%s`\n"+
-				"📊 Total Pings: `%d`\n"+
-				"⏱ Last Success: `%s ago`\n\n"+
-				"_Monitoring for recovery..._",
+			msg := fmt.Sprintf(ctx.Tr("hc_down_alert"),
 				reason,
 				periodStr,
 				totalPings,
@@ -229,7 +220,7 @@ func recordHealthcheckFailure(ctx *AppContext, bot BotAPI, reason string) {
 
 	if shouldForceReboot {
 		slog.Error("Healthchecks down > 6 minutes. Triggering forced reboot!")
-		msg := fmt.Sprintf("💥 *Force Reboot Triggered*\n\nHealthchecks.io down for %s. Executing panic reboot.", downtimeStr)
+		msg := fmt.Sprintf(ctx.Tr("hc_force_reboot_alert"), downtimeStr)
 		m := tgbotapi.NewMessage(ctx.Config.AllowedUserID, msg)
 		m.ParseMode = "Markdown"
 		safeSend(bot, m)

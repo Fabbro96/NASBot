@@ -98,9 +98,9 @@ func generateDailyReport(ctx *AppContext, greeting string, onModelChange func(st
 		}
 
 		rate, _ := getHealthchecksPeriodRate(hc)
-		b.WriteString(fmt.Sprintf("\nHealthchecks: %s (%.1f%%)", status, rate))
+		b.WriteString(fmt.Sprintf(ctx.Tr("report_healthchecks_line"), status, rate))
 	}
-	b.WriteString(fmt.Sprintf("\nContainers: %d %s", running, containerLabel))
+	b.WriteString(fmt.Sprintf(ctx.Tr("report_containers_line"), running, containerLabel))
 	if stopped > 0 {
 		b.WriteString(fmt.Sprintf(", %d %s", stopped, ctx.Tr("containers_stopped")))
 	}
@@ -111,9 +111,9 @@ func generateDailyReport(ctx *AppContext, greeting string, onModelChange func(st
 		b.WriteString(stressSummary)
 	}
 
-	b.WriteString(fmt.Sprintf("\n\n_Up for %s_\n", format.FormatUptime(s.Uptime)))
+	b.WriteString(fmt.Sprintf(ctx.Tr("report_uptime_line"), format.FormatUptime(s.Uptime)))
 	if periodDesc != "" {
-		b.WriteString(fmt.Sprintf("_Period: %s_", periodDesc))
+		b.WriteString(fmt.Sprintf(ctx.Tr("report_period_fmt"), periodDesc))
 	}
 
 	resetStressCounters(ctx)
@@ -165,11 +165,11 @@ func generateReport(ctx *AppContext, manual bool, onModelChange func(string)) st
 			stopped++
 		}
 	}
-	b.WriteString(fmt.Sprintf("Containers: %d running, %d stopped\n", running, stopped))
+	b.WriteString(fmt.Sprintf(ctx.Tr("report_containers_summary"), running, stopped))
 
-	b.WriteString(fmt.Sprintf("\n_Up for %s_\n", format.FormatUptime(s.Uptime)))
+	b.WriteString(fmt.Sprintf(ctx.Tr("report_uptime_line"), format.FormatUptime(s.Uptime)))
 	if periodDesc != "" {
-		b.WriteString(fmt.Sprintf("_Period: %s_", periodDesc))
+		b.WriteString(fmt.Sprintf(ctx.Tr("report_period_fmt"), periodDesc))
 	}
 
 	return b.String()

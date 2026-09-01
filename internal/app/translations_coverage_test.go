@@ -30,13 +30,13 @@ func TestTranslations_TotalCoverage(t *testing.T) {
 
 		t.Logf("Coverage for %s: %.1f%% (%d/%d keys)", lang, percentage, presentKeys, totalKeys)
 
-		if percentage < 90.0 {
-			t.Errorf("Coverage for %s is below 90%%", lang)
+		if percentage < 100.0 {
+			t.Errorf("Coverage for %s is below 100%%", lang)
 			allPassed = false
 		}
 	}
 
 	if !allPassed {
-		t.Fatalf("Translation coverage check failed. Some languages are missing too many keys.")
+		t.Fatalf("Translation coverage check failed. Some languages are missing keys.")
 	}
 }

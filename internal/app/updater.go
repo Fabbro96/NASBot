@@ -345,7 +345,7 @@ func applyLatestRelease(ctx *AppContext, bot BotAPI, chatID int64, msgID int) {
 		return
 	}
 	if os.Getenv("NASBOT_DOCKER") == "true" {
-		statusText := fmt.Sprintf("🚀 *Update %s Available*\n\nSince NASBot is now running in Docker, updates are handled automatically by WUD or Watchtower.\nIf you want to manually force the update, connect via SSH and run:\n`docker compose pull && docker compose up -d`", rel.Tag)
+		statusText := fmt.Sprintf(ctx.Tr("update_docker_available"), rel.Tag)
 		if msgID > 0 {
 			editMessage(bot, chatID, msgID, statusText, nil)
 		} else {
