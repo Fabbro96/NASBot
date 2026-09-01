@@ -53,7 +53,7 @@ func checkResourceStress(ctx *AppContext, bot BotAPI, resource string, currentVa
 				unit = "Usage"
 			}
 
-			notifyMsg = fmt.Sprintf("%s *%s stress*\n\n%s: `%.0f%%` for `%s`\n\n_Watching..._", emoji, resource, unit, currentValue, stressDuration.Round(time.Second))
+			notifyMsg = fmt.Sprintf(ctx.Tr("stress_notify_fmt"), emoji, resource, unit, currentValue, stressDuration.Round(time.Second))
 			tracker.Notified = true
 			eventType = "warning"
 			eventMsg = fmt.Sprintf("%s high (%.0f%%) for %s", resource, currentValue, stressDuration.Round(time.Second))
@@ -67,7 +67,7 @@ func checkResourceStress(ctx *AppContext, bot BotAPI, resource string, currentVa
 			}
 
 			if tracker.Notified && !ctx.IsQuietHours() {
-				notifyMsg = fmt.Sprintf("✅ *%s back to normal* after `%s`", resource, stressDuration.Round(time.Second))
+				notifyMsg = fmt.Sprintf(ctx.Tr("stress_normalized_fmt"), resource, stressDuration.Round(time.Second))
 				eventType = "info"
 				eventMsg = fmt.Sprintf("%s normalized after %s", resource, stressDuration.Round(time.Second))
 			}

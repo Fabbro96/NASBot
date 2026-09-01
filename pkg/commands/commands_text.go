@@ -415,39 +415,39 @@ func getConfigText(ctx *AppContext) string {
 
 func GetConfigText(ctx *AppContext) string { return getConfigText(ctx) }
 
-// getSysInfoText returns detailed system information
 func getSysInfoText(ctx *AppContext) string {
 	var b strings.Builder
-	b.WriteString("🖥 *System Information*\n\n")
+	b.WriteString(ctx.Tr("sysinfo_title"))
 
 	// Host info
 	h, err := host.Info()
 	if err == nil {
-		b.WriteString(fmt.Sprintf("*Hostname:* `%s`\n", h.Hostname))
-		b.WriteString(fmt.Sprintf("*OS:* %s %s\n", h.Platform, h.PlatformVersion))
-		b.WriteString(fmt.Sprintf("*Kernel:* %s\n", h.KernelVersion))
-		b.WriteString(fmt.Sprintf("*Architecture:* %s\n", h.KernelArch))
-		b.WriteString(fmt.Sprintf("*Uptime:* %s\n", format.FormatUptime(h.Uptime)))
-		b.WriteString(fmt.Sprintf("*Boot Time:* %s\n", time.Unix(int64(h.BootTime), 0).In(ctx.State.TimeLocation).Format("02/01/2006 15:04")))
+		b.WriteString(fmt.Sprintf(ctx.Tr("sysinfo_hostname"), h.Hostname))
+		b.WriteString(fmt.Sprintf(ctx.Tr("sysinfo_os"), h.Platform, h.PlatformVersion))
+		b.WriteString(fmt.Sprintf(ctx.Tr("sysinfo_kernel"), h.KernelVersion))
+		b.WriteString(fmt.Sprintf(ctx.Tr("sysinfo_arch"), h.KernelArch))
+		b.WriteString(fmt.Sprintf(ctx.Tr("sysinfo_uptime"), format.FormatUptime(h.Uptime)))
+		b.WriteString(fmt.Sprintf(ctx.Tr("sysinfo_boot_time"), time.Unix(int64(h.BootTime), 0).In(ctx.State.TimeLocation).Format("02/01/2006 15:04")))
 	}
 
 	// CPU info
 	cpuInfo, err := cpu.Info()
 	if err == nil && len(cpuInfo) > 0 {
-		b.WriteString(fmt.Sprintf("\n*CPU:* %s\n", cpuInfo[0].ModelName))
-		b.WriteString(fmt.Sprintf("*Cores:* %d physical, %d logical\n", cpuInfo[0].Cores, len(cpuInfo)))
+		b.WriteString(fmt.Sprintf(ctx.Tr("sysinfo_cpu"), cpuInfo[0].ModelName))
+		b.WriteString(fmt.Sprintf(ctx.Tr("sysinfo_cores"), cpuInfo[0].Cores, len(cpuInfo)))
 		if cpuInfo[0].Mhz > 0 {
-			b.WriteString(fmt.Sprintf("*Frequency:* %.0f MHz\n", cpuInfo[0].Mhz))
+			b.WriteString(fmt.Sprintf(ctx.Tr("sysinfo_freq"), cpuInfo[0].Mhz))
 		}
 	}
 
 	// Memory info
 	v, err := mem.VirtualMemory()
 	if err == nil {
-		b.WriteString(fmt.Sprintf("\n*Total RAM:* %.1f GB\n", float64(v.Total)/1024/1024/1024))
+		b.WriteString(fmt.Sprintf(ctx.Tr("sysinfo_ram"), float64(v.Total)/1024/1024/1024))
 	}
 
 	// Disk info
+	b.WriteString(ctx.Tr("sysinfo_disks"))
 	paths := []struct {
 		name string
 		path string
@@ -466,14 +466,14 @@ func getSysInfoText(ctx *AppContext) string {
 		}
 		d, err := disk.Usage(p.path)
 		if err == nil {
-			b.WriteString(fmt.Sprintf("*%s (%s):* %.0f GB total\n", p.name, p.path, float64(d.Total)/1024/1024/1024))
+			b.WriteString(fmt.Sprintf(ctx.Tr("sysinfo_disk_entry"), p.name, p.path, float64(d.Total)/1024/1024/1024))
 		}
 	}
 
 	// Go runtime info
-	b.WriteString(fmt.Sprintf("\n*NASBot Version:* %s\n", getVersion()))
+	b.WriteString(fmt.Sprintf(ctx.Tr("sysinfo_version"), getVersion()))
 	if buildInfo, ok := debug.ReadBuildInfo(); ok {
-		b.WriteString(fmt.Sprintf("*Go Version:* %s\n", buildInfo.GoVersion))
+		b.WriteString(fmt.Sprintf(ctx.Tr("sysinfo_go"), buildInfo.GoVersion))
 	}
 
 	return b.String()

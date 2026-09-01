@@ -16,11 +16,11 @@ func getDiskPredictionText(ctx *AppContext) string {
 	ctx.State.Mu.Unlock()
 
 	var b strings.Builder
-	b.WriteString("📊 *Disk Space Prediction*\n\n")
+	b.WriteString(ctx.Tr("diskpred_title"))
 
 	if len(history) < 12 { // Need at least 1 hour of data
-		b.WriteString("_Collecting data... need at least 1 hour of history._\n\n")
-		b.WriteString(fmt.Sprintf("_Data points: %d/12_", len(history)))
+		b.WriteString(ctx.Tr("diskpred_collecting"))
+		b.WriteString(fmt.Sprintf(ctx.Tr("diskpred_datapoints"), len(history)))
 		return b.String()
 	}
 
@@ -34,17 +34,17 @@ func getDiskPredictionText(ctx *AppContext) string {
 		b.WriteString(fmt.Sprintf("%s *%s* — %.1f%% used\n", icon, name, usedPct))
 		switch {
 		case pred.DaysUntilFull < 0:
-			b.WriteString("   📈 _Usage decreasing or stable_\n")
+			b.WriteString(ctx.Tr("diskpred_decreasing"))
 		case pred.DaysUntilFull > 365:
-			b.WriteString("   ✅ _More than a year until full_\n")
+			b.WriteString(ctx.Tr("diskpred_year_plus"))
 		case pred.DaysUntilFull > 30:
-			b.WriteString(fmt.Sprintf("   ✅ ~%d days until full\n", int(pred.DaysUntilFull)))
+			b.WriteString(fmt.Sprintf(ctx.Tr("diskpred_days_ok"), int(pred.DaysUntilFull)))
 		case pred.DaysUntilFull > 7:
-			b.WriteString(fmt.Sprintf("   ⚠️ ~%d days until full\n", int(pred.DaysUntilFull)))
+			b.WriteString(fmt.Sprintf(ctx.Tr("diskpred_days_warn"), int(pred.DaysUntilFull)))
 		default:
-			b.WriteString(fmt.Sprintf("   🚨 ~%d days until full!\n", int(pred.DaysUntilFull)))
+			b.WriteString(fmt.Sprintf(ctx.Tr("diskpred_days_crit"), int(pred.DaysUntilFull)))
 		}
-		b.WriteString(fmt.Sprintf("   _Rate: %.2f GB/day_\n\n", pred.GBPerDay))
+		b.WriteString(fmt.Sprintf(ctx.Tr("diskpred_rate"), pred.GBPerDay))
 	}
 
 	writeDiskPred("💿", "SSD", ssdPred, s.VolSSD.Used)
@@ -53,7 +53,7 @@ func getDiskPredictionText(ctx *AppContext) string {
 		writeDiskPred("🗄", mount, pred, vol.Used)
 	}
 
-	b.WriteString(fmt.Sprintf("\n_Based on %d data points (%s of data)_",
+	b.WriteString(fmt.Sprintf(ctx.Tr("diskpred_footer"),
 		len(history),
 		format.FormatDuration(time.Since(history[0].Time))))
 

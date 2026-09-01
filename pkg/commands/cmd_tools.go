@@ -184,7 +184,7 @@ func (c *AgyCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, arg
 	if len(outputStr) > 4000 {
 		outputStr = outputStr[:4000] + "\n... (truncated)"
 	}
-	result := fmt.Sprintf("🤖 *Antigravity CLI (`agy`)*\n\n```\n%s\n```", outputStr)
+	result := fmt.Sprintf(ctx.Tr("agy_title"), outputStr)
 	sendMarkdown(bot, msg.Chat.ID, result)
 }
 func (c *AgyCmd) Description() string { return "Execute Antigravity CLI (agy)" }
@@ -194,7 +194,7 @@ type CmdCmd struct{}
 func (c *CmdCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, args string) {
 	cmdStr := strings.TrimSpace(args)
 	if cmdStr == "" {
-		sendMarkdown(bot, msg.Chat.ID, "Usage: `/cmd <shell command>` (e.g. `/cmd tailscale up --reset`)")
+		sendMarkdown(bot, msg.Chat.ID, ctx.Tr("cmd_usage"))
 		return
 	}
 	slog.Info("Executing shell command via NASBot", "command", cmdStr, "user_id", msg.From.ID)
@@ -208,7 +208,7 @@ func (c *CmdCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, arg
 	if len(outputStr) > 4000 {
 		outputStr = outputStr[:4000] + "\n... (truncated)"
 	}
-	result := fmt.Sprintf("💻 *Command Execution*\n\n```\n%s\n```", outputStr)
+	result := fmt.Sprintf(ctx.Tr("cmd_title"), outputStr)
 	sendMarkdown(bot, msg.Chat.ID, result)
 }
 func (c *CmdCmd) Description() string { return "Execute arbitrary shell command" }

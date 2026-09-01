@@ -420,11 +420,7 @@ func (w *FSWatchdog) checkAndAlert(bot BotAPI, path string) {
 		}
 
 		if !isQuietHours() {
-			msg := fmt.Sprintf("⚠️ *Disk Space Warning*\n\n"+
-				"Path: `%s`\n"+
-				"Used: `%.1f%%`\n"+
-				"Free: `%.1fGB`\n\n"+
-				"_Monitoring..._", path, usedPercent, freeGB)
+			msg := fmt.Sprintf(tr("fswd_space_warn"), path, usedPercent, freeGB)
 
 			m := tgbotapi.NewMessage(cfg.AllowedUserID, msg)
 			m.ParseMode = "Markdown"
@@ -446,11 +442,7 @@ func (w *FSWatchdog) checkAndAlert(bot BotAPI, path string) {
 
 		// Notify user
 		if !isQuietHours() {
-			msg := fmt.Sprintf("🚨 *Disk Space Critical!*\n\n"+
-				"Path: `%s`\n"+
-				"Used: `%.1f%%`\n"+
-				"Free: `%.1fGB`\n\n"+
-				"_Starting deep scan to identify large files..._", path, usedPercent, freeGB)
+			msg := fmt.Sprintf(tr("fswd_space_crit"), path, usedPercent, freeGB)
 
 			m := tgbotapi.NewMessage(cfg.AllowedUserID, msg)
 			m.ParseMode = "Markdown"
@@ -481,13 +473,13 @@ func (w *FSWatchdog) checkAndAlert(bot BotAPI, path string) {
 func (w *FSWatchdog) sendDeepScanReport(bot BotAPI, result *DeepScanResult) {
 	var b strings.Builder
 
-	b.WriteString("📊 *Deep Scan Results*\n\n")
+	b.WriteString(tr("fswd_deepscan_title"))
 	b.WriteString(fmt.Sprintf("⏱ Scan time: `%v`\n", result.Duration.Round(time.Millisecond)))
 	b.WriteString(fmt.Sprintf("📁 Total scanned: `%s`\n\n", format.FormatBytes(uint64(result.TotalScanned))))
 
 	// Top directories
 	if len(result.DirUsages) > 0 {
-		b.WriteString("*📁 Largest Directories:*\n")
+		b.WriteString(tr("fswd_largest_dirs"))
 		for i, dir := range result.DirUsages {
 			if i >= 10 {
 				break
@@ -501,7 +493,7 @@ func (w *FSWatchdog) sendDeepScanReport(bot BotAPI, result *DeepScanResult) {
 
 	// Top files
 	if len(result.LargestFiles) > 0 {
-		b.WriteString("*📄 Largest Files:*\n")
+		b.WriteString(tr("fswd_largest_files"))
 		for i, file := range result.LargestFiles {
 			if i >= 10 {
 				break
@@ -518,12 +510,12 @@ func (w *FSWatchdog) sendDeepScanReport(bot BotAPI, result *DeepScanResult) {
 	}
 
 	if !isQuietHours() {
-		m := tgbotapi.NewMessage(cfg.AllowedUserID, b.String())
-		m.ParseMode = "Markdown"
+		msg := tgbotapi.NewMessage(cfg.AllowedUserID, b.String())
+		msg.ParseMode = "Markdown"
 		if bot != nil {
-			safeSend(bot, m)
+			safeSend(bot, msg)
 		} else {
-			slog.Info("Deep Scan Report (No Bot)", "report", b.String())
+			slog.Info("Watchdog Deep Scan Report (No Bot)", "msg", b.String())
 		}
 	}
 }
@@ -577,7 +569,7 @@ func truncatePath(path string, maxLen int) string {
 // GetDiskInfoText returns disk usage info for manual command
 func GetDiskInfoText() string {
 	var b strings.Builder
-	b.WriteString("💾 *Disk Status*\n\n")
+	b.WriteString(tr("fswd_disk_status_title"))
 
 	paths := []string{"/", cfg.Paths.SSD}
 	for mount := range cfg.Notifications.SecondaryDisks {

@@ -29,7 +29,7 @@ func getProcessesMenu(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
 
 	out, err := runCommandOutput(reqCtx, "ps", "-Ao", "pid,comm,pcpu,pmem", "--sort=-pcpu")
 	if err != nil {
-		return fmt.Sprintf("❌ Error fetching processes: %v", err), tgbotapi.NewInlineKeyboardMarkup()
+		return fmt.Sprintf(ctx.Tr("proc_fetch_err"), err), tgbotapi.NewInlineKeyboardMarkup()
 	}
 
 	lines := strings.Split(string(out), "\n")

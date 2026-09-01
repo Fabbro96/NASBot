@@ -14,13 +14,13 @@ import (
 //  SPEEDTEST
 // ═══════════════════════════════════════════════════════════════════
 
-func handleSpeedtest(_ *AppContext, bot BotAPI, chatID int64) {
+func handleSpeedtest(ctx *AppContext, bot BotAPI, chatID int64) {
 	if !commandExists("speedtest-cli") {
-		sendMarkdown(bot, chatID, "❌ `speedtest-cli` not installed.\n\nInstall it with:\n`sudo apt install speedtest-cli`")
+		sendMarkdown(bot, chatID, ctx.Tr("speedtest_not_installed"))
 		return
 	}
 
-	msg := tgbotapi.NewMessage(chatID, "🚀 Running speed test... (this may take a minute)")
+	msg := tgbotapi.NewMessage(chatID, ctx.Tr("speedtest_running"))
 	sent, err := bot.Send(msg)
 	if err != nil {
 		slog.Error("Failed to send speedtest start message", "err", err)
@@ -122,7 +122,7 @@ func handlePowerConfirm(ctx *AppContext, bot BotAPI, chatID int64, msgID int, da
 
 	expectedAction := strings.TrimPrefix(data, "confirm_")
 	if action == "" || action != expectedAction {
-		editMessage(bot, chatID, msgID, "_Session expired — try again_", nil)
+		editMessage(bot, chatID, msgID, ctx.Tr("session_expired"), nil)
 		return
 	}
 

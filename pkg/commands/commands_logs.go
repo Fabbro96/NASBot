@@ -55,11 +55,10 @@ func getRecentLogs(_ *AppContext) (string, error) {
 // ═══════════════════════════════════════════════════════════════════
 
 func getLogSearchText(ctx *AppContext, args string) string {
-	_ = ctx
 	// Parse: container keyword
 	parts := strings.SplitN(strings.TrimSpace(args), " ", 2)
 	if len(parts) < 2 {
-		return "Usage: `/logsearch <container> <keyword>`\n\nExample: `/logsearch plex error`"
+		return ctx.Tr("logsearch_usage")
 	}
 
 	container := parts[0]
@@ -67,7 +66,7 @@ func getLogSearchText(ctx *AppContext, args string) string {
 
 	// Sanitize container name to prevent injection
 	if strings.ContainsAny(container, ";|&$`\\\"'") {
-		return "❌ Invalid container name"
+		return ctx.Tr("logsearch_invalid_container")
 	}
 
 	// Search logs
@@ -95,7 +94,7 @@ func getLogSearchText(ctx *AppContext, args string) string {
 	}
 
 	if len(matches) == 0 {
-		return fmt.Sprintf("🔍 No matches for `%s` in `%s` logs", keyword, container)
+		return fmt.Sprintf(ctx.Tr("logsearch_no_matches"), keyword, container)
 	}
 
 	// Limit to last 10 matches
@@ -105,8 +104,8 @@ func getLogSearchText(ctx *AppContext, args string) string {
 	}
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("🔍 *Log Search*: `%s` in `%s`\n\n", keyword, container))
-	b.WriteString(fmt.Sprintf("Found %d matches (showing last %d):\n\n", totalFound, len(matches)))
+	b.WriteString(fmt.Sprintf(ctx.Tr("logsearch_title"), keyword, container))
+	b.WriteString(fmt.Sprintf(ctx.Tr("logsearch_found_fmt"), totalFound, len(matches)))
 	b.WriteString("```\n")
 	for _, m := range matches {
 		b.WriteString(m + "\n")

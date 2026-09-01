@@ -42,7 +42,7 @@ func checkContainerStates(ctx *AppContext, bot BotAPI) {
 			ctx.Docker.ContainerDowntime[name] = time.Now()
 
 			if !ctx.IsQuietHours() {
-				msg := fmt.Sprintf("🔴 *Container DOWN*\n\n📦 `%s`\n\n_The container has stopped unexpectedly._", name)
+				msg := fmt.Sprintf(ctx.Tr("container_down_alert"), name)
 				m := tgbotapi.NewMessage(ctx.Config.AllowedUserID, msg)
 				m.ParseMode = "Markdown"
 				safeSend(bot, m)
@@ -57,7 +57,7 @@ func checkContainerStates(ctx *AppContext, bot BotAPI) {
 			var downtimeMsg string
 			if downStart, hasDowntime := ctx.Docker.ContainerDowntime[name]; hasDowntime {
 				duration := time.Since(downStart)
-				downtimeMsg = fmt.Sprintf("\n⏱ Downtime: `%s`", format.FormatDuration(duration))
+				downtimeMsg = fmt.Sprintf(ctx.Tr("container_downtime_fmt"), format.FormatDuration(duration))
 				delete(ctx.Docker.ContainerDowntime, name)
 				ctx.State.AddEvent("info", fmt.Sprintf("🟢 Container recovered: %s (down for %s)", name, format.FormatDuration(duration)))
 			} else {
@@ -65,7 +65,7 @@ func checkContainerStates(ctx *AppContext, bot BotAPI) {
 			}
 
 			if !ctx.IsQuietHours() {
-				msg := fmt.Sprintf("🟢 *Container UP*\n\n📦 `%s`\n\n_The container is now running._%s", name, downtimeMsg)
+				msg := fmt.Sprintf(ctx.Tr("container_up_alert"), name, downtimeMsg)
 				m := tgbotapi.NewMessage(ctx.Config.AllowedUserID, msg)
 				m.ParseMode = "Markdown"
 				safeSend(bot, m)
@@ -126,10 +126,10 @@ func handleCriticalRAM(ctx *AppContext, bot BotAPI, s Stats) {
 
 				var msgText string
 				if err != nil {
-					msgText = fmt.Sprintf("❌ *Auto-restart failed*\n\nRAM critical: `%.1f%%`\nContainer: `%s`\nError: %v", s.RAM, target.name, err)
+					msgText = fmt.Sprintf(ctx.Tr("docker_autorestart_fail"), s.RAM, target.name, err)
 					ctx.State.AddEvent("critical", fmt.Sprintf("Auto-restart failed: %s (%v)", target.name, err))
 				} else {
-					msgText = fmt.Sprintf("🔄 *Auto-restart done*\n\nRAM was critical: `%.1f%%`\nRestarted: `%s` (`%.1f%%` mem)\n\n_Watching..._", s.RAM, target.name, target.memPct)
+					msgText = fmt.Sprintf(ctx.Tr("docker_autorestart_done"), s.RAM, target.name, target.memPct)
 					ctx.State.AddEvent("action", fmt.Sprintf("Auto-restart: %s (RAM %.1f%%)", target.name, s.RAM))
 				}
 

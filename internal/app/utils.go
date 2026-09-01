@@ -140,12 +140,26 @@ func getSmartDevices(ctx *AppContext) []string {
 	return []string{"sda", "sdb"}
 }
 
-// safeSend sends a Telegram message and logs any error
+// safeSend sends a Telegram message and logs any error, falling back to plain text if Markdown fails
 func safeSend(bot BotAPI, msg tgbotapi.Chattable) {
 	if bot == nil {
 		return
 	}
 	if _, err := bot.Send(msg); err != nil {
+		if m, ok := msg.(tgbotapi.MessageConfig); ok && m.ParseMode != "" {
+			slog.Warn("Telegram markdown send failed, retrying without parse mode", "err", err)
+			m.ParseMode = ""
+			if _, retryErr := bot.Send(m); retryErr == nil {
+				return
+			}
+		}
+		if e, ok := msg.(tgbotapi.EditMessageTextConfig); ok && e.ParseMode != "" {
+			slog.Warn("Telegram markdown edit failed, retrying without parse mode", "err", err)
+			e.ParseMode = ""
+			if _, retryErr := bot.Send(e); retryErr == nil {
+				return
+			}
+		}
 		slog.Error("Telegram send failed", "err", err)
 	}
 }
