@@ -207,12 +207,19 @@ check_required_commands
 validate_min_coverage
 
 chmod +x scripts/secret_scan.sh scripts/quality_check.sh scripts/shellcheck_all.sh
+chmod +x scripts/check_workflows.sh
 scripts/secret_scan.sh --repo
 # docs/SECURITY.md elenca shellcheck_all.sh fra i gate "prima del rilascio", ma
 # il gate locale non lo eseguiva: in locale il controllo non girava mai e ci si
 # accorgeva solo della rottura in CI. Stesso controllo su entrambi i lati, con la
 # stessa entrypoint che usa il job ShellCheck di ci.yml.
 scripts/shellcheck_all.sh
+# A workflow file that GitHub refuses is invisible to every other gate here: no
+# job runs, the push event reports "This run likely failed because of a workflow
+# file issue", and the required checks that DO run stay green. The release
+# pipeline sat broken like that for a whole session with every other check
+# passing. This guard is the only thing that notices.
+scripts/check_workflows.sh
 scripts/quality_check.sh
 check_config_not_tracked
 ensure_test_config
