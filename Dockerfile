@@ -34,7 +34,11 @@ ARG VERSION=dev
 
 # CGO_ENABLED=0 produces a static binary that runs on a scratch/alpine base and
 # keeps the final image small; the NAS runtime bundle is built the same way.
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X main.Version=${VERSION}" -o nasbot .
+# -trimpath and -s -w match scripts/build_release.sh, which got them after the
+# released binaries were found to carry 61 absolute paths of the build machine.
+# Without them the image binary carries the builder's source paths and its whole
+# symbol table, and nothing would notice the drift: CI never builds this file.
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags "-X main.Version=${VERSION} -s -w" -o nasbot .
 
 # ----------------------------------------------------------------------------
 # Runtime stage
