@@ -14,7 +14,7 @@
 # golang 1.23 matches the deadlock/race gate (.github/workflows/
 # deadlock-race-gate.yml runs 1.23.x) and is >= the 1.22 declared in go.mod,
 # so the image builds the same code the gates test.
-FROM golang:1.23-alpine AS builder
+FROM golang:1.27-alpine AS builder
 
 WORKDIR /app
 
