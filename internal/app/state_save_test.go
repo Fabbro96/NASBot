@@ -104,9 +104,13 @@ func TestSaveStateNeverProducesATornFileUnderConcurrency(t *testing.T) {
 			savers*rounds, err, raw)
 	}
 
-	// Consistency: every field comes from the same instant of a single writer, so
-	// the report interval, the report hour and the quiet start hour must agree on
-	// which goroutine wrote the file.
+	// Consistency, precisely stated. saveState reads the report interval and the
+	// report times under one single RLock, and both were written by one single
+	// SetReportsSettings call, so those two MUST agree. The quiet hours are a
+	// different setter with its own lock, and the mutators run concurrently, so
+	// the quiet hour may legitimately come from a different writer: tying the two
+	// together asserted an atomicity across three independent setters that the
+	// API never provided, and failed intermittently on correct code.
 	if state.ReportInterval < 1 || state.ReportInterval > mutator {
 		t.Fatalf("report interval %d is outside the range any writer used", state.ReportInterval)
 	}
@@ -115,8 +119,12 @@ func TestSaveStateNeverProducesATornFileUnderConcurrency(t *testing.T) {
 		t.Errorf("report times %+v do not belong to writer %d (interval %d)",
 			state.ReportTimes, idx, state.ReportInterval)
 	}
-	if state.QuietStartHour != idx {
-		t.Errorf("quiet start hour %02d does not belong to writer %d", state.QuietStartHour, idx)
+	// Any writer's value, not necessarily the reports writer's: see above. What
+	// must hold is that the persisted quiet hour is one the run actually used,
+	// i.e. it was not corrupted or left at a default by the save.
+	if state.QuietStartHour < 0 || state.QuietStartHour >= mutator {
+		t.Errorf("quiet start hour %02d is outside the range any writer used (0..%d)",
+			state.QuietStartHour, mutator-1)
 	}
 	if len(state.ReportEvents) > 100 {
 		t.Errorf("state file holds %d events, the cap is 100", len(state.ReportEvents))
