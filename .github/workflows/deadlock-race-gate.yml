@@ -15,9 +15,19 @@ concurrency:
 
 jobs:
   deadlock-race:
-    name: Deadlock & Race (Go 1.23.x)
+    # A matrix, not a fixed version: the builder image moved to 1.27, so the race
+    # gate has to exercise the toolchain that actually ships the container.
+    # 1.23.x stays in the matrix because it is the check name the `main` ruleset
+    # requires — a required check that stops reporting leaves every pull request
+    # waiting forever, which is the trap this matrix avoids by keeping it.
+    # fail-fast is off so one version failing does not hide the other's result.
+    name: Deadlock & Race (Go ${{ matrix.go-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ["1.23.x", "1.27.x"]
 
     steps:
       - name: Checkout
@@ -26,7 +36,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: "1.23.x"
+          go-version: ${{ matrix.go-version }}
           cache: true
 
       - name: Download modules

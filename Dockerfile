@@ -11,10 +11,14 @@
 # whole .git history and the local build artifacts into the builder stage.
 # ============================================================================
 
-# golang 1.23 matches the deadlock/race gate (.github/workflows/
-# deadlock-race-gate.yml runs 1.23.x) and is >= the 1.22 declared in go.mod,
-# so the image builds the same code the gates test.
-FROM golang:1.23-alpine AS builder
+# golang 1.27 is in the CI matrix (.github/workflows/ci.yml runs 1.22.x, 1.23.x
+# and 1.27.x) and in the deadlock/race gate (1.23.x and 1.27.x), and is >= the
+# 1.22 declared in go.mod, so the image is compiled by a toolchain the gates
+# actually test rather than by one nothing exercises.
+#
+# This line is deliberately not a floating tag: a builder that changes under
+# you turns a working secondary path into a failed build.
+FROM golang:1.27-alpine AS builder
 
 WORKDIR /app
 

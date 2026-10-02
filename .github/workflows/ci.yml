@@ -8,7 +8,7 @@ on:
       - "**/*.md"
       - ".github/rulesets/**"
   # No paths-ignore here. main-protection.json requires five checks
-  # (Secret Scan, Build & Test 1.22.x, Build & Test 1.23.x, Dependency Review,
+  # (Secret Scan, Build & Test 1.22.x/1.23.x/1.27.x, Dependency Review,
   # CodeQL Analysis (go)) with strict_required_status_checks_policy. If a docs
   # only PR skips this workflow, none of those contexts is ever reported and
   # the PR stays "Expected - Waiting for status to be reported" forever.
@@ -77,7 +77,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go-version: ["1.22.x", "1.23.x"]
+        go-version: ["1.22.x", "1.23.x", "1.27.x"]
 
     steps:
       - name: Checkout
