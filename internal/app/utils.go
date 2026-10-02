@@ -10,12 +10,53 @@ import (
 
 	"nasbot/internal/cmdexec"
 	"nasbot/internal/format"
+	pmodel "nasbot/pkg/model"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 // truncate is a convenience alias kept for readability in call sites (e.g. docker.go).
 func truncate(s string, max int) string { return format.Truncate(s, max) }
+
+// telegramMaxTextRunes is the per-message character budget Telegram enforces.
+// Anything longer is rejected with "message is too long".
+const telegramMaxTextRunes = 4096
+
+// sanitizeSecrets masks the credentials embedded in an error or a text.
+//
+// It is applied to every Telegram error before it reaches slog and before it
+// reaches a Telegram message: the same error object is used for both, so
+// sanitizing only the log would still leak the token into the chat.
+//
+// The pattern lives in pkg/model (model.SanitizeSecrets): pkg/commands logs and
+// sends Telegram errors too and cannot import internal/app, so a second copy of
+// the pattern here would be one more thing to keep in sync.
+func sanitizeSecrets(text string) string { return pmodel.SanitizeSecrets(text) }
+
+// sanitizeErr is sanitizeSecrets for an error, keeping the original in the chain
+// so errors.Is/errors.As keep working.
+func sanitizeErr(err error) error { return pmodel.SanitizeErr(err) }
+
+// splitTextChunks slices text into chunks of at most max runes, so a message
+// longer than Telegram's limit is split instead of rejected outright.
+func splitTextChunks(text string, max int) []string {
+	if max <= 0 {
+		return []string{text}
+	}
+	runes := []rune(text)
+	if len(runes) <= max {
+		return []string{text}
+	}
+	chunks := make([]string, 0, (len(runes)/max)+1)
+	for i := 0; i < len(runes); i += max {
+		end := i + max
+		if end > len(runes) {
+			end = len(runes)
+		}
+		chunks = append(chunks, string(runes[i:end]))
+	}
+	return chunks
+}
 
 // readCPUTemp reads CPU temperature from thermal zone or hwmon
 func readCPUTemp() float64 {
@@ -134,33 +175,76 @@ func parseUptime(status string) string {
 
 // getSmartDevices returns configured devices or defaults to sda/sdb
 func getSmartDevices(ctx *AppContext) []string {
-	if ctx != nil && ctx.Config != nil && len(ctx.Config.Notifications.SMART.Devices) > 0 {
-		return ctx.Config.Notifications.SMART.Devices
+	if ctx != nil && ctx.Cfg() != nil && len(ctx.Cfg().Notifications.SMART.Devices) > 0 {
+		return ctx.Cfg().Notifications.SMART.Devices
 	}
 	return []string{"sda", "sdb"}
 }
 
-// safeSend sends a Telegram message and logs any error, falling back to plain text if Markdown fails
-func safeSend(bot BotAPI, msg tgbotapi.Chattable) {
+// sendWithParseFallback sends msg and, when the send fails on the parse mode,
+// retries once with it cleared, so a single unbalanced Markdown marker costs the
+// formatting of one message instead of the whole text.
+//
+// It returns the error of the last attempt, or nil when something was delivered.
+func sendWithParseFallback(bot BotAPI, msg tgbotapi.Chattable) error {
 	if bot == nil {
-		return
+		return nil
 	}
-	if _, err := bot.Send(msg); err != nil {
-		if m, ok := msg.(tgbotapi.MessageConfig); ok && m.ParseMode != "" {
-			slog.Warn("Telegram markdown send failed, retrying without parse mode", "err", err)
-			m.ParseMode = ""
-			if _, retryErr := bot.Send(m); retryErr == nil {
-				return
-			}
+	_, err := bot.Send(msg)
+	if err == nil {
+		return nil
+	}
+
+	switch typed := msg.(type) {
+	case tgbotapi.MessageConfig:
+		if typed.ParseMode == "" {
+			return err
 		}
-		if e, ok := msg.(tgbotapi.EditMessageTextConfig); ok && e.ParseMode != "" {
-			slog.Warn("Telegram markdown edit failed, retrying without parse mode", "err", err)
-			e.ParseMode = ""
-			if _, retryErr := bot.Send(e); retryErr == nil {
-				return
-			}
+		slog.Warn("Telegram markdown send failed, retrying without parse mode", "err", sanitizeErr(err))
+		typed.ParseMode = ""
+		if _, retryErr := bot.Send(typed); retryErr != nil {
+			return retryErr
 		}
-		slog.Error("Telegram send failed", "err", err)
+		return nil
+	case *tgbotapi.MessageConfig:
+		if typed == nil || typed.ParseMode == "" {
+			return err
+		}
+		slog.Warn("Telegram markdown send failed, retrying without parse mode", "err", sanitizeErr(err))
+		typed.ParseMode = ""
+		if _, retryErr := bot.Send(typed); retryErr != nil {
+			return retryErr
+		}
+		return nil
+	case tgbotapi.EditMessageTextConfig:
+		if typed.ParseMode == "" {
+			return err
+		}
+		slog.Warn("Telegram markdown edit failed, retrying without parse mode", "err", sanitizeErr(err))
+		typed.ParseMode = ""
+		if _, retryErr := bot.Send(typed); retryErr != nil {
+			return retryErr
+		}
+		return nil
+	case *tgbotapi.EditMessageTextConfig:
+		if typed == nil || typed.ParseMode == "" {
+			return err
+		}
+		slog.Warn("Telegram markdown edit failed, retrying without parse mode", "err", sanitizeErr(err))
+		typed.ParseMode = ""
+		if _, retryErr := bot.Send(typed); retryErr != nil {
+			return retryErr
+		}
+		return nil
+	}
+	return err
+}
+
+// safeSend sends a Telegram message and logs any error, falling back to plain
+// text if Markdown fails.
+func safeSend(bot BotAPI, msg tgbotapi.Chattable) {
+	if err := sendWithParseFallback(bot, msg); err != nil {
+		slog.Error("Telegram send failed", "err", sanitizeErr(err))
 	}
 }
 

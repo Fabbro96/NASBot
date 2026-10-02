@@ -12,9 +12,6 @@
   },
   "rules": [
     {
-      "type": "creation"
-    },
-    {
       "type": "update"
     },
     {

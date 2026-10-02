@@ -27,6 +27,13 @@ func (c *SysInfoCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message,
 }
 func (c *SysInfoCmd) Description() string { return "Show detailed system info" }
 
+type DiskInfoCmd struct{}
+
+func (c *DiskInfoCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, args string) {
+	sendMarkdown(bot, msg.Chat.ID, getDiskInfoText(ctx))
+}
+func (c *DiskInfoCmd) Description() string { return "Show disk usage on demand" }
+
 type TempCmd struct{}
 
 func (c *TempCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, args string) {

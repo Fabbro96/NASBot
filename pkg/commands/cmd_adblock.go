@@ -7,7 +7,8 @@ import (
 type AdBlockCmd struct{}
 
 func (c *AdBlockCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, args string) {
-	if !ctx.Config.AdBlock.Enabled {
+	conf := cfg(ctx)
+	if conf == nil || !conf.AdBlock.Enabled {
 		sendMarkdown(bot, msg.Chat.ID, ctx.Tr("adblock_disabled"))
 		return
 	}

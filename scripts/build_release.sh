@@ -55,12 +55,23 @@ if [[ "$clean" == "true" ]]; then
     rm -f nasbot nasbot-arm64
 fi
 
+# Flag di build espliciti e non dipendenti dall'ambiente:
+#   GOOS/GOARCH/CGO_ENABLED  fissati qui, non ereditati dalla macchina;
+#   -trimpath                rimuove i percorsi assoluti della macchina di build
+#                            dal binario. Senza, due build dello stesso commit
+#                            su due macchine diverse danno hash diversi e il
+#                            binario pubblicato rivela home e username di chi
+#                            ha compilato;
+#   -s -w                   via tabella dei simboli e DWARF: il binario
+#                            distribuito non porta informazioni di debug.
+LDFLAGS="-s -w -X main.Version=${VERSION}"
+
 echo -e "${YELLOW}Building for generic AMD64 (Linux)...${NC}"
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.Version=${VERSION}" -o nasbot .
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "${LDFLAGS}" -o nasbot .
 echo -e "${GREEN}✅ Success: nasbot${NC}"
 
 echo -e "${YELLOW}Building for generic ARM64 (Linux)...${NC}"
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "-X main.Version=${VERSION}" -o nasbot-arm64 .
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "${LDFLAGS}" -o nasbot-arm64 .
 echo -e "${GREEN}✅ Success: nasbot-arm64${NC}"
 
 echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"

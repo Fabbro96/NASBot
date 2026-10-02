@@ -44,6 +44,9 @@ func (c *ConfigSetCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Messag
 		sendMarkdown(bot, msg.Chat.ID, fmt.Sprintf(ctx.Tr("configset_error"), err))
 		return
 	}
+	// A refused key must never be reported as applied: the message says what
+	// happened to every key the user sent, including the ones dropped because
+	// they are not configuration fields or are locked.
 	response := ctx.Tr("configset_success")
 	if len(result.Ignored) > 0 {
 		response += fmt.Sprintf("\n"+ctx.Tr("configset_ignored"), strings.Join(result.Ignored, ", "))

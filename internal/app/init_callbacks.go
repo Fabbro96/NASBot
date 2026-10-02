@@ -112,6 +112,18 @@ func SetupCallbackRegistry() *CallbackRegistry {
 		return true
 	}))
 
+	// Weekly prune confirmation. Both payloads carry the token minted with the
+	// inventory, so a keyboard from a previous week — or from before a restart —
+	// resolves to nothing and the handler refuses it.
+	r.RegisterPrefix("docker_prune_confirm_", CallbackFunc(func(ctx *AppContext, bot BotAPI, chatID int64, msgID int, query *tgbotapi.CallbackQuery, data string) bool {
+		handlePruneConfirmCallback(ctx, bot, chatID, msgID, data)
+		return true
+	}))
+	r.RegisterPrefix("docker_prune_cancel_", CallbackFunc(func(ctx *AppContext, bot BotAPI, chatID int64, msgID int, query *tgbotapi.CallbackQuery, data string) bool {
+		handlePruneCancelCallback(ctx, bot, chatID, msgID, data)
+		return true
+	}))
+
 	// Prefixes
 	r.RegisterPrefix("health_", CallbackFunc(func(ctx *AppContext, bot BotAPI, chatID int64, msgID int, query *tgbotapi.CallbackQuery, data string) bool {
 		handleHealthCallback(ctx, bot, query, data)
@@ -131,8 +143,19 @@ func SetupCallbackRegistry() *CallbackRegistry {
 	r.RegisterPrefix("proc_kill_", CallbackFunc(handleProcKill))
 	r.RegisterExact("proc_refresh", CallbackFunc(handleProcRefresh))
 
-	// Delegate settings to the existing logic initially, to avoid a 1000 line registry
-	r.RegisterPrefix("", CallbackFunc(func(ctx *AppContext, bot BotAPI, chatID int64, msgID int, query *tgbotapi.CallbackQuery, data string) bool {
+	// Display-only buttons (current values, report interval). The callback query
+	// is already acknowledged by handleCallback, so acknowledging the press is
+	// the whole behaviour: without a handler it lands in the fallback and is
+	// logged as unknown data.
+	r.RegisterExact("noop", CallbackFunc(func(ctx *AppContext, bot BotAPI, chatID int64, msgID int, _ *tgbotapi.CallbackQuery, _ string) bool {
+		return true
+	}))
+
+	// Settings owns a long tail of callback data (settings_*, report_*, thresh_*,
+	// prune_*, quiet_*, set_lang_*). It is a fallback, not a prefix: it must only
+	// run when no other handler claimed the payload, otherwise a shared prefix
+	// such as "report_" would shadow the specific handler that owns it.
+	r.RegisterFallback(CallbackFunc(func(ctx *AppContext, bot BotAPI, chatID int64, msgID int, query *tgbotapi.CallbackQuery, data string) bool {
 		return handleSettingsCallback(ctx, bot, chatID, msgID, data)
 	}))
 

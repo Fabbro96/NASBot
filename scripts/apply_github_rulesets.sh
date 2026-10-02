@@ -41,8 +41,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if ! command -v python >/dev/null 2>&1; then
-  echo "❌ python is required to parse ruleset templates"
+# python3, non python: su Fedora il comando `python` esiste solo se è installato
+# il pacchetto opzionale python-unversioned-command, quindi richiederlo rendeva
+# lo script non eseguibile su una macchina Fedora di serie.
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "❌ python3 is required to parse ruleset templates"
   exit 1
 fi
 
@@ -82,13 +85,13 @@ apply_ruleset() {
   template_exists "$file"
 
   local name target
-  name=$(python - <<PY
+  name=$(python3 - <<PY
 import json
 with open("$file", "r", encoding="utf-8") as f:
     print(json.load(f)["name"])
 PY
 )
-  target=$(python - <<PY
+  target=$(python3 - <<PY
 import json
 with open("$file", "r", encoding="utf-8") as f:
     print(json.load(f)["target"])

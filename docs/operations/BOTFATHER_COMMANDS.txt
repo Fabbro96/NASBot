@@ -4,30 +4,89 @@
 Copy and paste these commands into BotFather when configuring your bot:
 (Main Menu → /mybots → Choose your bot → Edit Bot → Edit Commands)
 
-status - 📊 Quick system overview
-quick - ⚡ Ultra-compact one-liner status
+WHICH COMMANDS ACTUALLY NEED THIS FILE
+---------------------------------------
+NASBot registers its own Telegram menu at every start (setMyCommands,
+internal/app/runtime_main.go) with these 20 commands:
+
+  status, quick, docker, dstats, top, temp, net, logs, logsearch, report,
+  health, config, sysinfo, diskpred, settings, update, changelog, reboot,
+  shutdown, help
+
+Those never need this file: they are already in the chat menu.
+
+The commands marked (*) below are registered and working in the bot but are
+NOT in the pushed menu, so the user has to add them here once (or just type
+them). Everything in this file is a valid command: none of them is a
+documentation-only name.
+
+BotFather limits: command name 1-32 chars, description 3-256 chars. Every
+line below respects both. Descriptions are the English strings the bot itself
+uses (cmd_*_desc in internal/app/translations.go).
+
+===================================================================
+MAIN MENU — pushed by the bot, listed here for reference
+===================================================================
+status - 📊 General system status
+quick - ⚡ Quick summary (CPU, RAM, Disks)
 docker - 🐳 Manage Docker containers
 dstats - 📈 Container resource usage
-top - 🔝 Top processes by CPU/RAM
-temp - 🌡 Check system temperatures
+top - 🔝 Monitor active processes
+temp - 🌡 Show hardware temperatures
 net - 🌐 Network information
 logs - 📝 View recent system logs
 logsearch - 🔍 Search container logs
-report - 📋 Generate full system report
-ping - 🏓 Check bot availability
-health - 💓 Healthchecks.io status & stats
+report - 📋 Generate full diagnostic report
+health - 💓 Healthchecks.io status
 config - ⚙️ Show current configuration
 sysinfo - 💻 Detailed system information
-speedtest - 🚀 Run internet speed test
 diskpred - 💾 Disk space prediction
-settings - 🔧 Configure bot settings
-language - 🌍 Change language (EN/IT)
-container - 📦 Manage specific container
-kill - 💀 Force kill a container
-restartdocker - 🔄 Restart Docker service
+diskinfo - 💾 Disk usage on demand
+settings - 🔧 Bot settings and preferences
 update - ⬇️ Download and install latest update
 changelog - 📄 Show the latest release changelog
-reboot - 🔁 Reboot the system
+reboot - 🔁 Reboot the NAS server
 shutdown - ⏹ Shutdown the system
 help - ❓ Show all available commands
+
+===================================================================
+NOT IN THE MENU — ADD THESE (*) or type them
+===================================================================
+processes (*) - 🔝 Interactive process manager (kill/terminate)
+container (*) - 📦 Manage specific container
+kill (*) - 💀 Force kill container
+speedtest (*) - 🚀 Run speed test
+ping (*) - 🏓 Check if bot is alive
+backup (*) - 📦 Send a backup zip of configurations and databases
+version (*) - 🏷 Show bot version
+forcereboot (*) - ⚡ Forced reboot (no confirm)
+adblock (*) - 🛡 AdBlock control (Pi-hole/AdGuard)
+ask (*) - 🤖 Ask the AI about recent logs
+agy (*) - 🧠 Execute Antigravity CLI (agy)
+cmd (*) - 🧩 Run an allowlisted command (off by default)
+configjson (*) - 📄 Show full config.json (redacted)
+configset (*) - 🛠 Update configuration via JSON patch
+
+===================================================================
+ARGUMENTS
+===================================================================
+container <name>       kill <name>            logsearch <name> <keyword>
+ask <question>         agy <args>             cmd <binary> [args...]
+configset <json>       backup [user_id]
+logs [n]
+
+===================================================================
+NOTES
+===================================================================
+* Aliases of the same commands (they work, but do not clutter the menu):
+  start→status, q→quick, prediction→diskpred, healthchecks→health,
+  v→version, shell→cmd, exec→cmd.
+* Wake-on-LAN (/wol) was removed from the bot in v0.12.1. Do not create it:
+  the bot has no handler and would ignore it.
+* The `wake_on_lan` block still present in config.example.json is inert: no
+  Go code reads it.
+* `/cmd` answers with a refusal until shell_command.enabled is true and
+  shell_command.allowed_binaries is non-empty. See docs/SECURITY.md.
+* Command descriptions are translated at runtime: switching the bot language
+  re-registers the menu in that language.
 ===================================================================

@@ -1,66 +1,53 @@
 # NASBot Configuration Template
-# Copy to nasbot.config.local and customize for your environment
-# All values can be overridden via environment variables: PREFIX_VAR=value
+# Copy to nasbot.config.local and customize for your environment, then pass it with
+#   ./scripts/package_runtime.sh --config nasbot.config.local
+#
+# IMPORTANT
+#   * --config re-runs the whole hierarchy WHILE it is parsed, so it overrides any
+#     flag given before it. Put --config first, flags after.
+#   * Without --config this file is auto-loaded by scripts/common.sh and then
+#     discarded for the keys the scripts re-initialise from the environment
+#     (BUILD_ARCH, PACKAGE_OUT_DIR, VERSION, BINARY_NAME, INCLUDE_*,
+#     ADDITIONAL_FILES). Environment variables (NASBOT_*) are the reliable way to
+#     override those.
+#   * Only the keys below are read by a script. Keys that used to be listed here
+#     (GO_VERSION, BUILD_FLAGS, DEPLOY_USER/HOST, USE_RSYNC, WATCHDOG_*,
+#     UPDATE_CHECK_INTERVAL, RESTART_SCRIPT, AUTO_APPLY_RELEASES, CACHE_DIR,
+#     PARALLEL_WORKERS, NOTIFICATIONS_*, HEALTH_CHECK_*, NETWORK_INTERFACE,
+#     CUSTOM_ENV, LOG_BACKUP_COUNT, TZ, UMASK) were never read and have been removed.
+#     Watchdog and update behaviour is configured in the bot's config.json
+#     (fs_watchdog and update sections), not here.
+#
+# Format: plain KEY="value" lines. load_config greps for '^\s*[A-Z_]+=' and sources
+# the result, so anything else is ignored silently.
 
 # ============================================================================
-# BUILD SETTINGS
+# BUILD SETTINGS (package_runtime.sh, deploy_runtime_rsync.sh)
 # ============================================================================
-# Go version to use (auto-detect if empty)
-GO_VERSION=""
-# Valid architectures: native, arm64, amd64, armv7
+# Valid architectures: native, arm64, amd64, armv7, 386
 BUILD_ARCH="native"
-# Additional go build flags
-BUILD_FLAGS=""
+# Version string stamped into the binary with -ldflags -X main.Version=...
+VERSION="dev"
 
 # ============================================================================
-# RUNTIME SETTINGS
+# DEPLOYMENT SETTINGS (deploy_runtime_rsync.sh)
 # ============================================================================
-# Application name (used in scripts and logs)
-APP_NAME="nasbot"
-# Config file path (relative to runtime directory or absolute)
-CONFIG_FILE="config.json"
-# Config example file path
-CONFIG_EXAMPLE="config.example.json"
-
-# ============================================================================
-# LOGGING & STATE
-# ============================================================================
-# Log file path (absolute or relative to runtime directory)
-LOG_FILE="nasbot.log"
-# PID file path (absolute or relative to runtime directory)
-PID_FILE="nasbot.pid"
-# State file path (absolute or relative to runtime directory)
-STATE_FILE="nasbot_state.json"
-# Log rotation settings (optional)
-LOG_MAX_SIZE_MB=10
-LOG_BACKUP_COUNT=5
-
-# ============================================================================
-# DEPLOYMENT SETTINGS
-# ============================================================================
-# Default deployment target (can be overridden via --target flag)
+# Default deployment target. --target is required unless this key is set AND the
+# file is re-loaded with --config. Format: user@host:/absolute/path
 DEPLOY_TARGET=""
-# Deployment user (can differ from system user)
-DEPLOY_USER=""
-# Deployment host (can differ from current host)
-DEPLOY_HOST=""
-# Deployment path on remote host
-DEPLOY_PATH="/Volume1/public"
-# Use rsync for deployment (true/false)
-USE_RSYNC="true"
-# Additional rsync options
+# Extra rsync options, split on whitespace
 RSYNC_OPTS="--compress --progress"
-# Files/patterns to never delete during sync
+# Colon-separated names that --delete never removes
 RSYNC_EXCLUDE_DELETE="config.json:nasbot.log:nasbot.pid:nasbot_state.json:#recycle"
 
 # ============================================================================
-# PACKAGE SETTINGS
+# PACKAGE SETTINGS (package_runtime.sh)
 # ============================================================================
-# Output directory for packaged runtime
-PACKAGE_OUT_DIR="./dist"
-# Include example config in package
+# Output directory for the packaged runtime (script default: ./dist/runtime)
+PACKAGE_OUT_DIR="./dist/runtime"
+# Include config.example.json in the bundle
 INCLUDE_EXAMPLE_CONFIG="true"
-# Include README for runtime
+# Include README_RUNTIME.md in the bundle
 INCLUDE_README_RUNTIME="true"
 # Additional files to include (colon-separated paths relative to repo root)
 ADDITIONAL_FILES=""
@@ -68,66 +55,24 @@ ADDITIONAL_FILES=""
 BINARY_NAME="nasbot"
 
 # ============================================================================
-# WATCHDOG SETTINGS
+# LOGGING
 # ============================================================================
-# Enable watchdog service (for monitoring file system changes)
-WATCHDOG_ENABLED="false"
-# Watchdog binary name
-WATCHDOG_BINARY="fswatchdog"
-# Watch path for NAS updates
-WATCH_PATH="/mnt/nas"
-
-# ============================================================================
-# UPDATE SETTINGS
-# ============================================================================
-# Check for updates on startup
-CHECK_UPDATES="true"
-# Update check interval (seconds)
-UPDATE_CHECK_INTERVAL=3600
-# Pattern to detect update files (must match exactly)
-UPDATE_FILE_PATTERN="nasbot-update*"
-# Auto-restart after update
-AUTO_RESTART_ON_UPDATE="true"
-# Restart script path
-RESTART_SCRIPT="./start_bot_runtime.sh"
-
-# Automatically apply new GitHub releases (download & restart)
-AUTO_APPLY_RELEASES="false"
-
-# ============================================================================
-# PERFORMANCE & DEBUG
-# ============================================================================
-# Enable verbose logging (true/false)
+# [DEBUG] lines for every resolved key
 VERBOSE="false"
-# Debug mode (additional logging, disables daemonization)
-DEBUG="false"
-# Number of parallel workers
-PARALLEL_WORKERS=""
-# Database/cache location (optional)
-CACHE_DIR="./cache"
 
 # ============================================================================
-# NOTIFICATIONS & MONITORING
+# THE BUNDLE RUNNER READS ENVIRONMENT VARIABLES, NOT THIS FILE
 # ============================================================================
-# Send notifications (telegram, discord, webhook, etc.)
-NOTIFICATIONS_ENABLED="false"
-# Notification endpoint (depends on type)
-NOTIFICATION_ENDPOINT=""
-# Health check endpoint (for external monitoring)
-HEALTH_CHECK_ENABLED="false"
-# Health check port
-HEALTH_CHECK_PORT=8080
-
-# ============================================================================
-# ADVANCED
-# ============================================================================
-# Timezone (affects log timestamps)
-TZ="UTC"
-# Umask for file creation
-UMASK="0022"
-# Max file descriptors
-ULIMIT_N=""
-# Network interface (if multiple NAS connections)
-NETWORK_INTERFACE=""
-# Custom environment variables (colon-separated KEY=VALUE)
-CUSTOM_ENV=""
+# On the NAS, start_bot.sh (= scripts/start_bot_runtime.sh) sources common.sh with
+# NASBOT_NO_AUTO_LOAD=1, so none of the keys above reach it. Pass these inline:
+#
+#   NASBOT_LOG_FILE=/var/log/nasbot/app.log
+#   NASBOT_PID_FILE=/run/nasbot.pid
+#   NASBOT_STATE_FILE=/var/lib/nasbot/state.json
+#   NASBOT_LOG_MAX_SIZE_MB=50
+#   NASBOT_AUTO_RESTART_ON_UPDATE=true
+#   NASBOT_UPDATE_FILE_PATTERN="nasbot-update*"
+#   NASBOT_ULIMIT_N=4096
+#   NASBOT_VERBOSE=true
+#   NASBOT_DEBUG=true
+#   ./start_bot.sh start

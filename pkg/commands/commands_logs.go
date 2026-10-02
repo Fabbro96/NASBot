@@ -2,9 +2,13 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
+
+	"nasbot/internal/format"
 )
 
 func getLogsText(ctx *AppContext) string {
@@ -17,23 +21,33 @@ func getLogsText(ctx *AppContext) string {
 	return fmt.Sprintf("%s```\n%s\n```", tr("logs_title"), recentLogs)
 }
 
+// errNoLogs is internal only: the user sees the translated "no logs" message.
+var errNoLogs = errors.New("no logs available")
+
 func getRecentLogs(_ *AppContext) (string, error) {
 	reqCtx, cancel := context.WithTimeout(context.Background(), logCmdTimeout)
 	defer cancel()
 
 	out, err := runCommandOutput(reqCtx, "dmesg")
 	if err != nil || len(out) == 0 {
-		fallbackOut, fallbackErr := runCommandOutput(reqCtx, "journalctl", "-n", fmt.Sprint(maxLogLines), "--no-pager")
+		// Own context for the fallback: when dmesg blocks until its deadline
+		// (common when the kernel ring buffer is full) the request context is
+		// already expired, so journalctl had ~0 ms left and /logs reported
+		// "No logs available" even though journalctl would have worked.
+		fallbackCtx, cancelFallback := context.WithTimeout(context.Background(), logCmdTimeout)
+		defer cancelFallback()
+
+		fallbackOut, fallbackErr := runCommandOutput(fallbackCtx, "journalctl", "-n", strconv.Itoa(maxLogLines), "--no-pager")
 		if fallbackErr != nil || len(fallbackOut) == 0 {
 			if err != nil {
 				return "", fmt.Errorf("dmesg failed: %w; journalctl failed: %v", err, fallbackErr)
 			}
-			return "", fmt.Errorf("no logs available")
+			return "", errNoLogs
 		}
 		out = fallbackOut
 	}
 	if len(out) == 0 {
-		return "", fmt.Errorf("no logs available")
+		return "", errNoLogs
 	}
 
 	lines := strings.Split(string(out), "\n")
@@ -43,9 +57,10 @@ func getRecentLogs(_ *AppContext) (string, error) {
 	}
 	recentLogs := strings.Join(lines[start:], "\n")
 
-	if len(recentLogs) > maxLogChars {
-		recentLogs = recentLogs[len(recentLogs)-maxLogChars:]
-	}
+	// Keep the newest lines: a byte slice would split runes in half and turn
+	// non-ASCII kernel timestamps into U+FFFD, which makes Telegram reject the
+	// message.
+	recentLogs = runeTail(recentLogs, maxLogChars)
 
 	return strings.TrimSpace(recentLogs), nil
 }
@@ -55,10 +70,11 @@ func getRecentLogs(_ *AppContext) (string, error) {
 // ═══════════════════════════════════════════════════════════════════
 
 func getLogSearchText(ctx *AppContext, args string) string {
+	tr := ctx.Tr
 	// Parse: container keyword
 	parts := strings.SplitN(strings.TrimSpace(args), " ", 2)
 	if len(parts) < 2 {
-		return ctx.Tr("logsearch_usage")
+		return tr("logsearch_usage")
 	}
 
 	container := parts[0]
@@ -66,7 +82,7 @@ func getLogSearchText(ctx *AppContext, args string) string {
 
 	// Sanitize container name to prevent injection
 	if strings.ContainsAny(container, ";|&$`\\\"'") {
-		return ctx.Tr("logsearch_invalid_container")
+		return tr("logsearch_invalid_container")
 	}
 
 	// Search logs
@@ -85,16 +101,13 @@ func getLogSearchText(ctx *AppContext, args string) string {
 
 	for _, line := range lines {
 		if strings.Contains(strings.ToLower(line), keywordLower) {
-			// Truncate long lines
-			if len(line) > 100 {
-				line = line[:97] + "..."
-			}
-			matches = append(matches, line)
+			// Truncate long lines (rune-safe)
+			matches = append(matches, format.Truncate(line, maxLogLineChars))
 		}
 	}
 
 	if len(matches) == 0 {
-		return fmt.Sprintf(ctx.Tr("logsearch_no_matches"), keyword, container)
+		return trf(tr, "logsearch_no_matches", keyword, container)
 	}
 
 	// Limit to last 10 matches
@@ -104,8 +117,8 @@ func getLogSearchText(ctx *AppContext, args string) string {
 	}
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf(ctx.Tr("logsearch_title"), keyword, container))
-	b.WriteString(fmt.Sprintf(ctx.Tr("logsearch_found_fmt"), totalFound, len(matches)))
+	b.WriteString(trf(tr, "logsearch_title", keyword, container))
+	b.WriteString(trf(tr, "logsearch_found_fmt", totalFound, len(matches)))
 	b.WriteString("```\n")
 	for _, m := range matches {
 		b.WriteString(m + "\n")

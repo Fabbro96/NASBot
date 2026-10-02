@@ -21,3 +21,15 @@ updates:
     labels:
       - "dependencies"
       - "ci"
+
+  # Keeps golang:*-alpine (builder) and alpine:* (runtime) current.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "05:00"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "docker"

@@ -16,8 +16,13 @@ import (
 //  NETWORK WATCHDOG — gateway, internet reachability, DNS
 // ═══════════════════════════════════════════════════════════════════
 
-func checkNetworkHealth(ctx *AppContext, bot BotAPI) {
-	cfg := ctx.Config
+// checkNetworkHealth runs the full network probe. It is the slowest watchdog
+// (~18s worst case: 2 ping x 2 attempts x 2s + 1s pause, plus 2 DNS lookups of
+// 3s + 1s pause), which is why it owns its own goroutine and its own ticker.
+// runCtx only shortens shutdown: a probe in flight is abandoned instead of
+// holding the goroutine (and the 60s ticker) past the signal.
+func checkNetworkHealth(ctx *AppContext, bot BotAPI, runCtx context.Context) {
+	cfg := ctx.Cfg()
 	forceRebootAfter := networkForceRebootAfter(cfg)
 
 	ctx.Monitor.Mu.Lock()
@@ -45,7 +50,7 @@ func checkNetworkHealth(ctx *AppContext, bot BotAPI) {
 	var reasons []string
 
 	if cfg.NetworkWatchdog.Gateway != "" {
-		if pingHost(cfg.NetworkWatchdog.Gateway) {
+		if pingHost(runCtx, cfg.NetworkWatchdog.Gateway) {
 			pingOk = true
 		} else {
 			reasons = append(reasons, fmt.Sprintf("Gateway %s unreachable", cfg.NetworkWatchdog.Gateway))
@@ -53,7 +58,7 @@ func checkNetworkHealth(ctx *AppContext, bot BotAPI) {
 	}
 
 	for _, target := range targets {
-		if pingHost(target) {
+		if pingHost(runCtx, target) {
 			pingOk = true
 			break
 		}
@@ -62,7 +67,7 @@ func checkNetworkHealth(ctx *AppContext, bot BotAPI) {
 		reasons = append(reasons, "No ping targets reachable")
 	}
 
-	dnsOk := checkDNS(dnsHost)
+	dnsOk := checkDNS(runCtx, dnsHost)
 	if !dnsOk {
 		reasons = append(reasons, fmt.Sprintf("DNS lookup failed: %s", dnsHost))
 	}
@@ -167,32 +172,41 @@ func networkForceRebootAfter(cfg *Config) time.Duration {
 	return time.Duration(mins) * time.Minute
 }
 
-func pingHost(host string) bool {
-	// Try up to 2 times with 1 second pause to avoid blocking the monitor loop
+// pingHost tries up to 2 times with a 1 second pause. It returns false as soon
+// as runCtx is done, so a shutdown during a probe does not wait out the
+// remaining attempts.
+func pingHost(runCtx context.Context, host string) bool {
 	for i := 0; i < 2; i++ {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(runCtx, 2*time.Second)
 		err := runCommand(ctx, "ping", "-c", "1", "-W", "2", host)
 		cancel()
 		if err == nil {
 			return true // Success
 		}
+		if runCtx.Err() != nil {
+			return false
+		}
 		if i < 1 {
-			time.Sleep(1 * time.Second)
+			if !sleepWithContext(runCtx, 1*time.Second) {
+				return false
+			}
 		}
 	}
 	return false
 }
 
-func checkDNS(host string) bool {
-	if doCheckDNS(host) {
+func checkDNS(runCtx context.Context, host string) bool {
+	if doCheckDNS(runCtx, host) {
 		return true
 	}
-	time.Sleep(1 * time.Second)
-	return doCheckDNS(host)
+	if !sleepWithContext(runCtx, 1*time.Second) {
+		return false
+	}
+	return doCheckDNS(runCtx, host)
 }
 
-func doCheckDNS(host string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+func doCheckDNS(runCtx context.Context, host string) bool {
+	ctx, cancel := context.WithTimeout(runCtx, 3*time.Second)
 	defer cancel()
 
 	r := &net.Resolver{}

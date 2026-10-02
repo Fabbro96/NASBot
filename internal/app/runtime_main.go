@@ -42,7 +42,7 @@ func RunBot() {
 	app = InitApp(&cfg)
 
 	// Set Timezone
-	tz := app.Config.Timezone
+	tz := app.Cfg().Timezone
 	if tz == "" {
 		tz = "Europe/Rome"
 	}
@@ -62,9 +62,12 @@ func RunBot() {
 	botClient := &http.Client{
 		Timeout: 75 * time.Second, // Must be larger than long-polling timeout (60s)
 	}
-	bot, err := tgbotapi.NewBotAPIWithClient(app.Config.BotToken, tgbotapi.APIEndpoint, botClient)
+	bot, err := tgbotapi.NewBotAPIWithClient(app.Cfg().BotToken, tgbotapi.APIEndpoint, botClient)
 	if err != nil {
-		slog.Error("Failed to start bot", "err", err)
+		// The error is a *url.Error carrying the full endpoint URL, bot token
+		// included. Logging goes to stdout as well as to the log file, so an
+		// unsanitized error puts the token in the systemd journal.
+		slog.Error("Failed to start bot", "err", sanitizeErr(err))
 		closeLogger()
 		os.Exit(1)
 	}
@@ -75,7 +78,7 @@ func RunBot() {
 
 	// Clear webhook
 	if _, err := bot.Request(tgbotapi.DeleteWebhookConfig{DropPendingUpdates: true}); err != nil {
-		slog.Error("Delete webhook failed", "err", err)
+		slog.Error("Delete webhook failed", "err", sanitizeErr(err))
 	}
 
 	// Register Bot Commands
@@ -107,11 +110,28 @@ func RunBot() {
 	goSafe("healthchecks-pinger", func() { startHealthchecksPinger(app, bot, rootCtx) })
 	goSafe("release-update-notifier", func() { updaterLoop(app, bot, rootCtx) })
 
+	// The filesystem watchdog is not a goroutine of its own: it is the
+	// "fs-space" lane of autonomousManager, so its Timer, its shutdown and its
+	// panic recovery are the shared ones. Logged here because the lane is
+	// otherwise invisible until its first check, and "nothing in the log" would
+	// be indistinguishable from a dead branch again.
+	if fsw := app.Cfg().FSWatchdog; fsw.Enabled {
+		slog.Info("[FSWatchdog] attached to the autonomous manager",
+			"first_check_in", fsWatchdogFirstCheckDelay,
+			"check_every", fsw.CheckIntervalMins,
+			"warning_pct", fsw.WarningThreshold,
+			"critical_pct", fsw.CriticalThreshold)
+	}
+
 	// Send /start signal to healthchecks.io
 	goSafe("healthchecks-start-ping", func() { pingHealthchecksStart(app) })
 
-	// Wait for stats to be ready
-	time.Sleep(2 * time.Second)
+	// Wait for the first sample, so the first /status is not built on empty
+	// statistics. Selective and bounded: the fixed two second sleep it replaces
+	// ignored ctx.Stats entirely and could not be interrupted by rootCtx.
+	if !waitForStatsReady(rootCtx, app, 5*time.Second) {
+		slog.Warn("Boot continues without initial statistics", "timeout", "5s")
+	}
 
 	// Update Loop
 	u := tgbotapi.NewUpdate(0)
@@ -136,7 +156,7 @@ func RunBot() {
 				return
 			}
 
-			if update.Message.Chat.ID != int64(app.Config.AllowedUserID) {
+			if update.Message.Chat.ID != app.Cfg().AllowedUserID {
 				return
 			}
 
@@ -204,6 +224,36 @@ func goSafeResilient(name string, runCtx context.Context, restartDelay time.Dura
 	}()
 }
 
+// waitForStatsReady blocks until the stats collector has published its first
+// sample, the context is cancelled or the timeout expires, whichever comes
+// first. It reports whether the statistics are ready.
+func waitForStatsReady(runCtx context.Context, appCtx *AppContext, timeout time.Duration) bool {
+	if appCtx == nil || appCtx.Stats == nil {
+		return false
+	}
+	if _, ready := appCtx.Stats.Get(); ready {
+		return true
+	}
+
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-runCtx.Done():
+			return false
+		case <-deadline.C:
+			return false
+		case <-ticker.C:
+			if _, ready := appCtx.Stats.Get(); ready {
+				return true
+			}
+		}
+	}
+}
+
 func sendStartupNotification(ctx *AppContext, bot BotAPI) {
 	var nextReportStr string
 	enabled, _, _, _ := ctx.Settings.GetReportsDetailedSettings()
@@ -214,16 +264,9 @@ func sendStartupNotification(ctx *AppContext, bot BotAPI) {
 	}
 
 	var quietInfo string
-	ctx.Settings.Mu.RLock()
-	quietEnabled := ctx.Settings.QuietHours.Enabled
-	qStartH := ctx.Settings.QuietHours.Start.Hour
-	qStartM := ctx.Settings.QuietHours.Start.Minute
-	qEndH := ctx.Settings.QuietHours.End.Hour
-	qEndM := ctx.Settings.QuietHours.End.Minute
-	ctx.Settings.Mu.RUnlock()
-
-	if quietEnabled {
-		quietInfo = fmt.Sprintf(ctx.Tr("boot_quiet_fmt"), qStartH, qStartM, qEndH, qEndM)
+	quiet := ctx.Settings.GetQuietHours()
+	if quiet.Enabled {
+		quietInfo = fmt.Sprintf(ctx.Tr("boot_quiet_fmt"), quiet.Start.Hour, quiet.Start.Minute, quiet.End.Hour, quiet.End.Minute)
 	}
 
 	// Check if bot was updated since last run
@@ -242,7 +285,7 @@ func sendStartupNotification(ctx *AppContext, bot BotAPI) {
 	crashInfo := checkPreviousBootCrash(ctx)
 	startupText := fmt.Sprintf(ctx.Tr("boot_online"), nextReportStr, quietInfo) + updateInfo + crashInfo
 
-	msg := tgbotapi.NewMessage(int64(ctx.Config.AllowedUserID), startupText)
+	msg := tgbotapi.NewMessage(ctx.Cfg().AllowedUserID, startupText)
 	msg.ParseMode = "Markdown"
 	safeSend(bot, msg)
 }
@@ -273,7 +316,7 @@ func registerBotCommands(ctx *AppContext, bot BotAPI) {
 
 	req := tgbotapi.NewSetMyCommands(cmds...)
 	if _, err := bot.Request(req); err != nil {
-		slog.Warn("Failed to register bot commands", "err", err)
+		slog.Warn("Failed to register bot commands", "err", sanitizeErr(err))
 	} else {
 		slog.Debug("Bot commands registered successfully")
 	}

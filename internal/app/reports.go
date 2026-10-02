@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 
@@ -81,7 +82,7 @@ func generateDailyReport(ctx *AppContext, greeting string, onModelChange func(st
 		containerLabel = ctx.Tr("container_running")
 	}
 
-	if ctx.Config.Healthchecks.Enabled {
+	if ctx.Cfg().Healthchecks.Enabled {
 		ctx.Monitor.Mu.Lock()
 		hc := ctx.Monitor.Healthchecks
 
@@ -122,6 +123,10 @@ func generateDailyReport(ctx *AppContext, greeting string, onModelChange func(st
 
 // generateReport generates an on-demand, explicit NAS snapshot, typically triggered
 // by direct commands like /report. Reuses daily routines to fetch events and queries the AI.
+//
+// The manual flag is part of the commands binding signature
+// (commands_runtime_bindings.go: GenerateReport) and every in-tree caller passes
+// true, so the !manual branch below is kept only because the binding exposes it.
 func generateReport(ctx *AppContext, manual bool, onModelChange func(string)) string {
 	if !manual {
 		return generateDailyReport(ctx, "> *NAS Report*", onModelChange)
@@ -175,18 +180,37 @@ func generateReport(ctx *AppContext, manual bool, onModelChange func(string)) st
 	return b.String()
 }
 
-// filterSignificantEvents strips out minor system logs taking up prompt space to save tokens and noise.
+// reStressDurationTail matches the "for <duration>" tail that
+// checkResourceStress appends to its events, e.g. "CPU high (95%) for 30s".
+// The old filter compared against the literal "for 30s" and "for 1m", which
+// never matched the second form (time.Duration renders 60s as "1m0s") and only
+// caught one exact duration.
+var reStressDurationTail = regexp.MustCompile(`\sfor\s+((?:\d+[hms])+)$`)
+
+// filterSignificantEvents drops transient stress blips: a resource that crossed
+// the threshold for less than a minute carries no information for the daily
+// report. Anything that does not end in a parseable duration is kept.
 func filterSignificantEvents(events []ReportEvent) []ReportEvent {
-	var filtered []ReportEvent
+	filtered := make([]ReportEvent, 0, len(events))
 	for _, e := range events {
-		msg := strings.ToLower(e.Message)
-		// Basic filtering logic
-		if strings.Contains(msg, "for 30s") || strings.Contains(msg, "for 1m") {
+		if isTransientStressEvent(e.Message) {
 			continue
 		}
 		filtered = append(filtered, e)
 	}
 	return filtered
+}
+
+func isTransientStressEvent(message string) bool {
+	m := reStressDurationTail.FindStringSubmatch(message)
+	if m == nil {
+		return false
+	}
+	d, err := time.ParseDuration(m[1])
+	if err != nil {
+		return false
+	}
+	return d < time.Minute
 }
 
 // filterEventsSince preserves only memory events recorded past a specific timeframe threshold.

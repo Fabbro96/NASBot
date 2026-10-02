@@ -1,12 +1,15 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
 	"regexp"
 	"strings"
 	"time"
+
+	"nasbot/internal/format"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -16,17 +19,50 @@ import (
 // e.g. "oom_reaper: reaped process 123 (python3)..."
 var reOOMProcess = regexp.MustCompile(`(?:Killed process|reaped process) \d+ \((.+?)\)`)
 
+// reHungTask matches a kernel hung-task / stall report. A real line looks like
+//
+//	INFO: task kworker/0:1:123 blocked for more than 120 seconds.
+//
+// This could never be matched with strings.Contains, because the entry in
+// kernelEventTypes is a pattern, not a literal. It is compiled once at package
+// level, so a cycle costs one MatchString per line, not one Compile.
+var reHungTask = regexp.MustCompile(`(?i)(?:info:\s*)?task\s+\S+\s+blocked for more than\s+\d+\s+seconds?`)
+
 // OOM Loop thresholds
 const (
 	oomLoopWindow    = 30 * time.Minute
 	oomLoopThreshold = 5
 )
 
+// maxKernelLogLines bounds how many dmesg lines are scanned per cycle. The
+// kernel ring buffer holds 100k+ lines on a long uptime, and the previous code
+// split them all, lowercased each of them once per event type (5 types) and ran
+// 25 strings.Contains on each: once a second of CPU, every single cycle.
+const maxKernelLogLines = 300
+
+// kernelContextRunes bounds the log context attached to an alert. Truncate is
+// rune-aware, so a multi-byte kernel line is cut on a character boundary and the
+// alert cannot be lost to a UTF-8 error.
+const kernelContextRunes = 3000
+
 // kernelEventType defines a class of critical kernel events
 type kernelEventType struct {
 	Name     string
 	TrKey    string
 	Keywords []string
+	// Pattern is checked in addition to Keywords, against the lowercased line,
+	// for events whose kernel log form is not a literal substring.
+	Pattern *regexp.Regexp
+}
+
+// kernelEventMatches reports whether a lowercased kernel line belongs to evt.
+func kernelEventMatches(evt kernelEventType, low string) bool {
+	for _, k := range evt.Keywords {
+		if strings.Contains(low, k) {
+			return true
+		}
+	}
+	return evt.Pattern != nil && evt.Pattern.MatchString(low)
 }
 
 var kernelEventTypes = []kernelEventType{
@@ -78,12 +114,13 @@ var kernelEventTypes = []kernelEventType{
 		},
 	},
 	{
-		Name:  "HungTask",
-		TrKey: "hung_task",
-		Keywords: []string{
-			"info: task .* blocked for more than",
-			"hung_task_timeout",
-		},
+		Name:     "HungTask",
+		TrKey:    "hung_task",
+		Keywords: []string{"hung_task_timeout"},
+		// "blocked for more than N seconds" always has a task name in between,
+		// so no literal keyword can catch a real stall line: this needs the
+		// regex, which is compiled once at package level.
+		Pattern: reHungTask,
 	},
 }
 
@@ -126,15 +163,17 @@ func processKernelLines(ctx *AppContext, bot BotAPI, lines []string) {
 	}
 	ctx.Monitor.Mu.Unlock()
 
+	// Lowercase once per line instead of once per line per event type.
+	lowLines := make([]string, len(lines))
+	for i, line := range lines {
+		lowLines[i] = strings.ToLower(line)
+	}
+
 	for _, evt := range kernelEventTypes {
 		lastIdx := -1
-		for i, line := range lines {
-			low := strings.ToLower(line)
-			for _, k := range evt.Keywords {
-				if strings.Contains(low, k) {
-					lastIdx = i
-					break
-				}
+		for i, low := range lowLines {
+			if kernelEventMatches(evt, low) {
+				lastIdx = i
 			}
 		}
 
@@ -174,9 +213,11 @@ func processKernelLines(ctx *AppContext, bot BotAPI, lines []string) {
 		}
 
 		ctxText := strings.Join(lines[start:end+1], "\n")
-		// Truncate if too long for Telegram
-		if len(ctxText) > 3000 {
-			ctxText = ctxText[:3000] + "\n..."
+		// Truncate if too long for Telegram. Truncate counts runes, so this
+		// cannot split a UTF-8 sequence: the previous ctxText[:3000] cut bytes
+		// and made Telegram reject the whole alert with a parse error.
+		if len([]rune(ctxText)) > kernelContextRunes {
+			ctxText = format.Truncate(ctxText, kernelContextRunes)
 		}
 
 		ctx.State.AddEvent("critical", fmt.Sprintf("%s detected", evt.Name))
@@ -203,7 +244,7 @@ func processKernelLines(ctx *AppContext, bot BotAPI, lines []string) {
 		}
 
 		// ALWAYS send — critical events ignore quiet hours
-		m := tgbotapi.NewMessage(ctx.Config.AllowedUserID, msg)
+		m := tgbotapi.NewMessage(ctx.Cfg().AllowedUserID, msg)
 		m.ParseMode = "Markdown"
 		safeSend(bot, m)
 	}
@@ -216,10 +257,11 @@ func processKernelLines(ctx *AppContext, bot BotAPI, lines []string) {
 }
 
 func handleOOMLoop(ctx *AppContext, bot BotAPI) {
-	ctx.Monitor.Mu.Lock()
-	defer ctx.Monitor.Mu.Unlock()
-
 	now := time.Now()
+	triggerReboot := false
+	oomCount := 0
+
+	ctx.Monitor.Mu.Lock()
 	// Append current event
 	ctx.Monitor.RecentOOMs = append(ctx.Monitor.RecentOOMs, now)
 
@@ -236,30 +278,65 @@ func handleOOMLoop(ctx *AppContext, bot BotAPI) {
 	if len(valid) >= oomLoopThreshold {
 		// Reset to avoid multiple reboots triggers if it fails or takes time
 		ctx.Monitor.RecentOOMs = []time.Time{}
-
-		// Notify user
-		msg := tgbotapi.NewMessage(ctx.Config.AllowedUserID, ctx.Tr("oom_reboot_warning"))
-		msg.ParseMode = "Markdown"
-		safeSend(bot, msg)
-
-		// Log it
-		slog.Error("OOM Loop detected. Triggering reboot.", "count", len(valid), "window", oomLoopWindow)
-
-		// Execute reboot in a separate goroutine to allow message to send
-		goSafe("oom-reboot", func() {
-			slog.Info("Rebooting system now...")
-			if err := runCommand(context.Background(), "reboot"); err != nil {
-				slog.Error("OOM reboot command failed", "err", err)
-			}
-		})
+		triggerReboot = true
+		oomCount = len(valid)
 	}
+	// Lock released before touching Telegram: safeSend uses a client with a
+	// 75-90s timeout, and holding Monitor.Mu across it froze SMART, temperature,
+	// network, RAID, healthchecks, the daily report and this very function.
+	ctx.Monitor.Mu.Unlock()
+
+	if !triggerReboot {
+		return
+	}
+
+	// Notify user
+	m := tgbotapi.NewMessage(ctx.Cfg().AllowedUserID, ctx.Tr("oom_reboot_warning"))
+	m.ParseMode = "Markdown"
+	safeSend(bot, m)
+
+	// Log it
+	slog.Error("OOM Loop detected. Triggering reboot.", "count", oomCount, "window", oomLoopWindow)
+
+	// Execute reboot in a separate goroutine to allow message to send
+	goSafe("oom-reboot", func() {
+		slog.Info("Rebooting system now...")
+		if err := runCommand(context.Background(), "reboot"); err != nil {
+			slog.Error("OOM reboot command failed", "err", err)
+		}
+	})
+}
+
+// keepLastLines returns the tail of out, at most n lines, without splitting the
+// first line in half.
+func keepLastLines(out []byte, n int) []byte {
+	if n <= 0 {
+		return nil
+	}
+	// Count newlines; the text is scanned in place, no copy of the buffer.
+	newlines := bytes.Count(out, []byte{'\n'})
+	if newlines <= n {
+		return out
+	}
+	skip := newlines - n
+	pos := 0
+	for i := 0; i < skip; i++ {
+		j := bytes.IndexByte(out[pos:], '\n')
+		if j < 0 {
+			return out
+		}
+		pos += j + 1
+	}
+	return out[pos:]
 }
 
 func getKernelLogLines() ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Try dmesg first (more reliable, no auth needed on most systems)
+	// dmesg has no tail equivalent, so the buffer is capped in Go. This keeps
+	// the split (and therefore the ToLower + 25 Contains per line) bounded to
+	// maxKernelLogLines instead of the whole ring buffer.
 	out, err := runCommandStdout(ctx, "dmesg", "--time-format", "reltime")
 	lastErr := err
 	if err != nil {
@@ -281,7 +358,7 @@ func getKernelLogLines() ([]string, error) {
 		return nil, fmt.Errorf("failed to collect kernel logs: %w", lastErr)
 	}
 
-	text := strings.TrimSpace(string(out))
+	text := strings.TrimSpace(string(keepLastLines(out, maxKernelLogLines)))
 	if text == "" {
 		return nil, nil
 	}
@@ -314,13 +391,8 @@ func checkPreviousBootCrash(ctx *AppContext) string {
 			if evt.Name != "OOM" && evt.Name != "KernelPanic" {
 				continue
 			}
-			for _, k := range evt.Keywords {
-				if strings.Contains(low, k) {
-					isHit = true
-					break
-				}
-			}
-			if isHit {
+			if kernelEventMatches(evt, low) {
+				isHit = true
 				break
 			}
 		}

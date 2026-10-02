@@ -62,8 +62,8 @@ func TestNoDeadlock_BotContextConcurrentAccess(t *testing.T) {
 
 func TestNoDeadlock_HealthStatsWhileMonitorMutates(t *testing.T) {
 	ctx := newTestAppContext()
-	ctx.Config.Healthchecks.Enabled = true
-	ctx.Config.Healthchecks.PingURL = "https://hc-ping.com/test"
+	ctx.Cfg().Healthchecks.Enabled = true
+	ctx.Cfg().Healthchecks.PingURL = "https://hc-ping.com/test"
 	ctx.Settings.SetLanguage("en")
 
 	runWithTimeout(t, 2*time.Second, func() {

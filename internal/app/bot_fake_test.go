@@ -1,6 +1,7 @@
 package app
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -22,6 +23,19 @@ func (b *fakeBot) Send(c tgbotapi.Chattable) (tgbotapi.Message, error) {
 func (b *fakeBot) Request(c tgbotapi.Chattable) (*tgbotapi.APIResponse, error) {
 	b.requests = append(b.requests, c)
 	return &tgbotapi.APIResponse{}, nil
+}
+
+// installTempState points the state file at t.TempDir().
+//
+// A handler that changes a setting saves the state, and the default path is
+// var/nasbot_state.json relative to the package directory. Without this, running
+// the suite writes a state file into the source tree every time and leaves it
+// behind, which is also how a later test ended up reading a previous test's
+// blob and passing for the wrong reason.
+func installTempState(t *testing.T) {
+	t.Helper()
+
+	t.Setenv("NASBOT_STATE_FILE", filepath.Join(t.TempDir(), "nasbot_state.json"))
 }
 
 func newTestAppContext() *AppContext {
@@ -52,6 +66,7 @@ func TestHandleCommandStatus(t *testing.T) {
 	prev := app
 	app = newTestAppContext()
 	t.Cleanup(func() { app = prev })
+	installTempState(t)
 
 	bot := &fakeBot{}
 	msg := &tgbotapi.Message{
@@ -70,6 +85,7 @@ func TestHandleCallbackLanguage(t *testing.T) {
 	prev := app
 	app = newTestAppContext()
 	t.Cleanup(func() { app = prev })
+	installTempState(t)
 
 	bot := &fakeBot{}
 	query := &tgbotapi.CallbackQuery{
@@ -92,6 +108,7 @@ func TestHandleCallbackLanguageSpanish(t *testing.T) {
 	prev := app
 	app = newTestAppContext()
 	t.Cleanup(func() { app = prev })
+	installTempState(t)
 
 	bot := &fakeBot{}
 	query := &tgbotapi.CallbackQuery{
@@ -114,6 +131,7 @@ func TestHandleCallbackUnauthorizedIgnored(t *testing.T) {
 	prev := app
 	app = newTestAppContext()
 	t.Cleanup(func() { app = prev })
+	installTempState(t)
 
 	bot := &fakeBot{}
 	query := &tgbotapi.CallbackQuery{
@@ -136,6 +154,7 @@ func TestHandleCallbackNilIgnored(t *testing.T) {
 	prev := app
 	app = newTestAppContext()
 	t.Cleanup(func() { app = prev })
+	installTempState(t)
 
 	bot := &fakeBot{}
 	handleCallback(bot, nil)
@@ -148,6 +167,7 @@ func TestHandleCallbackNilMessageIgnored(t *testing.T) {
 	prev := app
 	app = newTestAppContext()
 	t.Cleanup(func() { app = prev })
+	installTempState(t)
 
 	bot := &fakeBot{}
 	query := &tgbotapi.CallbackQuery{ID: "4", Data: "set_lang_it", From: &tgbotapi.User{ID: 1}}
