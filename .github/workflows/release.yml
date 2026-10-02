@@ -47,21 +47,11 @@ jobs:
     outputs:
       tag: ${{ steps.get_version.outputs.tag }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: '0'
-          # Build the tree that is actually being tagged. Without this,
-          # workflow_dispatch checks out whatever ref was picked in the UI while
-          # the release is published under the tag typed in the input, so the
-          # artifact can be a build of something else entirely. On a tag push
-          # github.event.inputs.tag is empty and github.ref is the tag itself.
-          ref: ${{ github.event.inputs.tag || github.ref }}
-
-      # Every value below comes from the environment, never interpolated into
-      # the script body. A ref name may legally contain quotes, $, ;, |, &, so
-      # "${{ github.ref_name }}" inside a run block is remote code execution on a
-      # runner holding write permissions.
+      # Before the checkout, on purpose. This step needs no repository: it reads
+      # the event's ref and the dispatch input. Running it first means an
+      # invalid or nonexistent tag is refused with an explicit message, instead
+      # of dying in actions/checkout with "could not resolve ref" — which is what
+      # it did before, because checkout resolved github.event.inputs.tag first.
       - name: Determine Version
         id: get_version
         env:
@@ -87,6 +77,17 @@ jobs:
           printf 'RELEASE_TAG=%s\n' "$TAG" >> "$GITHUB_ENV"
           printf 'VERSION=%s\n' "$TAG" >> "$GITHUB_ENV"
           echo "Releasing $TAG"
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: '0'
+          # Build the tree that is actually being tagged. Without this,
+          # workflow_dispatch checks out whatever ref was picked in the UI while
+          # the release is published under the tag typed in the input, so the
+          # artifact can be a build of something else entirely. On a tag push
+          # github.event.inputs.tag is empty and github.ref is the tag itself.
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Setup Go
         uses: actions/setup-go@v7
