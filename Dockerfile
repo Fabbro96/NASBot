@@ -39,7 +39,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X main.Version=${VERSION}" -o n
 # NOT bumped here on purpose: this repository cannot query the registry to
 # confirm that a replacement tag exists, and a wrong tag turns a working
 # secondary path into a failed build. Bump it in a separate, tested change.
-FROM alpine:3.19
+FROM alpine:3.24
 
 # Tooling the bot actually shells out to when monitoring the host:
 #   smartmontools  -> SMART / disk health
