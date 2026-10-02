@@ -2,8 +2,10 @@ package app
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -36,17 +38,35 @@ func (m mockHTTPClientFunc) RoundTrip(req *http.Request) (*http.Response, error)
 	return m(req), nil
 }
 
+// fakeReleasePayload is the GitHub release JSON the updater tests serve.
+//
+// It must list every binary the release workflow publishes plus the checksum
+// manifest. It listed only "nasbot" once, which made
+// TestApplyLatestRelease_CapturesMsgID architecture-dependent:
+// preferredReleaseAssets() answers ["nasbot-arm64"] on arm64, pickAsset found
+// nothing, fetchLatestRelease failed before the download started and the test
+// saw one message where it asserts two.
+const fakeReleasePayload = `{"tag_name": "v9.9.9", "assets": [` +
+	`{"name": "nasbot", "browser_download_url": "http://fake"}, ` +
+	`{"name": "nasbot-arm64", "browser_download_url": "http://fake"}, ` +
+	`{"name": "SHA256SUMS.txt", "browser_download_url": "http://fake"}]}`
+
+// publishedReleaseBinaries are the binaries .github/workflows/release.yml
+// builds. Every architecture the bot is released on must find its own name here.
+var publishedReleaseBinaries = []string{"nasbot", "nasbot-arm64"}
+
 func TestApplyLatestRelease_CapturesMsgID(t *testing.T) {
 	oldApp := app
 	app = newTestAppContext()
 	defer func() { app = oldApp }()
+	installTempState(t)
 
 	bot := &fakeBot{}
 
 	app.HTTP = &http.Client{
 		Transport: mockHTTPClientFunc(func(req *http.Request) *http.Response {
 			if strings.Contains(req.URL.String(), "releases/latest") {
-				body := `{"tag_name": "v9.9.9", "assets": [{"name": "nasbot", "browser_download_url": "http://fake"}]}`
+				body := fakeReleasePayload
 				return &http.Response{
 					StatusCode: 200,
 					Body:       io.NopCloser(bytes.NewBufferString(body)),
@@ -111,5 +131,38 @@ func TestParseSemverTag(t *testing.T) {
 		if got != tc.expected {
 			t.Errorf("parseSemverTag(%q) = %v, want %v", tc.tag, got, tc.expected)
 		}
+	}
+}
+
+// TestFakeReleasePayloadCoversEveryReleaseArchitecture is the guard against the
+// regression the payload comment describes: a fixture that drops a binary makes
+// the updater tests fail on that architecture only, so they are green on the
+// developer laptop and red on the release runner.
+func TestFakeReleasePayloadCoversEveryReleaseArchitecture(t *testing.T) {
+	var rel githubRelease
+	if err := json.Unmarshal([]byte(fakeReleasePayload), &rel); err != nil {
+		t.Fatalf("the release fixture is not valid JSON: %v", err)
+	}
+
+	for _, name := range publishedReleaseBinaries {
+		if pickAssetURL(rel, name) == "" {
+			t.Errorf("the release fixture does not publish %q, so every test that serves "+
+				"it fails on the architecture that needs that binary", name)
+		}
+	}
+	if pickAssetURL(rel, checksumsAssetName) == "" {
+		t.Errorf("the release fixture does not publish %q, so the checksum verification "+
+			"path is never reached by the updater tests", checksumsAssetName)
+	}
+
+	// And the binary this architecture actually asks for must be there.
+	wanted := preferredReleaseAssets()
+	if len(wanted) == 0 {
+		t.Logf("no release binary is published for %s, which is a deliberate refusal", runtime.GOARCH)
+		return
+	}
+	if _, _, ok := pickAsset(rel); !ok {
+		t.Errorf("pickAsset found nothing for %s (it wants %v) in the release fixture",
+			runtime.GOARCH, wanted)
 	}
 }

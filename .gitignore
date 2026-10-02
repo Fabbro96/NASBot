@@ -2,10 +2,11 @@
 nasbot
 nasbot_test
 *.exe
-fswatchdog_bin
 
 # Config with secrets (contains bot token!)
 config.json
+# backupConfigFile writes the previous config next to it, token included
+config.json.bak
 nasbot.config.local
 
 # State files
@@ -46,3 +47,6 @@ patch_translations.py
 coverage.out
 coverage.html
 nasbot-arm64
+
+# Deepwork progress state (git-local)
+.slim/deepwork/

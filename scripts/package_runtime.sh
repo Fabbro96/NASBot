@@ -106,7 +106,39 @@ if [[ -z "$PACKAGE_OUT_DIR" ]]; then
 	die "Output directory cannot be empty"
 fi
 
-mkdir -p "$PACKAGE_OUT_DIR"
+# Svuota la directory di output prima di costruire.
+# Senza pulizia, rieseguire il packaging con un'altra architettura lascia in
+# giro il binario della build precedente: dopo un bundle ARM64 e uno AMD64 in
+# sequenza la directory contiene sia "nasbot" sia "nasbot-amd64", e il binario
+# obsolito finisce nel bundle pubblicato e viene copiato sul NAS.
+prepare_output_dir() {
+	local target="$1"
+	local resolved=""
+
+	if [[ -d "$target" ]]; then
+		resolved=$(cd "$target" >/dev/null 2>&1 && pwd -P) || resolved=""
+	fi
+	[[ -z "$resolved" ]] && resolved="$target"
+
+	# Non cancellare mai: root del filesystem, root del repository, directory di sistema.
+	local current_dir
+	current_dir=$(pwd -P)
+	case "$resolved" in
+	/ | "/home" | "/usr" | "/etc" | "/var" | "/tmp" | "/root" | "/opt" | "/srv" | "/boot" | "$current_dir")
+		die "Refusing to clean output directory '${target}': it resolves to '${resolved}', a protected location. Use a dedicated subdirectory such as './dist/runtime'."
+		;;
+	esac
+
+	# find -mindepth 1 invece di un glob: raggiunge anche i file nascosti
+	# (config.json, .git, ...) che "dir/*" lascerebbe sul posto.
+	if [[ -d "$resolved" ]]; then
+		log_debug "Cleaning output directory: ${resolved}"
+		find "$resolved" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+	fi
+	mkdir -p "$PACKAGE_OUT_DIR"
+}
+
+prepare_output_dir "$PACKAGE_OUT_DIR"
 
 log_info "Packaging NASBot runtime"
 log_debug "  Architecture: ${BUILD_ARCH}"
@@ -123,8 +155,11 @@ build_binary() {
 	local binary_path="${PACKAGE_OUT_DIR}/${BINARY_NAME}"
 	
 	log_info "Building binary: ${binary_path}"
+	# -trimpath: senza i percorsi assoluti della macchina di build il binario
+	# riproducibile e non rivela home e username di chi ha compilato.
+	# -s -w: via tabella dei simboli e DWARF dal bundle distribuito.
 	CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" \
-		go build -ldflags "-X main.Version=${VERSION}" \
+		go build -trimpath -ldflags "-s -w -X main.Version=${VERSION}" \
 		-o "${binary_path}" "${REPO_ROOT}"
 
 	# Keep an optional arch-suffixed copy for convenience, but always ship canonical name too.
@@ -143,6 +178,13 @@ build_binary
 log_info "Copying runtime manager scripts"
 cp scripts/start_bot_runtime.sh "${PACKAGE_OUT_DIR}/start_bot.sh"
 chmod +x "${PACKAGE_OUT_DIR}/start_bot.sh"
+
+# common.sh è REQUIRED dal bundle: start_bot.sh (= start_bot_runtime.sh) lo
+# carica nelle prime righe e da lì prende funzioni come format_bytes, usata da
+# status. Senza questo file il bundle sul NAS gira a metà: "status" fallisce
+# con "format_bytes: command not found" e la riga "Log size:" resta vuota.
+cp "${SCRIPT_DIR}/common.sh" "${PACKAGE_OUT_DIR}/common.sh"
+chmod 644 "${PACKAGE_OUT_DIR}/common.sh"
 
 # Copy config example if requested
 if [[ "${INCLUDE_EXAMPLE_CONFIG}" == "true" ]] && [[ -f "config.example.json" ]]; then
@@ -178,10 +220,14 @@ if [[ "${INCLUDE_README_RUNTIME}" == "true" ]]; then
 
 ## Quick Start
 
-1. Copy `config.example.json` to `config.json`:
+1. Copy `config.example.json` to `config.json` **and lock its permissions**:
    ```bash
    cp config.example.json config.json
+   chmod 600 config.json
    ```
+   The file holds `bot_token` and `gemini_api_key`. A plain `cp` honours umask 022 and
+   leaves it `0644`, readable by every user on the NAS; NASBot refuses to start in that
+   state.
 
 2. Edit `config.json` with your settings:
    - `bot_token`: Your Telegram bot token

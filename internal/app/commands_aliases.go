@@ -16,6 +16,7 @@ func NewCallbackRegistry() *CallbackRegistry { return pcommands.NewCallbackRegis
 type StatusCmd = pcommands.StatusCmd
 type TopCmd = pcommands.TopCmd
 type SysInfoCmd = pcommands.SysInfoCmd
+type DiskInfoCmd = pcommands.DiskInfoCmd
 type TempCmd = pcommands.TempCmd
 type PowerCmd = pcommands.PowerCmd
 type DockerMenuCmd = pcommands.DockerMenuCmd

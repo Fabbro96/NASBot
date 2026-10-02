@@ -23,6 +23,32 @@ type Config struct {
 	Update             UpdateConfig          `json:"update"`
 	Backup             BackupConfig          `json:"backup"`
 	AdBlock            AdBlockConfig         `json:"adblock"`
+	ShellCommand       ShellCommandConfig    `json:"shell_command"`
+}
+
+// ShellCommandConfig gates /cmd (aliases: /shell, /exec).
+//
+// /cmd used to hand the whole message to `sh -c`. Inside a container that runs
+// as root with privileged: true, pid: host and the docker socket mounted, that
+// made a leaked bot token equivalent to a root shell on the NAS. A NAS
+// monitoring bot has no use for a general purpose shell, so the capability is
+// off by default and, when it is on, it runs only the binaries named here.
+//
+// AllowedBinaries is a list of binary NAMES, never of shell lines: an entry is
+// resolved by internal/cmdexec through PATH and the system directories, and
+// the arguments that follow it on the /cmd line are passed to the process as
+// arguments. Nothing is ever re-parsed by a shell, so `/cmd sh -c id` runs
+// nothing unless "sh" is in this list, which is a deliberate act by whoever
+// writes config.json.
+type ShellCommandConfig struct {
+	// Enabled turns /cmd on. False by default.
+	Enabled bool `json:"enabled"`
+	// AllowedBinaries lists the binaries /cmd may execute, by name.
+	AllowedBinaries []string `json:"allowed_binaries"`
+	// TimeoutSeconds bounds a single execution, in seconds.
+	TimeoutSeconds int `json:"timeout_seconds"`
+	// MaxOutputChars caps how much of the output is sent back to the chat.
+	MaxOutputChars int `json:"max_output_chars"`
 }
 
 type BackupConfig struct {
@@ -120,6 +146,11 @@ type DockerAutoRestartConfig struct {
 	Enabled            bool    `json:"enabled"`
 	MaxRestartsPerHour int     `json:"max_restarts_per_hour"`
 	RAMThreshold       float64 `json:"ram_threshold"`
+	// HeavyContainerMemPercent is the share of a container's own memory limit
+	// above which the container is a candidate for auto-restart once system RAM
+	// is critical. It was a bare 20 in the parsing loop, invisible to the user
+	// while the feature is on by default.
+	HeavyContainerMemPercent float64 `json:"heavy_container_mem_percent"`
 }
 
 type IntervalsConfig struct {
@@ -147,6 +178,13 @@ type HealthchecksConfig struct {
 	PingURL       string `json:"ping_url"`
 	PeriodSeconds int    `json:"period_seconds"`
 	GraceSeconds  int    `json:"grace_seconds"`
+	// ForceRebootOnDown enables the forced reboot when the pinger stays down
+	// for longer than GraceSeconds.
+	ForceRebootOnDown bool `json:"force_reboot_on_prolonged_down"`
+	// ForceRebootAfterMins is how long the pinger must stay down before the
+	// reboot fires. It is independent of the quiet hours, unlike the network
+	// watchdog reboot.
+	ForceRebootAfterMins int `json:"force_reboot_after_minutes"`
 }
 
 type KernelWatchdogConfig struct {

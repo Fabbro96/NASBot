@@ -18,6 +18,7 @@ func init() {
 		SendSettingsMenu:             sendSettingsMenu,
 		CallGeminiWithFallback:       callGeminiWithFallback,
 		GetTrendSummary:              getTrendSummary,
+		GetDiskInfoText:              GetDiskInfoText,
 		GetCachedContainerList:       getCachedContainerList,
 		ReadCPUTemp:                  readCPUTemp,
 		GetSmartDevices:              getSmartDevices,

@@ -9,8 +9,8 @@ import (
 func TestGetHealthchecksStatsIncludesWatchdogs(t *testing.T) {
 	ctx := newTestAppContext()
 	ctx.Settings.SetLanguage("en")
-	ctx.Config.Healthchecks.Enabled = true
-	ctx.Config.Healthchecks.PingURL = "https://hc-ping.com/test"
+	ctx.Cfg().Healthchecks.Enabled = true
+	ctx.Cfg().Healthchecks.PingURL = "https://hc-ping.com/test"
 
 	ctx.Monitor.Mu.Lock()
 	ctx.Monitor.Healthchecks = HealthchecksState{LastPingSuccess: true}

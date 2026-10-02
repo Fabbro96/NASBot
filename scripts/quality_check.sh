@@ -80,7 +80,9 @@ for f in "${legacy_root_scripts[@]}"; do
   fi
 done
 # Ensure runtime artifacts are not tracked in git.
-for f in nasbot nasbot-arm64 nasbot_state.json config.json; do
+# config.json.bak is the previous config, written by backupConfigFile with the
+# bot token still in it, so it is just as untrackable as config.json.
+for f in nasbot nasbot-arm64 nasbot_state.json config.json config.json.bak; do
   if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
     echo "quality_check: runtime artifact is tracked by git: $f"
     exit 1

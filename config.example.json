@@ -95,7 +95,9 @@
     "enabled": false,
     "ping_url": "",
     "period_seconds": 60,
-    "grace_seconds": 60
+    "grace_seconds": 60,
+    "force_reboot_on_prolonged_down": false,
+    "force_reboot_after_minutes": 6
   },
   "fs_watchdog": {
     "enabled": true,
@@ -139,7 +141,10 @@
   "update": {
     "auto_apply": false
   },
-  "wake_on_lan": {
-    "mac_address": ""
+  "shell_command": {
+    "enabled": false,
+    "allowed_binaries": [],
+    "timeout_seconds": 30,
+    "max_output_chars": 3800
   }
 }

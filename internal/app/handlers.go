@@ -35,8 +35,8 @@ func handleMessage(bot BotAPI, msg *tgbotapi.Message) {
 
 	action := app.Bot.GetPendingAction()
 	if action == "add_report_time" {
-		app.Bot.ClearPendingAction()
-
+		// The pending action is cleared only once the input is known good:
+		// clearing it first made a mistyped time throw away the whole flow.
 		var hour, minute int
 		if _, err := fmt.Sscanf(msg.Text, "%d:%d", &hour, &minute); err != nil {
 			safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, app.Tr("err_invalid_time_fmt")))
@@ -48,135 +48,82 @@ func handleMessage(bot BotAPI, msg *tgbotapi.Message) {
 			return
 		}
 
-		app.Settings.Mu.Lock()
-		app.Settings.ReportTimes = append(app.Settings.ReportTimes, TimePoint{Hour: hour, Minute: minute})
-		app.Settings.Mu.Unlock()
+		app.Bot.ClearPendingAction()
+		app.Settings.AddReportTime(TimePoint{Hour: hour, Minute: minute})
 		saveState(app)
 
-		text, kb := getReportSettingsText(app)
 		safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, app.Tr("time_added_success")))
-		msgSettings := tgbotapi.NewMessage(msg.Chat.ID, text)
-		msgSettings.ParseMode = "Markdown"
+		text, kb := getReportSettingsText(app)
+		msgSettings := newMarkdownMessage(msg.Chat.ID, text)
 		msgSettings.ReplyMarkup = kb
 		safeSend(bot, msgSettings)
 		return
 	}
 
 	if action == "set_backup_uid" {
-		app.Bot.ClearPendingAction()
-		uid := int64(0)
+		var uid int64
 		if _, err := fmt.Sscanf(strings.TrimSpace(msg.Text), "%d", &uid); err != nil {
 			safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, app.Tr("err_invalid_uid_fmt")))
 			return
 		}
 
+		app.Bot.ClearPendingAction()
 		patch := map[string]interface{}{
 			"backup": map[string]interface{}{
 				"target_user_id": uid,
 			},
 		}
-		applyConfigPatch(patch)
+		if !applySettingsPatch(app, bot, msg.Chat.ID, patch) {
+			// No success line and no redrawn screen: on a failure the screen
+			// would be rebuilt from the configuration that was never reloaded,
+			// showing the old value under a confirmation.
+			return
+		}
 
 		safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, app.Tr("backup_uid_updated")))
 		text, kb := getBackupSettingsText(app)
-		msgSettings := tgbotapi.NewMessage(msg.Chat.ID, text)
-		msgSettings.ParseMode = "Markdown"
+		msgSettings := newMarkdownMessage(msg.Chat.ID, text)
 		msgSettings.ReplyMarkup = kb
 		safeSend(bot, msgSettings)
 		return
 	}
 
 	if strings.HasPrefix(action, "thresh_custom_") {
-		app.Bot.ClearPendingAction()
-
 		var val float64
 		if _, err := fmt.Sscanf(strings.TrimSpace(msg.Text), "%f", &val); err != nil || val < 0 || val > 100 {
 			safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, app.Tr("err_invalid_percent_val")))
 			return
 		}
 
-		var level, res string
-		if strings.HasPrefix(action, "thresh_custom_w_") {
-			level, res = "w", strings.TrimPrefix(action, "thresh_custom_w_")
-		} else if strings.HasPrefix(action, "thresh_custom_c_") {
-			level, res = "c", strings.TrimPrefix(action, "thresh_custom_c_")
-		} else {
+		level, res, ok := parseThresholdAction(action, "thresh_custom_")
+		if !ok {
+			// A pending action no longer matching the current grammar: drop it
+			// instead of leaving it armed for the next unrelated message.
+			app.Bot.ClearPendingAction()
+			slog.Warn("Dropping unparsable pending action", "action", truncate(action, 96))
+			safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, app.Tr("session_expired")))
+			return
+		}
+		canonical, mount, ok := resolveThresholdResource(app, res)
+		if !ok {
+			app.Bot.ClearPendingAction()
+			rejectCallback(app, bot, msg.Chat.ID, "thresh_custom_input", res, "")
 			return
 		}
 
-		cfg := app.Config
-		isDisk := strings.HasPrefix(res, "disk:")
-		var mount string
-
-		app.Settings.Mu.Lock()
-		if isDisk {
-			mount = strings.TrimPrefix(res, "disk:")
-			if cfg.Notifications.SecondaryDisks == nil {
-				cfg.Notifications.SecondaryDisks = make(map[string]ResourceConfig)
-			}
-			diskCfg, ok := cfg.Notifications.SecondaryDisks[mount]
-			if !ok {
-				diskCfg = ResourceConfig{Enabled: true, WarningThreshold: 90, CriticalThreshold: 95}
-			}
-			if level == "w" {
-				diskCfg.WarningThreshold = val
-			} else {
-				diskCfg.CriticalThreshold = val
-			}
-			cfg.Notifications.SecondaryDisks[mount] = diskCfg
-		} else {
-			switch res {
-			case "cpu":
-				if level == "w" {
-					cfg.Notifications.CPU.WarningThreshold = val
-				} else {
-					cfg.Notifications.CPU.CriticalThreshold = val
-				}
-			case "ram":
-				if level == "w" {
-					cfg.Notifications.RAM.WarningThreshold = val
-				} else {
-					cfg.Notifications.RAM.CriticalThreshold = val
-				}
-			case "ssd":
-				if level == "w" {
-					cfg.Notifications.DiskSSD.WarningThreshold = val
-				} else {
-					cfg.Notifications.DiskSSD.CriticalThreshold = val
-				}
-			case "temp":
-				if level == "w" {
-					cfg.Temperature.WarningThreshold = val
-				} else {
-					cfg.Temperature.CriticalThreshold = val
-				}
-			}
+		app.Bot.ClearPendingAction()
+		cfg := app.Cfg()
+		if cfg == nil {
+			return
 		}
-		app.Settings.Mu.Unlock()
-
-		patch := map[string]interface{}{}
-		if isDisk {
-			patch["notifications"] = map[string]interface{}{
-				"secondary_disks": cfg.Notifications.SecondaryDisks,
-			}
-		} else {
-			switch res {
-			case "cpu":
-				patch["notifications"] = map[string]interface{}{"cpu": cfg.Notifications.CPU}
-			case "ram":
-				patch["notifications"] = map[string]interface{}{"ram": cfg.Notifications.RAM}
-			case "ssd":
-				patch["notifications"] = map[string]interface{}{"disk_ssd": cfg.Notifications.DiskSSD}
-			case "temp":
-				patch["temperature"] = cfg.Temperature
-			}
+		patch := thresholdPatch(cfg, canonical, mount, level, val)
+		if !applySettingsPatch(app, bot, msg.Chat.ID, patch) {
+			return
 		}
-		applyConfigPatch(patch)
 
 		safeSend(bot, tgbotapi.NewMessage(msg.Chat.ID, app.Tr("thresh_updated_success")))
-		text, kb := getThresholdResourceText(app, res)
-		msgSettings := tgbotapi.NewMessage(msg.Chat.ID, text)
-		msgSettings.ParseMode = "Markdown"
+		text, kb := getThresholdResourceText(app, canonical)
+		msgSettings := newMarkdownMessage(msg.Chat.ID, text)
 		msgSettings.ReplyMarkup = kb
 		safeSend(bot, msgSettings)
 		return
@@ -192,17 +139,22 @@ func handleCallback(bot BotAPI, query *tgbotapi.CallbackQuery) {
 		slog.Warn("Invalid callback payload")
 		return
 	}
+
+	// Authorization is decided before the payload reaches any handler.
+	// answerCallbackQuery is still sent for an unknown sender, and that part is
+	// deliberate: it only stops the spinner on the client that pressed the
+	// button, it carries no data and it cannot touch the bot state.
+	authorized := query.From != nil && query.From.ID == app.Cfg().AllowedUserID
 	if _, err := bot.Request(tgbotapi.NewCallback(query.ID, "")); err != nil {
-		slog.Warn("Failed to acknowledge callback", "err", err)
+		slog.Warn("Failed to acknowledge callback", "err", sanitizeErr(err))
 	}
-	if query.From == nil || query.From.ID != int64(app.Config.AllowedUserID) {
+	if !authorized {
 		slog.Warn("Unauthorized callback ignored")
 		return
 	}
-	data := query.Data
 
 	if cbRegistry.Execute(app, bot, query) {
 		return
 	}
-	slog.Warn("Unknown callback data", "data", data)
+	slog.Warn("Unknown callback data", "data", truncate(query.Data, 64))
 }

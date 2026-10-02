@@ -33,31 +33,15 @@ func getQuickText(ctx *AppContext) string {
 	tempStr := ""
 	if temp > 0 {
 		tempIcon := "🌡"
-		if temp > 70 {
+		if temp > cpuHotC {
 			tempIcon = "🔥"
 		}
 		tempStr = fmt.Sprintf(" %s%.0f°", tempIcon, temp)
 	}
 
-	// Health emoji
-	healthEmoji := "✅"
-	if s.CPU > 90 || s.RAM > 90 {
-		healthEmoji = "⚠️"
-	}
-	if s.CPU > 95 || s.RAM > 95 || s.VolSSD.Used > 95 {
-		healthEmoji = "🚨"
-	} else {
-		for _, v := range s.SecondaryVols {
-			if v.Used > 95 {
-				healthEmoji = "🚨"
-				break
-			}
-		}
-	}
-
 	// Build compact line with optional trends
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("%s ", healthEmoji))
+	b.WriteString(fmt.Sprintf("%s ", quickHealthEmoji(ctx, s)))
 
 	// CPU with trend
 	b.WriteString(fmt.Sprintf("CPU %.0f%%", s.CPU))
@@ -71,15 +55,11 @@ func getQuickText(ctx *AppContext) string {
 		b.WriteString(fmt.Sprintf(" `%s`", ramGraph))
 	}
 
-	// Disks
+	// Disks (sorted, so two messages list them in the same order)
 	b.WriteString(fmt.Sprintf(" · SSD %.0f%%", s.VolSSD.Used))
-	for m, v := range s.SecondaryVols {
-		shortName := mountShortName(m)
-		// Truncate for ultra-compact one-liner display
-		if len(shortName) > 5 {
-			shortName = shortName[:5]
-		}
-		b.WriteString(fmt.Sprintf(" · %s %.0f%%", shortName, v.Used))
+	for _, m := range volumeMounts(s.SecondaryVols) {
+		shortName := runeSlice(diskDisplayName(m), quickMountNameMax)
+		b.WriteString(fmt.Sprintf(" · %s %.0f%%", shortName, s.SecondaryVols[m].Used))
 	}
 
 	// Docker
@@ -105,6 +85,60 @@ func getQuickText(ctx *AppContext) string {
 	b.WriteString(tempStr)
 
 	return b.String()
+}
+
+// quickHealthEmoji summarises the worst resource usage. Each resource is
+// compared against its own configured thresholds (the same numbers the alerts
+// use), falling back to 90/95 when the config leaves them unset.
+func quickHealthEmoji(ctx *AppContext, s Stats) string {
+	c := cfg(ctx)
+	if c == nil {
+		return "✅"
+	}
+
+	const (
+		ok   = 0
+		warn = 1
+		crit = 2
+	)
+	level := ok
+	check := func(used, warnT, critT float64) {
+		switch {
+		case used > threshold(critT, defaultHealthCritPc):
+			if level < crit {
+				level = crit
+			}
+		case used > threshold(warnT, defaultHealthWarnPc):
+			if level < warn {
+				level = warn
+			}
+		}
+	}
+
+	check(s.CPU, c.Notifications.CPU.WarningThreshold, c.Notifications.CPU.CriticalThreshold)
+	check(s.RAM, c.Notifications.RAM.WarningThreshold, c.Notifications.RAM.CriticalThreshold)
+	check(s.VolSSD.Used, c.Notifications.DiskSSD.WarningThreshold, c.Notifications.DiskSSD.CriticalThreshold)
+	for _, m := range volumeMounts(s.SecondaryVols) {
+		rc := c.Notifications.SecondaryDisks[m]
+		check(s.SecondaryVols[m].Used, rc.WarningThreshold, rc.CriticalThreshold)
+	}
+
+	switch level {
+	case crit:
+		return "🚨"
+	case warn:
+		return "⚠️"
+	default:
+		return "✅"
+	}
+}
+
+// threshold returns v when it is configured, def otherwise.
+func threshold(v, def float64) float64 {
+	if v > 0 {
+		return v
+	}
+	return def
 }
 
 func GetQuickText(ctx *AppContext) string { return getQuickText(ctx) }

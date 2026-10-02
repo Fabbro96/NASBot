@@ -2,9 +2,21 @@ package commands
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
+
+// ErrDepUnbound is returned by the runtime wrappers when the matching field of
+// RuntimeDeps was never bound. Reporting success (or an empty result) in that
+// case made /configset answer "updated" without writing anything, /top answer
+// "no processes" and /logs answer "no logs" — a silent no-op instead of a bug.
+var ErrDepUnbound = errors.New("runtime dependency not bound")
+
+func unboundError(name string) error {
+	return fmt.Errorf("%s: %w", name, ErrDepUnbound)
+}
 
 type ConfigPatchResult struct {
 	Ignored   []string
@@ -38,6 +50,7 @@ type RuntimeDeps struct {
 	ReadCPUTemp                  func() float64
 	GetSmartDevices              func(ctx *AppContext) []string
 	ReadDiskSMART                func(device string) (temp int, health string)
+	GetDiskInfoText              func(ctx *AppContext) string
 	Version                      func() string
 	RunCommandOutput             func(ctx context.Context, name string, args ...string) ([]byte, error)
 	RunCommandStdout             func(ctx context.Context, name string, args ...string) ([]byte, error)
@@ -54,6 +67,13 @@ type RuntimeDeps struct {
 }
 
 var runtimeDeps RuntimeDeps
+
+func getDiskInfoText(ctx *AppContext) string {
+	if runtimeDeps.GetDiskInfoText == nil {
+		return "disk info unavailable"
+	}
+	return runtimeDeps.GetDiskInfoText(ctx)
+}
 
 func BindRuntime(deps RuntimeDeps) {
 	runtimeDeps = deps
@@ -133,10 +153,10 @@ func sendSettingsMenu(ctx *AppContext, bot BotAPI, chatID int64) {
 }
 
 func callGeminiWithFallback(ctx *AppContext, prompt string, onModelChange func(string)) (string, error) {
-	if runtimeDeps.CallGeminiWithFallback != nil {
-		return runtimeDeps.CallGeminiWithFallback(ctx, prompt, onModelChange)
+	if runtimeDeps.CallGeminiWithFallback == nil {
+		return "", unboundError("CallGeminiWithFallback")
 	}
-	return "", nil
+	return runtimeDeps.CallGeminiWithFallback(ctx, prompt, onModelChange)
 }
 
 func getTrendSummary(ctx *AppContext) (cpuGraph, ramGraph string) {
@@ -168,38 +188,44 @@ func getSmartDevices(ctx *AppContext) []string {
 }
 
 func readDiskSMART(device string) (temp int, health string) {
-	if runtimeDeps.ReadDiskSMART != nil {
-		return runtimeDeps.ReadDiskSMART(device)
+	if runtimeDeps.ReadDiskSMART == nil {
+		// Same shape as a real "smartctl not in sudoers / disk without SMART":
+		// /temp must show "no data" instead of a green tick.
+		return -1, "UNKNOWN"
 	}
-	return 0, ""
+	return runtimeDeps.ReadDiskSMART(device)
 }
 
 func getVersion() string {
-	if runtimeDeps.Version != nil {
-		return runtimeDeps.Version()
+	if runtimeDeps.Version == nil {
+		return "unknown"
 	}
-	return "unknown"
+	return runtimeDeps.Version()
 }
 
 func runCommandOutput(ctx context.Context, name string, args ...string) ([]byte, error) {
-	if runtimeDeps.RunCommandOutput != nil {
-		return runtimeDeps.RunCommandOutput(ctx, name, args...)
+	if runtimeDeps.RunCommandOutput == nil {
+		return nil, unboundError("RunCommandOutput")
 	}
-	return nil, nil
+	return runtimeDeps.RunCommandOutput(ctx, name, args...)
 }
 
+// runCommandStdout and runCommand have no production caller: they exist only for
+// command_runner_test.go, which cannot be deleted from here. They no longer
+// pretend to succeed when unbound — runCommandStdout falls back to the runner
+// used in production and runCommand reports the missing binding.
 func runCommandStdout(ctx context.Context, name string, args ...string) ([]byte, error) {
 	if runtimeDeps.RunCommandStdout != nil {
 		return runtimeDeps.RunCommandStdout(ctx, name, args...)
 	}
-	return nil, nil
+	return runCommandOutput(ctx, name, args...)
 }
 
 func runCommand(ctx context.Context, name string, args ...string) error {
-	if runtimeDeps.RunCommand != nil {
-		return runtimeDeps.RunCommand(ctx, name, args...)
+	if runtimeDeps.RunCommand == nil {
+		return unboundError("RunCommand")
 	}
-	return nil
+	return runtimeDeps.RunCommand(ctx, name, args...)
 }
 
 func editMessage(bot BotAPI, chatID int64, msgID int, text string, keyboard *tgbotapi.InlineKeyboardMarkup) {
@@ -227,17 +253,17 @@ func applyLatestRelease(ctx *AppContext, bot BotAPI, chatID int64, msgID int) {
 }
 
 func checkForUpdate(ctx *AppContext) (ReleaseInfo, bool, error) {
-	if runtimeDeps.CheckForUpdate != nil {
-		return runtimeDeps.CheckForUpdate(ctx)
+	if runtimeDeps.CheckForUpdate == nil {
+		return ReleaseInfo{}, false, unboundError("CheckForUpdate")
 	}
-	return ReleaseInfo{}, false, nil
+	return runtimeDeps.CheckForUpdate(ctx)
 }
 
 func fetchLatestRelease(ctx *AppContext) (ReleaseInfo, error) {
-	if runtimeDeps.FetchLatestRelease != nil {
-		return runtimeDeps.FetchLatestRelease(ctx)
+	if runtimeDeps.FetchLatestRelease == nil {
+		return ReleaseInfo{}, unboundError("FetchLatestRelease")
 	}
-	return ReleaseInfo{}, nil
+	return runtimeDeps.FetchLatestRelease(ctx)
 }
 
 func generateReport(ctx *AppContext, includeAI bool, onModelChange func(string)) string {
@@ -248,15 +274,15 @@ func generateReport(ctx *AppContext, includeAI bool, onModelChange func(string))
 }
 
 func getConfigJSONSafe() (string, error) {
-	if runtimeDeps.GetConfigJSONSafe != nil {
-		return runtimeDeps.GetConfigJSONSafe()
+	if runtimeDeps.GetConfigJSONSafe == nil {
+		return "", unboundError("GetConfigJSONSafe")
 	}
-	return "", nil
+	return runtimeDeps.GetConfigJSONSafe()
 }
 
 func applyConfigPatch(patch map[string]interface{}) (ConfigPatchResult, error) {
-	if runtimeDeps.ApplyConfigPatch != nil {
-		return runtimeDeps.ApplyConfigPatch(patch)
+	if runtimeDeps.ApplyConfigPatch == nil {
+		return ConfigPatchResult{}, unboundError("ApplyConfigPatch")
 	}
-	return ConfigPatchResult{}, nil
+	return runtimeDeps.ApplyConfigPatch(patch)
 }

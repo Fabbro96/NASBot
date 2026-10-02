@@ -11,6 +11,14 @@ import (
 )
 
 func checkResourceStress(ctx *AppContext, bot BotAPI, resource string, currentValue, threshold float64) {
+	// A non-positive threshold means "not configured". The sanitizer accepts 0
+	// as a valid minimum, and `currentValue >= 0` is true for every sample, so
+	// "warning_threshold": 0 produced a permanent stress state and a
+	// "CPU 0% da 2m0s" message.
+	if threshold <= 0 {
+		return
+	}
+
 	ctx.State.Mu.Lock()
 
 	tracker := ctx.State.ResourceStress[resource]
@@ -20,7 +28,7 @@ func checkResourceStress(ctx *AppContext, bot BotAPI, resource string, currentVa
 	}
 
 	isStressed := currentValue >= threshold
-	stressDurationThreshold := time.Duration(ctx.Config.StressTracking.DurationThresholdMinutes) * time.Minute
+	stressDurationThreshold := time.Duration(ctx.Cfg().StressTracking.DurationThresholdMinutes) * time.Minute
 
 	var notifyMsg string
 	var eventType, eventMsg string
@@ -80,7 +88,7 @@ func checkResourceStress(ctx *AppContext, bot BotAPI, resource string, currentVa
 
 	// Perform I/O and non-reentrant lock calls outside the locked section
 	if notifyMsg != "" {
-		m := tgbotapi.NewMessage(ctx.Config.AllowedUserID, notifyMsg)
+		m := tgbotapi.NewMessage(ctx.Cfg().AllowedUserID, notifyMsg)
 		m.ParseMode = "Markdown"
 		safeSend(bot, m)
 	}

@@ -1,0 +1,93 @@
+# Contesto di build Docker.
+#
+# Perché questo file esiste: il Dockerfile fa `COPY . .`, quindi SENZA
+# .dockerignore il contesto contiene config.json (bot_token e
+# gemini_api_key), l'intero .git, dist/, var/, i binari locali e i log, e
+# finiscono nello stage builder. In CI filava solo perché il gate cancella
+# config.json prima della build: una dipendenza implicata, non una garanzia.
+#
+# Il build (go build) usa esclusivamente i file *.go, go.mod e go.sum: tutto il
+# resto è escluso. In Docker l'ultima istruzione che combiache vince, quindi
+# l'ordine delle righe conta.
+
+# --- Segreti locali: mai dentro un'immagine ---
+# config.json contiene bot_token e gemini_api_key. Escluso anche ogni altro
+# config*.json: il build non legge la configurazione, e config.example.json
+# non serve a compilare.
+config.json
+config.*.json
+nasbot.config.*
+nasbot.config.local
+
+# --- Storico e metadati Git: solo peso e potenziali blob di segreti già cancellati ---
+.git
+.gitignore
+.gitattributes
+.gitmodules
+.github
+.githooks
+
+# --- Stato di lavoro interno del progetto ---
+.slim
+
+# --- Artefatti di build precedenti: solo peso, il builder li ricompila ---
+dist/
+bin/
+build/
+var/
+logs/
+
+# --- Log e file di stato prodotti a runtime ---
+*.log
+*.pid
+*.state
+nasbot_state.json
+nasbot.pid
+
+# --- Copertura dei test ---
+coverage.out
+coverage.html
+
+# --- Binari compilati in locale: mai riusati, solo ricopiati ---
+nasbot
+nasbot-386
+nasbot-amd64
+nasbot-arm
+nasbot-arm64
+nasbot-armv7
+nasbot-update
+nasbot-update-*
+nasbot_test
+
+# --- Documentazione: utile nel checkout, uselessa nell'immagine runtime ---
+docs/
+scripts/
+*.md
+LICENSE
+CONTRIBUTING
+
+# --- Cache di altri linguaggi (lint, test, ambienti virtuali) ---
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# --- Editor / OS ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# --- File scratch e backup ---
+commit.txt
+commit_msg.txt
+available_keys.txt
+used_keys.txt
+*.orig
+*.bak

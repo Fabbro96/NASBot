@@ -113,9 +113,11 @@ func reportLogRetentionDuration(ctx *AppContext) time.Duration {
 		return 48 * time.Hour
 	}
 
-	ctx.Settings.Mu.RLock()
+	// GetReportsSettings takes the read lock itself. Taking it here as well made
+	// this a recursive RLock on a sync.RWMutex: a writer queuing between the two
+	// acquisitions blocks the second one forever, and a deadlock is not a panic,
+	// so goSafeResilient never restarted the report goroutine.
 	reportsEnabled, reportInterval, _ := ctx.Settings.GetReportsSettings()
-	ctx.Settings.Mu.RUnlock()
 
 	if !reportsEnabled || reportInterval <= 0 {
 		return 48 * time.Hour // default

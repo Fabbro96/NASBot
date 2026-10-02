@@ -4,34 +4,63 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"nasbot/internal/format"
+	"nasbot/pkg/model"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/shirou/gopsutil/v3/disk"
 )
 
-// Cooldown duration for repeated disk I/O error alerts
+// Cooldown duration for repeated disk mount/remove/reconnect alerts
 const diskErrorAlertCooldown = 30 * time.Minute
 
 // Maximum number of container names shown in alert messages to stay within Telegram limits
 const maxContainersInAlert = 15
 
-// diskCheckRunning guards against overlapping checkDiskMounts executions
-var diskCheckRunning atomic.Bool
+// diskCheckGuards holds the per-context reentrancy guard for checkDiskMounts,
+// keyed by *MonitorState. It used to be a single package-level atomic.Bool, so
+// two AppContexts (the tests, or a second InitApp) shared one flag and a test
+// that left it true silently turned the next call into a no-op.
+//
+// TODO(model): this belongs in model.MonitorState as a plain bool (it is only
+// ever touched with Monitor.Mu held, so no extra mutex is needed).
+var (
+	diskCheckGuardMu model.Mutex
+	diskCheckGuards  = map[*model.MonitorState]*atomic.Bool{}
+)
+
+func diskCheckGuardFor(ms *model.MonitorState) *atomic.Bool {
+	diskCheckGuardMu.Lock()
+	defer diskCheckGuardMu.Unlock()
+	g, ok := diskCheckGuards[ms]
+	if !ok {
+		if len(diskCheckGuards) > 64 {
+			// Keep the table bounded: one entry per monitor state, pruned lazily.
+			for k, v := range diskCheckGuards {
+				if !v.Load() {
+					delete(diskCheckGuards, k)
+				}
+			}
+		}
+		g = &atomic.Bool{}
+		diskCheckGuards[ms] = g
+	}
+	return g
+}
 
 // checkDiskMounts inspects mounted filesystems and detects added, removed,
 // reconnected/device-changed disks or I/O errors.
 func checkDiskMounts(ctx *AppContext, bot BotAPI) {
 	// Prevent overlapping executions if previous check is still running
-	if !diskCheckRunning.CompareAndSwap(false, true) {
+	guard := diskCheckGuardFor(ctx.Monitor)
+	if !guard.CompareAndSwap(false, true) {
 		return
 	}
-	defer diskCheckRunning.Store(false)
+	defer guard.Store(false)
 
 	currentMounts := getCurrentDiskMounts(ctx)
 
@@ -128,12 +157,12 @@ func getCurrentDiskMounts(ctx *AppContext) map[string]DiskMountInfo {
 	}
 
 	// Ensure configured paths (like SSD or secondary disks) are checked even if not in partitions
-	if ctx != nil && ctx.Config != nil {
+	if ctx != nil && ctx.Cfg() != nil {
 		configuredPaths := []string{}
-		if ctx.Config.Paths.SSD != "" {
-			configuredPaths = append(configuredPaths, ctx.Config.Paths.SSD)
+		if ctx.Cfg().Paths.SSD != "" {
+			configuredPaths = append(configuredPaths, ctx.Cfg().Paths.SSD)
 		}
-		for secPath := range ctx.Config.Notifications.SecondaryDisks {
+		for secPath := range ctx.Cfg().Notifications.SecondaryDisks {
 			if secPath != "" {
 				configuredPaths = append(configuredPaths, secPath)
 			}
@@ -246,8 +275,36 @@ func formatContainerList(affected []string) string {
 	return "`" + strings.Join(display, "`, `") + "`" + suffix
 }
 
+// takeDiskAlertCooldown reports whether the mount may raise an alert now, and
+// consumes the cooldown slot when it may.
+//
+// All the disk alert handlers go through this, including "disk added": a
+// remove/add flap is one event, not two. Previously only handleDiskIOError
+// consulted DiskMountAlertCooldown, so a USB disk flapping twice a minute
+// produced two Telegram messages per flap, each one preceded by a `docker ps`
+// with a 5s timeout. quietHours suppresses the messages but still lets the
+// mount be tracked, which is the same rule the temperature, RAM and
+// critical-container paths follow.
+func takeDiskAlertCooldown(ctx *AppContext, mount string, quietHoursAllowed bool) bool {
+	if quietHoursAllowed && ctx.IsQuietHours() {
+		return false
+	}
+	ctx.Monitor.Mu.Lock()
+	defer ctx.Monitor.Mu.Unlock()
+	if last, ok := ctx.Monitor.DiskMountAlertCooldown[mount]; ok && time.Since(last) < diskErrorAlertCooldown {
+		return false
+	}
+	ctx.Monitor.DiskMountAlertCooldown[mount] = time.Now()
+	return true
+}
+
 // handleDiskRemoved notifies the user when a disk is unmounted or disconnected
 func handleDiskRemoved(ctx *AppContext, bot BotAPI, mount string, oldInfo DiskMountInfo) {
+	if !takeDiskAlertCooldown(ctx, mount, true) {
+		slog.Debug("Disk unmount alert suppressed (cooldown or quiet hours)", "mount", mount)
+		return
+	}
+
 	slog.Warn("Disk unmounted/removed", "mount", mount, "device", oldInfo.Device)
 	ctx.State.AddEvent("critical", fmt.Sprintf("Disk %s (%s) unmounted", mount, oldInfo.Device))
 
@@ -264,7 +321,7 @@ func handleDiskRemoved(ctx *AppContext, bot BotAPI, mount string, oldInfo DiskMo
 
 	msg := fmt.Sprintf(ctx.Tr("disk_unmounted_alert"), mount, devName) + affectedText
 
-	m := tgbotapi.NewMessage(ctx.Config.AllowedUserID, msg)
+	m := tgbotapi.NewMessage(ctx.Cfg().AllowedUserID, msg)
 	m.ParseMode = "Markdown"
 	m.ReplyMarkup = getDiskAlertKeyboard(ctx)
 	safeSend(bot, m)
@@ -272,6 +329,13 @@ func handleDiskRemoved(ctx *AppContext, bot BotAPI, mount string, oldInfo DiskMo
 
 // handleDiskAdded notifies the user when a new disk is mounted
 func handleDiskAdded(ctx *AppContext, bot BotAPI, mount string, info DiskMountInfo) {
+	// Shares the cooldown with handleDiskRemoved: a remove/add flap is one
+	// event, and the removal alert already told the user the disk went away.
+	if !takeDiskAlertCooldown(ctx, mount, true) {
+		slog.Debug("Disk added alert suppressed (cooldown or quiet hours)", "mount", mount)
+		return
+	}
+
 	slog.Info("Disk mounted/added", "mount", mount, "device", info.Device)
 	ctx.State.AddEvent("info", fmt.Sprintf("Disk %s (%s) mounted", mount, info.Device))
 
@@ -288,7 +352,7 @@ func handleDiskAdded(ctx *AppContext, bot BotAPI, mount string, info DiskMountIn
 
 	msg := fmt.Sprintf(ctx.Tr("disk_mounted_alert"), mount, devName, fsType, sizeStr, freeStr)
 
-	m := tgbotapi.NewMessage(ctx.Config.AllowedUserID, msg)
+	m := tgbotapi.NewMessage(ctx.Cfg().AllowedUserID, msg)
 	m.ParseMode = "Markdown"
 	m.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
@@ -301,6 +365,11 @@ func handleDiskAdded(ctx *AppContext, bot BotAPI, mount string, info DiskMountIn
 
 // handleDiskReconnected notifies the user of a device node change (e.g. sda1 -> sdb1)
 func handleDiskReconnected(ctx *AppContext, bot BotAPI, mount string, oldInfo, newInfo DiskMountInfo) {
+	if !takeDiskAlertCooldown(ctx, mount, true) {
+		slog.Debug("Disk reconnect alert suppressed (cooldown or quiet hours)", "mount", mount)
+		return
+	}
+
 	slog.Warn("Disk reconnected with changed device node", "mount", mount, "old_device", oldInfo.Device, "new_device", newInfo.Device)
 	ctx.State.AddEvent("critical", fmt.Sprintf("Disk %s reconnected: %s -> %s", mount, oldInfo.Device, newInfo.Device))
 
@@ -313,7 +382,7 @@ func handleDiskReconnected(ctx *AppContext, bot BotAPI, mount string, oldInfo, n
 	msg := fmt.Sprintf(ctx.Tr("disk_reconnected_alert"), mount, oldInfo.Device, newInfo.Device) +
 		"\n\n" + ctx.Tr("disk_reconnect_docker_warn") + affectedText
 
-	m := tgbotapi.NewMessage(ctx.Config.AllowedUserID, msg)
+	m := tgbotapi.NewMessage(ctx.Cfg().AllowedUserID, msg)
 	m.ParseMode = "Markdown"
 	m.ReplyMarkup = getDiskAlertKeyboard(ctx)
 	safeSend(bot, m)
@@ -321,14 +390,9 @@ func handleDiskReconnected(ctx *AppContext, bot BotAPI, mount string, oldInfo, n
 
 // handleDiskIOError notifies the user when a mount encounters I/O errors
 func handleDiskIOError(ctx *AppContext, bot BotAPI, mount string, info DiskMountInfo) {
-	ctx.Monitor.Mu.Lock()
-	lastAlert, onCooldown := ctx.Monitor.DiskMountAlertCooldown[mount]
-	if onCooldown && time.Since(lastAlert) < diskErrorAlertCooldown {
-		ctx.Monitor.Mu.Unlock()
+	if !takeDiskAlertCooldown(ctx, mount, false) {
 		return
 	}
-	ctx.Monitor.DiskMountAlertCooldown[mount] = time.Now()
-	ctx.Monitor.Mu.Unlock()
 
 	slog.Error("Disk I/O error detected", "mount", mount, "error", info.ErrorMsg)
 	ctx.State.AddEvent("critical", fmt.Sprintf("Disk %s I/O error: %s", mount, info.ErrorMsg))
@@ -344,7 +408,7 @@ func handleDiskIOError(ctx *AppContext, bot BotAPI, mount string, info DiskMount
 
 	msg := fmt.Sprintf(ctx.Tr("disk_io_error_alert"), mount, devName, errStr)
 
-	m := tgbotapi.NewMessage(ctx.Config.AllowedUserID, msg)
+	m := tgbotapi.NewMessage(ctx.Cfg().AllowedUserID, msg)
 	m.ParseMode = "Markdown"
 	m.ReplyMarkup = getDiskAlertKeyboard(ctx)
 	safeSend(bot, m)
@@ -397,14 +461,4 @@ func getDiskAlertKeyboard(ctx *AppContext) tgbotapi.InlineKeyboardMarkup {
 			tgbotapi.NewInlineKeyboardButtonData(ctx.Tr("btn_refresh"), "refresh_status"),
 		),
 	)
-}
-
-// SortedSecondaryVolKeys returns secondary volume mount points in stable sorted order
-func SortedSecondaryVolKeys(vols map[string]interface{}) []string {
-	keys := make([]string, 0, len(vols))
-	for k := range vols {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }

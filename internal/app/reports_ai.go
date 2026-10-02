@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -11,6 +12,25 @@ import (
 	"regexp"
 	"strings"
 	"time"
+)
+
+const (
+	// geminiAPIKeyHeader is the header Google documents for passing the API key
+	// (https://ai.google.dev/gemini-api/docs/api-key: `-H "x-goog-api-key: …"`).
+	// The key must NOT go in the query string: net/http reports transport
+	// failures as *url.Error, which embeds the whole request URL, and those
+	// errors are logged to var/nasbot.log and echoed into Telegram messages.
+	geminiAPIKeyHeader = "x-goog-api-key"
+
+	// redactedSecret replaces a secret in any string bound for a log or a chat.
+	redactedSecret = "[REDACTED]"
+
+	// geminiMaxResponseBytes caps the API response (1MB) to keep memory flat on
+	// the low-RAM targets NASBot runs on.
+	geminiMaxResponseBytes = 1 << 20
+
+	// geminiErrorBodyChars caps how much of an error body is kept for context.
+	geminiErrorBodyChars = 200
 )
 
 // Pre-compiled regex for Telegram formatting cleanup.
@@ -22,9 +42,50 @@ var (
 	reH1   = regexp.MustCompile(`(?m)^#\s+(.*?)\r?$`)
 )
 
+// redactSecret replaces every occurrence of secret in s with a placeholder.
+func redactSecret(s, secret string) string {
+	if s == "" || secret == "" {
+		return s
+	}
+	return strings.ReplaceAll(s, secret, redactedSecret)
+}
+
+// sanitizeGeminiError strips the API key out of an error before that error can
+// reach a log line or a Telegram message.
+//
+// It is applied at the single exit point of the Gemini layer, so it also covers
+// the cases where the key is not in the URL at all: a *url.Error that carries a
+// request built elsewhere, a body read failure that quotes the request line, or
+// an API error payload that echoes the credential back.
+func sanitizeGeminiError(err error, secret string) error {
+	if err == nil {
+		return nil
+	}
+	redacted := redactSecret(err.Error(), secret)
+	if redacted == err.Error() {
+		return err
+	}
+	return errors.New(redacted)
+}
+
+// geminiAPIKey returns the configured key, tolerating a context built without a
+// published Config (the Gemini layer is optional and must never panic).
+func geminiAPIKey(ctx *AppContext) string {
+	if ctx == nil {
+		return ""
+	}
+	cfg := ctx.Cfg()
+	if cfg == nil {
+		return ""
+	}
+	return cfg.GeminiAPIKey
+}
+
 // generateAIReport triggers an API call yielding a conversational model readout for NAS events.
 func generateAIReport(ctx *AppContext, events []ReportEvent, onModelChange func(string)) (string, error) {
-	if ctx.Config.GeminiAPIKey == "" {
+	// Optional feature: without a key the report is produced without AI and
+	// nothing else in the bot is affected.
+	if geminiAPIKey(ctx) == "" {
 		return "", nil
 	}
 
@@ -102,16 +163,37 @@ func callGeminiWithFallback(ctx *AppContext, prompt string, onModelChange func(s
 
 		select {
 		case <-c.Done():
-			slog.Error("Gemini: Overall timeout")
-			return "", fmt.Errorf("overall timeout")
+			// err is already sanitized: it can be logged as-is.
+			slog.Error("Gemini: Overall timeout", "model", model, "err", err)
+			return "", errors.New("overall timeout")
 		default:
 		}
 	}
 	return "", err
 }
 
+// callGeminiAPIWithError is the only entry point to the Gemini HTTP layer.
+// It sanitizes whatever the underlying call reports, so no caller can leak the
+// API key by logging or sending the returned error.
 func callGeminiAPIWithError(ctx *AppContext, parentCtx context.Context, prompt string, model string) (string, error) {
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, ctx.Config.GeminiAPIKey)
+	apiKey := geminiAPIKey(ctx)
+	text, err := callGeminiAPI(ctx, parentCtx, prompt, model, apiKey)
+	if err != nil {
+		return "", sanitizeGeminiError(err, apiKey)
+	}
+	return text, nil
+}
+
+// callGeminiAPI performs one generateContent request. The API key travels in the
+// x-goog-api-key header, never in the URL.
+func callGeminiAPI(ctx *AppContext, parentCtx context.Context, prompt string, model, apiKey string) (string, error) {
+	if apiKey == "" {
+		// Degrade cleanly: the key is optional, so an unconfigured bot must not
+		// burn three model retries on unauthenticated requests.
+		return "", errors.New("gemini api key not configured")
+	}
+
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent", model)
 
 	requestBody := map[string]interface{}{
 		"contents": []map[string]interface{}{
@@ -131,13 +213,17 @@ func callGeminiAPIWithError(ctx *AppContext, parentCtx context.Context, prompt s
 	c, cancel := context.WithTimeout(parentCtx, 15*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(c, "POST", url, bytes.NewBuffer(jsonBody))
+	req, err := http.NewRequestWithContext(c, http.MethodPost, url, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(geminiAPIKeyHeader, apiKey)
 
-	client := ctx.HTTP
+	var client *http.Client
+	if ctx != nil {
+		client = ctx.HTTP
+	}
 	if client == nil {
 		client = &http.Client{Timeout: 15 * time.Second}
 	}
@@ -149,7 +235,7 @@ func callGeminiAPIWithError(ctx *AppContext, parentCtx context.Context, prompt s
 	defer resp.Body.Close()
 
 	// Limit response body to 1MB to prevent memory exhaustion on low-RAM systems
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, geminiMaxResponseBytes))
 	if err != nil {
 		return "", err
 	}
@@ -160,8 +246,8 @@ func callGeminiAPIWithError(ctx *AppContext, parentCtx context.Context, prompt s
 	if resp.StatusCode != 200 {
 		// Truncate error body to avoid flooding logs
 		errBody := string(body)
-		if len(errBody) > 200 {
-			errBody = errBody[:200] + "..."
+		if len(errBody) > geminiErrorBodyChars {
+			errBody = errBody[:geminiErrorBodyChars] + "..."
 		}
 		return "", fmt.Errorf("API error %d: %s", resp.StatusCode, errBody)
 	}

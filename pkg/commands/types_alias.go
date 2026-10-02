@@ -21,3 +21,15 @@ type DiskUsagePoint = model.DiskUsagePoint
 type DiskPrediction = model.DiskPrediction
 type ContainerInfo = model.ContainerInfo
 type ResourceConfig = model.ResourceConfig
+
+// cfg returns the published configuration snapshot.
+//
+// Every read of the configuration inside pkg/commands goes through this single
+// accessor: when model.AppContext exposes the immutable Cfg(), only the body
+// below has to change instead of ~40 call sites.
+func cfg(ctx *AppContext) *Config {
+	if ctx == nil {
+		return nil
+	}
+	return ctx.Cfg()
+}

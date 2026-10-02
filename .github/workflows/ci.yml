@@ -7,10 +7,12 @@ on:
     paths-ignore:
       - "**/*.md"
       - ".github/rulesets/**"
+  # No paths-ignore here. main-protection.json requires five checks
+  # (Secret Scan, Build & Test 1.22.x, Build & Test 1.23.x, Dependency Review,
+  # CodeQL Analysis (go)) with strict_required_status_checks_policy. If a docs
+  # only PR skips this workflow, none of those contexts is ever reported and
+  # the PR stays "Expected - Waiting for status to be reported" forever.
   pull_request:
-    paths-ignore:
-      - "**/*.md"
-      - ".github/rulesets/**"
   workflow_dispatch:
 
 permissions:
@@ -63,6 +65,15 @@ jobs:
     name: Build & Test (Go ${{ matrix.go-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      # Explicit, never relying on the script default: an unset threshold in
+      # CI must not silently disable the coverage gate. It MUST stay equal to
+      # the default in scripts/ci_guard.sh — when the floor moves, both move in
+      # the same commit. Raise it as tests land; it may never go down.
+      NASBOT_MIN_COVERAGE: "36"
+      # ci_guard.sh owns the coverage gate and deletes the profile on exit;
+      # keep it so the step below can upload it as an artifact.
+      NASBOT_KEEP_COVERAGE: "1"
     strategy:
       fail-fast: false
       matrix:
@@ -91,13 +102,15 @@ jobs:
           chmod +x scripts/build_release.sh
           ./scripts/build_release.sh
 
-      - name: Coverage (primary toolchain)
+      # No second `go test` here on purpose: the Quality gate step above already
+      # ran the suite once with -coverprofile and already failed the job if the
+      # total is below NASBOT_MIN_COVERAGE. Re-running would execute the whole
+      # suite twice and could enforce two different numbers.
+      - name: Coverage report (primary toolchain)
         if: matrix.go-version == '1.22.x'
         run: |
-          if [ ! -f config.json ]; then
-            cp config.example.json config.json
-          fi
-          go test -tags deadlock -timeout 45s -coverprofile=coverage.out ./...
+          test -f coverage.out
+          go tool cover -func=coverage.out | tail -1
 
       - name: Upload coverage artifact
         if: matrix.go-version == '1.22.x'

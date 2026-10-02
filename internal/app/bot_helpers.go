@@ -21,9 +21,9 @@ func handleSpeedtest(ctx *AppContext, bot BotAPI, chatID int64) {
 	}
 
 	msg := tgbotapi.NewMessage(chatID, ctx.Tr("speedtest_running"))
-	sent, err := bot.Send(msg)
-	if err != nil {
-		slog.Error("Failed to send speedtest start message", "err", err)
+	sent, sendErr := bot.Send(msg)
+	if sendErr != nil {
+		slog.Error("Failed to send speedtest start message", "err", sanitizeErr(sendErr))
 	}
 
 	c, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -36,7 +36,7 @@ func handleSpeedtest(ctx *AppContext, bot BotAPI, chatID int64) {
 		if c.Err() == context.DeadlineExceeded {
 			resultText = "⏱ Speed test timed out"
 		} else {
-			resultText = fmt.Sprintf("❌ Speed test failed:\n`%s`", err.Error())
+			resultText = fmt.Sprintf("❌ Speed test failed:\n`%s`", sanitizeErr(err))
 		}
 	} else {
 		lines := strings.Split(strings.TrimSpace(string(output)), "\n")
@@ -58,16 +58,34 @@ func handleSpeedtest(ctx *AppContext, bot BotAPI, chatID int64) {
 			ping, download, upload)
 	}
 
-	edit := tgbotapi.NewEditMessageText(chatID, sent.MessageID, resultText)
-	edit.ParseMode = "Markdown"
-	if sent.MessageID != 0 {
-		if _, err := bot.Send(edit); err != nil {
-			slog.Error("Failed to edit speedtest message", "err", err)
-			safeSend(bot, tgbotapi.NewMessage(chatID, resultText))
-		}
-	} else {
-		safeSend(bot, tgbotapi.NewMessage(chatID, resultText))
+	// The placeholder message must exist before it can be edited: the check on
+	// sent.MessageID comes before the edit is built, where it used to come
+	// after, so the edit config was built for a message that did not exist.
+	if sendErr != nil || sent.MessageID == 0 {
+		safeSend(bot, newMarkdownMessage(chatID, resultText))
+		return
 	}
+	if err := sendWithParseFallback(bot, newMarkdownEdit(chatID, sent.MessageID, resultText, nil)); err != nil {
+		slog.Error("Failed to edit speedtest message", "err", sanitizeErr(err))
+		safeSend(bot, newMarkdownMessage(chatID, resultText))
+	}
+}
+
+// newMarkdownMessage builds a Markdown message.
+func newMarkdownMessage(chatID int64, text string) tgbotapi.MessageConfig {
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ParseMode = "Markdown"
+	return msg
+}
+
+// newMarkdownEdit builds a Markdown edit of an existing message.
+func newMarkdownEdit(chatID int64, msgID int, text string, keyboard *tgbotapi.InlineKeyboardMarkup) tgbotapi.EditMessageTextConfig {
+	edit := tgbotapi.NewEditMessageText(chatID, msgID, text)
+	edit.ParseMode = "Markdown"
+	if keyboard != nil {
+		edit.ReplyMarkup = keyboard
+	}
+	return edit
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -187,27 +205,13 @@ func executeSystemPowerCommand(cmd string) error {
 //  MESSAGE HELPERS
 // ═══════════════════════════════════════════════════════════════════
 
+// sendMarkdown sends text, splitting it when it exceeds the Telegram limit.
 func sendMarkdown(bot BotAPI, chatID int64, text string) {
 	if bot == nil {
 		return
 	}
-
-	const maxLen = 4096
-	runes := []rune(text)
-
-	for i := 0; i < len(runes); i += maxLen {
-		end := i + maxLen
-		if end > len(runes) {
-			end = len(runes)
-		}
-
-		msg := tgbotapi.NewMessage(chatID, string(runes[i:end]))
-		msg.ParseMode = "Markdown"
-		if _, err := bot.Send(msg); err != nil {
-			slog.Error("Error sending Markdown message. Retrying as plain text", "err", err)
-			msg.ParseMode = ""
-			safeSend(bot, msg)
-		}
+	for _, chunk := range splitTextChunks(text, telegramMaxTextRunes) {
+		safeSend(bot, newMarkdownMessage(chatID, chunk))
 	}
 }
 
@@ -215,30 +219,46 @@ func sendWithKeyboard(ctx *AppContext, bot BotAPI, chatID int64, text string) {
 	if bot == nil {
 		return
 	}
-	msg := tgbotapi.NewMessage(chatID, text)
-	msg.ParseMode = "Markdown"
-	// Ensure getMainKeyboard is updated to take ctx if we translate it
-	msg.ReplyMarkup = getMainKeyboard(ctx)
-	if _, err := bot.Send(msg); err != nil {
-		slog.Error("Error sending Markdown message with keyboard. Retrying as plain text", "err", err)
-		msg.ParseMode = ""
+	kb := getMainKeyboard(ctx)
+	for _, chunk := range splitTextChunks(text, telegramMaxTextRunes) {
+		msg := newMarkdownMessage(chatID, chunk)
+		msg.ReplyMarkup = kb
 		safeSend(bot, msg)
 	}
 }
 
+// editMessage rewrites an existing message in place.
+//
+// The text is split at the Telegram limit: the first chunk is the edit, the
+// remaining ones have to be new messages, because editing the same message twice
+// would overwrite the first chunk. When the edit cannot be delivered at all
+// (message too old, deleted, or a markup error that survived the plain retry)
+// the text goes out as a new message instead of being lost.
 func editMessage(bot BotAPI, chatID int64, msgID int, text string, keyboard *tgbotapi.InlineKeyboardMarkup) {
 	if bot == nil {
 		return
 	}
-	edit := tgbotapi.NewEditMessageText(chatID, msgID, text)
-	edit.ParseMode = "Markdown"
-	if keyboard != nil {
-		edit.ReplyMarkup = keyboard
-	}
-	if _, err := bot.Send(edit); err != nil {
-		slog.Error("Error editing message to Markdown. Retrying as plain text", "err", err)
-		edit.ParseMode = ""
-		safeSend(bot, edit)
+	chunks := splitTextChunks(text, telegramMaxTextRunes)
+	for i, chunk := range chunks {
+		// The keyboard belongs to the last chunk: it is the final state of the
+		// conversation, and repeating it on every chunk would make the message
+		// grow buttons while being read.
+		kb := keyboard
+		if i < len(chunks)-1 {
+			kb = nil
+		}
+		if i == 0 && msgID > 0 {
+			err := sendWithParseFallback(bot, newMarkdownEdit(chatID, msgID, chunk, kb))
+			if err == nil {
+				continue
+			}
+			slog.Error("Error editing message, falling back to a new message", "msg_id", msgID, "err", sanitizeErr(err))
+		}
+		msg := newMarkdownMessage(chatID, chunk)
+		if kb != nil {
+			msg.ReplyMarkup = *kb
+		}
+		safeSend(bot, msg)
 	}
 }
 

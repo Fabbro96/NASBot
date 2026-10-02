@@ -9,7 +9,9 @@ import (
 
 // AnalyzeCriticalAlerts fetches system context and asks Gemini to diagnose the issue.
 func AnalyzeCriticalAlerts(ctx *AppContext, onModelChange func(string)) (string, error) {
-	if ctx.Config.GeminiAPIKey == "" {
+	// Optional feature: without a key the handler degrades to a plain message
+	// instead of failing, and the API key never reaches logs or the chat.
+	if geminiAPIKey(ctx) == "" {
 		return "❌ Gemini API Key not configured.", nil
 	}
 

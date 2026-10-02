@@ -44,10 +44,6 @@ echo "✅ pre-push checks passed"
 EOF
 chmod +x "$HOOKS_DIR/pre-push"
 
-echo "✅ Git hooks configured successfully!"
-echo "  - pre-commit: runs gofmt, quality check and secret scan"
-echo "  - pre-push: runs the full test suite (ci_guard.sh)"
-
 # Commit-msg: enforce conventional commits
 cat << 'EOF' > "$HOOKS_DIR/commit-msg"
 #!/usr/bin/env bash
@@ -78,3 +74,36 @@ EOF
 chmod +x "$HOOKS_DIR/commit-msg"
 
 echo "  - commit-msg: enforces Conventional Commits standard"
+
+# Activate the hooks. Without this the files above are inert: git never runs
+# them, so no Conventional Commits check, no secret scan and no quality gate
+# happen locally.
+if ! command -v git >/dev/null 2>&1; then
+  echo "❌ git is required to configure core.hooksPath"
+  echo "   Hooks were written to $HOOKS_DIR but are NOT active."
+  exit 1
+fi
+
+if ! git -C "$REPO_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+  echo "❌ $REPO_ROOT is not inside a git repository."
+  echo "   Hooks were written to $HOOKS_DIR but are NOT active."
+  exit 1
+fi
+
+if git -C "$REPO_ROOT" config core.hooksPath .githooks; then
+  echo "✅ core.hooksPath set to .githooks (local config, not committed)"
+  echo "   Hooks now run on commit and push."
+else
+  echo "❌ Failed to set core.hooksPath. Hooks are NOT active."
+  echo "   Run manually: git -C $REPO_ROOT config core.hooksPath .githooks"
+  exit 1
+fi
+
+echo ""
+echo "✅ Git hooks configured and active:"
+echo "  - pre-commit: runs gofmt, quality check and secret scan"
+echo "  - pre-push: runs the full test suite (ci_guard.sh)"
+echo "  - commit-msg: enforces Conventional Commits standard"
+echo ""
+echo "To bypass temporarily: git commit --no-verify"
+echo "To disable:         git config --unset core.hooksPath"

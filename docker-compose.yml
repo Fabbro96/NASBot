@@ -1,16 +1,68 @@
-version: '3.8'
+# ============================================================================
+# NASBot - compose file (SECONDARY deployment path).
+#
+# The supported way to run NASBot on a NAS is the native binary built by
+# scripts/package_runtime.sh and driven by scripts/start_bot.sh. Use this file
+# only if you want a container.
+#
+# WARNING - this configuration grants full control of the host:
+#   privileged: true + pid: host + network_mode: host + the Docker socket +
+#   /dev, /sys and / read-only. Together they are equivalent to root on the
+# NAS. Every entry below is annotated with why it is needed and what breaks if
+# it is removed, so that the trade-off stays explicit. None of these settings
+# was weakened: they are all required to read disk/SMART/temperature data and
+# to talk to the Docker daemon.
+#
+# `version` is obsolete in Compose v2 (it only prints a warning) but it is kept
+# so that older `docker-compose` binaries still parse this file.
+version: "3.8"
 
+# Image tag: NOT pinned to a digest or to an explicit version, it tracks
+# :latest. That keeps `docker compose pull` simple but means an image update
+# can change behaviour without a change in this file. Pinning it (for example
+# to a release tag) is left as an explicit decision, not a silent change here.
+# ============================================================================
 services:
   nasbot:
     image: ghcr.io/fabbro96/nasbot:latest
     container_name: nasbot
     restart: unless-stopped
+
+    # The bot must reach the NAS's own Telegram/API endpoints and monitor
+    # services bound to loopback or to the LAN IP. Host networking is the only
+    # way to see them. Removing it: the bot keeps working (NAT is outbound),
+    # but it can no longer inspect host services bound to 127.0.0.1.
     network_mode: "host"
+
+    # Reads SMART data (/dev/sdX), sensors (/sys/class/hwmon), dmidecode
+    # tables and mount information. Most of these are refused to an
+    # unprivileged container. Removing it: disk health, RAID state, kernel
+    # info and the RAID/SMART dashboard sections break or return empty values.
     privileged: true
+
+    # Needed to read /proc/<pid> of host processes for the process monitor and
+    # for the load/kernel counters that are namespaced per PID namespace.
+    # Removing it: process monitoring sees only the container's own PIDs.
     pid: "host"
+
     volumes:
+      # Configuration (bot_token, gemini_api_key). Provided by the host, never
+      # baked into the image: the image ships no credentials.
       - ./config.json:/app/config.json
+
+      # Docker API for the /docker commands (list, logs, start/stop, prune).
+      # Equivalent to root on the host, as documented in the Dockerfile.
       - /var/run/docker.sock:/var/run/docker.sock
+
+      # Read-only block devices: smartctl, lsblk, blkid.
+      # Removing it: no disk model, no SMART, no mount-point mapping.
       - /dev:/dev:ro
+
+      # Read-only sysfs: temperatures (hwmon), CPU, kernel, RAID state.
+      # Removing it: no temperature/CPU/RAID readings.
       - /sys:/sys:ro
-      - /:/hostfs:ro # Useful if it needs to monitor host root FS space
+
+      # Read-only host root filesystem, used to measure free space per mount
+      # point and to resolve host paths. Read-only on purpose: the bot never
+      # writes to the host filesystem.
+      - /:/hostfs:ro

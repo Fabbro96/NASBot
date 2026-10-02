@@ -20,3 +20,9 @@ type DiskMountInfo = pmodel.DiskMountInfo
 func InitApp(cfg *Config) *AppContext {
 	return pmodel.InitApp(cfg)
 }
+
+// The published configuration is read through AppContext.Cfg() and the user
+// settings through the UserSettings accessors. Both are the only sanctioned
+// seams: Cfg returns an immutable snapshot (a reload publishes a new one) and
+// each accessor takes the lock exactly once, so no call site can nest a lock
+// around another accessor and dead-lock.

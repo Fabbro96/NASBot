@@ -9,6 +9,7 @@ func SetupCommandRegistry() *CommandRegistry {
 	r.Register("top", &TopCmd{})
 	r.Register("processes", &ProcessesCmd{})
 	r.Register("sysinfo", &SysInfoCmd{})
+	r.Register("diskinfo", &DiskInfoCmd{})
 	r.Register("temp", &TempCmd{})
 	r.Register("reboot", &PowerCmd{Action: "reboot"})
 	r.Register("forcereboot", &PowerCmd{Action: "reboot", Force: true})

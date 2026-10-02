@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -12,13 +13,17 @@ import (
 )
 
 func handleAdBlockCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int, data string) {
-	if !ctx.Config.AdBlock.Enabled {
+	cfg := ctx.Cfg()
+	if cfg == nil {
+		return
+	}
+	if !cfg.AdBlock.Enabled {
 		safeSend(bot, tgbotapi.NewMessage(chatID, ctx.Tr("adblock_disabled")))
 		return
 	}
 
-	baseURL := ctx.Config.AdBlock.URL
-	token := ctx.Config.AdBlock.Token
+	baseURL := cfg.AdBlock.URL
+	token := cfg.AdBlock.Token
 
 	if baseURL == "" {
 		safeSend(bot, tgbotapi.NewMessage(chatID, ctx.Tr("adblock_no_url")))
@@ -34,6 +39,7 @@ func handleAdBlockCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int,
 	} else if data == "adblock_resume" {
 		apiURL = fmt.Sprintf("%s/admin/api.php?enable&auth=%s", baseURL, url.QueryEscape(token))
 	} else {
+		slog.Warn("Rejected adblock callback payload", "data", truncate(data, 64))
 		return
 	}
 
@@ -42,7 +48,9 @@ func handleAdBlockCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int,
 
 	req, err := http.NewRequestWithContext(reqCtx, "GET", apiURL, nil)
 	if err != nil {
-		safeSend(bot, tgbotapi.NewMessage(chatID, "❌ Error creating AdBlock request: "+err.Error()))
+		// The URL carries the AdBlock auth token, so the error is sanitized
+		// before it is logged or shown.
+		safeSend(bot, tgbotapi.NewMessage(chatID, fmt.Sprintf(ctx.Tr("adblock_err_create_req"), sanitizeErr(err))))
 		return
 	}
 
@@ -53,7 +61,7 @@ func handleAdBlockCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int,
 
 	resp, err := client.Do(req)
 	if err != nil {
-		safeSend(bot, tgbotapi.NewMessage(chatID, "❌ Error contacting AdBlock: "+err.Error()))
+		safeSend(bot, tgbotapi.NewMessage(chatID, fmt.Sprintf(ctx.Tr("adblock_err_contact"), sanitizeErr(err))))
 		return
 	}
 	defer resp.Body.Close()

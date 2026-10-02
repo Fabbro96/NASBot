@@ -27,3 +27,4 @@ type RaidWatchdogConfig = pmodel.RaidWatchdogConfig
 type UpdateConfig = pmodel.UpdateConfig
 type BackupConfig = pmodel.BackupConfig
 type AdBlockConfig = pmodel.AdBlockConfig
+type ShellCommandConfig = pmodel.ShellCommandConfig

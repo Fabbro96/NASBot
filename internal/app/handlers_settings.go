@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 
@@ -124,16 +125,16 @@ func getSettingsMenuText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup
 		}
 	}
 
-	ctx.Settings.Mu.RLock()
-	quietEnabled := ctx.Settings.QuietHours.Enabled
-	qStartH := ctx.Settings.QuietHours.Start.Hour
-	qStartM := ctx.Settings.QuietHours.Start.Minute
-	qEndH := ctx.Settings.QuietHours.End.Hour
-	qEndM := ctx.Settings.QuietHours.End.Minute
-	pruneEnabled := ctx.Settings.DockerPrune.Enabled
-	pruneDay := ctx.Settings.DockerPrune.Day
-	pruneHour := ctx.Settings.DockerPrune.Hour
-	ctx.Settings.Mu.RUnlock()
+	quiet := ctx.Settings.GetQuietHours()
+	quietEnabled := quiet.Enabled
+	qStartH := quiet.Start.Hour
+	qStartM := quiet.Start.Minute
+	qEndH := quiet.End.Hour
+	qEndM := quiet.End.Minute
+	prune := ctx.Settings.GetDockerPrune()
+	pruneEnabled := prune.Enabled
+	pruneDay := prune.Day
+	pruneHour := prune.Hour
 
 	quietText := ctx.Tr("quiet_disabled")
 	if quietEnabled {
@@ -299,8 +300,8 @@ func getReportSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMark
 func getThresholdsMenuText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
 	text := ctx.Tr("thresholds_settings_title")
 
-	// Read current thresholds from Config
-	cfg := ctx.Config
+	// Read current thresholds from the published config snapshot
+	cfg := ctx.Cfg()
 	cpuW, cpuC := cfg.Notifications.CPU.WarningThreshold, cfg.Notifications.CPU.CriticalThreshold
 	ramW, ramC := cfg.Notifications.RAM.WarningThreshold, cfg.Notifications.RAM.CriticalThreshold
 	ssdW, ssdC := cfg.Notifications.DiskSSD.WarningThreshold, cfg.Notifications.DiskSSD.CriticalThreshold
@@ -337,13 +338,20 @@ func getThresholdsMenuText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMark
 	}
 	sort.Strings(mounts)
 
+	// A mount path cannot go into callback_data: Telegram caps it at 64 bytes and
+	// cutting it produced a second, truncated entry in config.json whenever the
+	// button was pressed. Register the mounts and address them by short token.
+	registerCallbackMounts(mounts)
+
 	for _, mount := range mounts {
 		diskCfg := diskMap[mount]
 		btnText := fmt.Sprintf("🗄 Disk %s: %.0f%% / %.0f%%", mount, diskCfg.WarningThreshold, diskCfg.CriticalThreshold)
-		cbData := "thresh_edit_disk:" + mount
-		// Telegram inline callback data is limited to 64 bytes
-		if len(cbData) > 64 {
-			cbData = cbData[:64]
+		cbData := "thresh_edit_disk:" + callbackRefFor(mount)
+		if !callbackDataFits(cbData) {
+			// Refuse instead of truncating: a cut payload would address a
+			// different, shorter mount and quietly write to the wrong disk.
+			slog.Warn("Skipping disk threshold button: callback data too long", "mount", mount, "bytes", len(cbData))
+			continue
 		}
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(btnText, cbData),
@@ -364,12 +372,13 @@ func getThresholdsMenuText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMark
 func getThresholdResourceText(ctx *AppContext, resource string) (string, tgbotapi.InlineKeyboardMarkup) {
 	text := fmt.Sprintf(ctx.Tr("thresh_edit_title"), strings.ToUpper(resource))
 
-	cfg := ctx.Config
+	cfg := ctx.Cfg()
 	var w, c float64
 	var unit string
 
 	if strings.HasPrefix(resource, "disk:") {
-		mount := strings.TrimPrefix(resource, "disk:")
+		// The payload carries a short token, not the mount path itself.
+		mount := resolveCallbackRef(strings.TrimPrefix(resource, "disk:"))
 		diskCfg, ok := cfg.Notifications.SecondaryDisks[mount]
 		if !ok {
 			diskCfg = ResourceConfig{Enabled: true, WarningThreshold: 90, CriticalThreshold: 95}
@@ -393,16 +402,20 @@ func getThresholdResourceText(ctx *AppContext, resource string) (string, tgbotap
 		}
 	}
 
-	// Build inc/dec buttons; enforce 64-byte Telegram callback limit
+	// Build the inc/dec buttons. A disk resource is already addressed by a
+	// short token, so every payload stays within Telegram's limit; refuse to
+	// build a button that would not, rather than cutting it.
 	warningDec := fmt.Sprintf("thresh_dec_w_%s", resource)
 	warningInc := fmt.Sprintf("thresh_inc_w_%s", resource)
 	criticalDec := fmt.Sprintf("thresh_dec_c_%s", resource)
 	criticalInc := fmt.Sprintf("thresh_inc_c_%s", resource)
 	warningCustom := fmt.Sprintf("thresh_custom_w_%s", resource)
 	criticalCustom := fmt.Sprintf("thresh_custom_c_%s", resource)
-	for _, cb := range []*string{&warningDec, &warningInc, &criticalDec, &criticalInc, &warningCustom, &criticalCustom} {
-		if len(*cb) > 64 {
-			*cb = (*cb)[:64]
+	callbacks := []*string{&warningDec, &warningInc, &criticalDec, &criticalInc, &warningCustom, &criticalCustom}
+	for _, cb := range callbacks {
+		if !callbackDataFits(*cb) {
+			slog.Warn("Threshold resource too long for callback data", "resource", resource, "bytes", len(*cb))
+			*cb = "noop"
 		}
 	}
 
@@ -433,13 +446,12 @@ func getThresholdResourceText(ctx *AppContext, resource string) (string, tgbotap
 
 func getQuietHoursSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
 	text := ctx.Tr("quiet_settings_title")
-	ctx.Settings.Mu.RLock()
-	enabled := ctx.Settings.QuietHours.Enabled
-	startH := ctx.Settings.QuietHours.Start.Hour
-	startM := ctx.Settings.QuietHours.Start.Minute
-	endH := ctx.Settings.QuietHours.End.Hour
-	endM := ctx.Settings.QuietHours.End.Minute
-	ctx.Settings.Mu.RUnlock()
+	quiet := ctx.Settings.GetQuietHours()
+	enabled := quiet.Enabled
+	startH := quiet.Start.Hour
+	startM := quiet.Start.Minute
+	endH := quiet.End.Hour
+	endM := quiet.End.Minute
 	if enabled {
 		text += fmt.Sprintf(ctx.Tr("quiet_currently"), startH, startM, endH, endM)
 	} else {
@@ -464,11 +476,10 @@ func getQuietHoursSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboard
 
 func getDockerPruneSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
 	text := ctx.Tr("prune_settings_title")
-	ctx.Settings.Mu.RLock()
-	enabled := ctx.Settings.DockerPrune.Enabled
-	day := ctx.Settings.DockerPrune.Day
-	hour := ctx.Settings.DockerPrune.Hour
-	ctx.Settings.Mu.RUnlock()
+	prune := ctx.Settings.GetDockerPrune()
+	enabled := prune.Enabled
+	day := prune.Day
+	hour := prune.Hour
 	if enabled {
 		dayName := ctx.Tr(day)
 		text += fmt.Sprintf("%s: %s %02d:00\n", ctx.Tr("schedule"), dayName, hour)
@@ -493,9 +504,7 @@ func getDockerPruneSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboar
 func getPruneScheduleText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
 	text := ctx.Tr("prune_schedule_title")
 	days := []string{"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
-	ctx.Settings.Mu.RLock()
-	currentDay := ctx.Settings.DockerPrune.Day
-	ctx.Settings.Mu.RUnlock()
+	currentDay := ctx.Settings.GetDockerPrune().Day
 	var rows [][]tgbotapi.InlineKeyboardButton
 	for _, day := range days {
 		check := " "
@@ -512,9 +521,10 @@ func getPruneScheduleText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarku
 func getBackupSettingsText(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
 	text := ctx.Tr("backup_settings_title")
 
-	uid := ctx.Config.Backup.TargetUserID
+	cfg := ctx.Cfg()
+	uid := cfg.Backup.TargetUserID
 	if uid == 0 {
-		text += fmt.Sprintf(ctx.Tr("backup_current_default"), ctx.Config.AllowedUserID)
+		text += fmt.Sprintf(ctx.Tr("backup_current_default"), cfg.AllowedUserID)
 	} else {
 		text += fmt.Sprintf(ctx.Tr("backup_current_uid"), uid)
 	}

@@ -3,11 +3,12 @@ package app
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"math"
 	"sort"
 	"strings"
 	"time"
 
-	"nasbot/internal/format"
 	"nasbot/pkg/model"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -29,17 +30,30 @@ type ResourceMonitor interface {
 	Check(ctx *AppContext, s *Stats) []MonitorAlert
 }
 
+// thresholdReached reports whether currentValue crossed threshold.
+// A threshold <= 0 means "not configured": the config sanitizer accepts 0 as a
+// valid minimum, and `value >= 0` is true for every reading, which turned
+// "critical_threshold": 0 into a critical alert every 30 minutes with the real
+// temperature, and "warning_threshold": 0 into permanent stress on CPU, RAM,
+// Swap and SSD.
+func thresholdReached(currentValue, threshold float64) bool {
+	if threshold <= 0 {
+		return false
+	}
+	return currentValue >= threshold
+}
+
 type CPUMonitor struct{}
 
 func (m *CPUMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
 	var alerts []MonitorAlert
-	cfg := ctx.Config.Notifications.CPU
+	cfg := ctx.Cfg().Notifications.CPU
 	if !cfg.Enabled {
 		return alerts
 	}
-	if s.CPU >= cfg.CriticalThreshold {
+	if thresholdReached(s.CPU, cfg.CriticalThreshold) {
 		alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf(ctx.Tr("mon_cpu_crit"), s.CPU)})
-	} else if s.CPU >= cfg.WarningThreshold {
+	} else if thresholdReached(s.CPU, cfg.WarningThreshold) {
 		alerts = append(alerts, MonitorAlert{"warning", fmt.Sprintf(ctx.Tr("mon_cpu_high"), s.CPU)})
 	}
 	return alerts
@@ -49,13 +63,13 @@ type RAMMonitor struct{}
 
 func (m *RAMMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
 	var alerts []MonitorAlert
-	cfg := ctx.Config.Notifications.RAM
+	cfg := ctx.Cfg().Notifications.RAM
 	if !cfg.Enabled {
 		return alerts
 	}
-	if s.RAM >= cfg.CriticalThreshold {
+	if thresholdReached(s.RAM, cfg.CriticalThreshold) {
 		alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf(ctx.Tr("mon_ram_crit"), s.RAM)})
-	} else if s.RAM >= cfg.WarningThreshold {
+	} else if thresholdReached(s.RAM, cfg.WarningThreshold) {
 		alerts = append(alerts, MonitorAlert{"warning", fmt.Sprintf(ctx.Tr("mon_ram_high"), s.RAM)})
 	}
 	return alerts
@@ -65,12 +79,12 @@ type SwapMonitor struct{}
 
 func (m *SwapMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
 	var alerts []MonitorAlert
-	cfg := ctx.Config.Notifications.Swap
+	cfg := ctx.Cfg().Notifications.Swap
 	if !cfg.Enabled {
 		return alerts
 	}
 	// Note: Swap has no critical threshold check currently
-	if s.Swap >= cfg.WarningThreshold {
+	if thresholdReached(s.Swap, cfg.WarningThreshold) {
 		alerts = append(alerts, MonitorAlert{"warning", fmt.Sprintf(ctx.Tr("mon_swap_high"), s.Swap)})
 	}
 	return alerts
@@ -80,13 +94,13 @@ type SSDMonitor struct{}
 
 func (m *SSDMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
 	var alerts []MonitorAlert
-	cfg := ctx.Config.Notifications.DiskSSD
+	cfg := ctx.Cfg().Notifications.DiskSSD
 	if !cfg.Enabled {
 		return alerts
 	}
-	if s.VolSSD.Used >= cfg.CriticalThreshold {
+	if thresholdReached(s.VolSSD.Used, cfg.CriticalThreshold) {
 		alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf(ctx.Tr("mon_ssd_crit"), s.VolSSD.Used)})
-	} else if s.VolSSD.Used >= cfg.WarningThreshold {
+	} else if thresholdReached(s.VolSSD.Used, cfg.WarningThreshold) {
 		alerts = append(alerts, MonitorAlert{"warning", fmt.Sprintf(ctx.Tr("mon_ssd_high"), s.VolSSD.Used)})
 	}
 	return alerts
@@ -97,14 +111,14 @@ type SecondaryDiskMonitor struct{}
 func (m *SecondaryDiskMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
 	var alerts []MonitorAlert
 	for mountPoint, volStats := range s.SecondaryVols {
-		diskCfg, ok := ctx.Config.Notifications.SecondaryDisks[mountPoint]
+		diskCfg, ok := ctx.Cfg().Notifications.SecondaryDisks[mountPoint]
 		if !ok {
 			diskCfg = ResourceConfig{Enabled: true, WarningThreshold: 90.0, CriticalThreshold: 95.0}
 		}
 		if diskCfg.Enabled {
-			if volStats.Used >= diskCfg.CriticalThreshold {
+			if thresholdReached(volStats.Used, diskCfg.CriticalThreshold) {
 				alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf(ctx.Tr("mon_disk_crit"), mountPoint, volStats.Used)})
-			} else if volStats.Used >= diskCfg.WarningThreshold {
+			} else if thresholdReached(volStats.Used, diskCfg.WarningThreshold) {
 				alerts = append(alerts, MonitorAlert{"warning", fmt.Sprintf(ctx.Tr("mon_disk_high"), mountPoint, volStats.Used)})
 			}
 		}
@@ -116,7 +130,7 @@ type SMARTMonitor struct{}
 
 func (m *SMARTMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
 	var alerts []MonitorAlert
-	if !ctx.Config.Notifications.SMART.Enabled {
+	if !ctx.Cfg().Notifications.SMART.Enabled {
 		return alerts
 	}
 
@@ -149,7 +163,7 @@ func (m *SMARTMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
 		if strings.Contains(strings.ToUpper(res.Health), "FAIL") {
 			alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf(ctx.Tr("mon_disk_failing"), dev)})
 		}
-		if res.Temp > 0 && float64(res.Temp) >= ctx.Config.Temperature.CriticalThreshold {
+		if res.Temp > 0 && thresholdReached(float64(res.Temp), ctx.Cfg().Temperature.CriticalThreshold) {
 			alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf(ctx.Tr("mon_disk_temp_crit"), dev, res.Temp)})
 		}
 	}
@@ -157,7 +171,7 @@ func (m *SMARTMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
 }
 
 func monitorAlerts(ctx *AppContext, bot BotAPI, runCtx context.Context) {
-	ticker := time.NewTicker(time.Duration(ctx.Config.Intervals.MonitorSeconds) * time.Second)
+	ticker := time.NewTicker(time.Duration(ctx.Cfg().Intervals.MonitorSeconds) * time.Second)
 	defer ticker.Stop()
 
 	monitors := []ResourceMonitor{
@@ -192,7 +206,7 @@ func monitorAlerts(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 				}
 			}
 
-			cfg := ctx.Config
+			cfg := ctx.Cfg()
 			cooldown := time.Duration(cfg.Intervals.CriticalAlertCooldownMins) * time.Minute
 			ctx.Monitor.Mu.Lock()
 			lastAlert := ctx.Monitor.LastCriticalAlert
@@ -227,6 +241,28 @@ func monitorAlerts(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 	}
 }
 
+// monotonicDelta returns curr-prev, or 0 when the counter went backwards.
+// /proc/diskstats and /proc/net/dev counters are not monotonic across a device
+// re-enumeration: a USB disk unplugged and plugged back in under the same name
+// restarts its counters at zero, and the unsigned subtraction wrapped to about
+// 1.8e19, so /status showed "R 18014398509481984 MB/s" until the next sample
+// realigned. A counter that moved backwards contributes nothing instead.
+func monotonicDelta(curr, prev uint64) uint64 {
+	if curr < prev {
+		return 0
+	}
+	return curr - prev
+}
+
+// isSecondaryDataMount reports whether a mount point is a secondary data
+// volume, i.e. one of the external/internal disks the user cares about.
+// The pseudo-filesystem filtering is shared with the disk mount watchdog
+// (isVirtualOrIgnoredFS) so a mount on cgroup2 or pstore cannot be a data
+// volume in one place and be watched as a disk in the other.
+func isSecondaryDataMount(mountpoint string) bool {
+	return strings.HasPrefix(mountpoint, "/mnt") || strings.HasPrefix(mountpoint, "/media")
+}
+
 func statsCollector(ctx *AppContext, runCtx context.Context) {
 	var lastIO map[string]disk.IOCountersStat
 	var lastIOTime time.Time
@@ -234,7 +270,7 @@ func statsCollector(ctx *AppContext, runCtx context.Context) {
 	var lastNet []gopsnet.IOCountersStat
 	var lastNetTime time.Time
 
-	ticker := time.NewTicker(time.Duration(ctx.Config.Intervals.StatsSeconds) * time.Second)
+	ticker := time.NewTicker(time.Duration(ctx.Cfg().Intervals.StatsSeconds) * time.Second)
 	defer ticker.Stop()
 
 	collect := func() {
@@ -244,27 +280,27 @@ func statsCollector(ctx *AppContext, runCtx context.Context) {
 		l, _ := load.Avg()
 		h, _ := host.Info()
 		var dSSD *disk.UsageStat
-		if ctx.Config.Paths.SSD != "" {
-			dSSD, _ = disk.Usage(ctx.Config.Paths.SSD)
+		if ctx.Cfg().Paths.SSD != "" {
+			dSSD, _ = disk.Usage(ctx.Cfg().Paths.SSD)
 		}
 
 		secVols := make(map[string]VolumeStats)
 		partitions, err := disk.Partitions(true)
 		if err == nil {
 			for _, p := range partitions {
-				// Filter out loop devices, virtual filesystems, and docker overlays
-				if strings.HasPrefix(p.Device, "/dev/loop") || p.Fstype == "squashfs" || p.Fstype == "tmpfs" || p.Fstype == "devtmpfs" || p.Fstype == "overlay" || p.Fstype == "proc" || p.Fstype == "sysfs" || p.Fstype == "cgroup" || p.Fstype == "nsfs" || p.Fstype == "bpf" || p.Fstype == "tracefs" {
+				// Single source of truth for pseudo filesystems, loop devices
+				// and Docker mounts: the same predicate the disk mount watchdog
+				// uses. The old inline list here was missing cgroup2, pstore,
+				// ramfs, efivarfs, autofs, binfmt_misc, debugfs and selinuxfs.
+				if isVirtualOrIgnoredFS(p.Device, p.Fstype, p.Mountpoint) {
 					continue
 				}
-				// Also skip if it's clearly not a real device/mount
-				if p.Device == "none" || p.Device == "sunrpc" || p.Device == "devpts" {
+				// SecondaryVols is the "data volumes" list, so it stays limited
+				// to the external mount roots.
+				if !isSecondaryDataMount(p.Mountpoint) {
 					continue
 				}
-				// Only include specific data mount points (internal/external HDDs)
-				if !(strings.HasPrefix(p.Mountpoint, "/mnt") || strings.HasPrefix(p.Mountpoint, "/media")) {
-					continue
-				}
-				if p.Mountpoint == ctx.Config.Paths.SSD || p.Mountpoint == "/boot" || p.Mountpoint == "/boot/efi" {
+				if p.Mountpoint == ctx.Cfg().Paths.SSD {
 					continue
 				}
 				dSec, err := disk.Usage(p.Mountpoint)
@@ -283,9 +319,9 @@ func statsCollector(ctx *AppContext, runCtx context.Context) {
 				var maxUtil float64
 				for k, curr := range currentIO {
 					if prev, ok := lastIO[k]; ok {
-						rBytes += curr.ReadBytes - prev.ReadBytes
-						wBytes += curr.WriteBytes - prev.WriteBytes
-						deltaIOTime := curr.IoTime - prev.IoTime
+						rBytes += monotonicDelta(curr.ReadBytes, prev.ReadBytes)
+						wBytes += monotonicDelta(curr.WriteBytes, prev.WriteBytes)
+						deltaIOTime := monotonicDelta(curr.IoTime, prev.IoTime)
 						util := float64(deltaIOTime) / (elapsed * 10)
 						if util > 100 {
 							util = 100
@@ -310,11 +346,13 @@ func statsCollector(ctx *AppContext, runCtx context.Context) {
 			rxTotal = float64(currentNet[0].BytesRecv) / 1024 / 1024
 			txTotal = float64(currentNet[0].BytesSent) / 1024 / 1024
 
-			if lastNet != nil && !lastNetTime.IsZero() {
+			// len(lastNet) matters: gopsnet can return a non-nil empty slice,
+			// and lastNet[0] would have panicked.
+			if len(currentNet) > 0 && len(lastNet) > 0 && !lastNetTime.IsZero() {
 				elapsed := time.Since(lastNetTime).Seconds()
 				if elapsed > 0 {
-					rxBytes := currentNet[0].BytesRecv - lastNet[0].BytesRecv
-					txBytes := currentNet[0].BytesSent - lastNet[0].BytesSent
+					rxBytes := monotonicDelta(currentNet[0].BytesRecv, lastNet[0].BytesRecv)
+					txBytes := monotonicDelta(currentNet[0].BytesSent, lastNet[0].BytesSent)
 					// Convert bytes/sec to Megabits/sec (Mbps)
 					rxMbps = (float64(rxBytes) * 8 / 1000000) / elapsed
 					txMbps = (float64(txBytes) * 8 / 1000000) / elapsed
@@ -329,9 +367,14 @@ func statsCollector(ctx *AppContext, runCtx context.Context) {
 		if len(c) > 0 {
 			cVal = c[0]
 		}
+		if math.IsNaN(cVal) {
+			// A CPU total of 0 makes gopsutil return NaN, which used to reach
+			// MakeProgressBar and panic the whole bot.
+			cVal = 0
+		}
 
 		newStats := Stats{
-			CPU:           format.SafeFloat([]float64{cVal}, 0),
+			CPU:           cVal,
 			RAM:           v.UsedPercent,
 			RAMFreeMB:     v.Available / 1024 / 1024,
 			RAMTotalMB:    v.Total / 1024 / 1024,
@@ -416,45 +459,47 @@ func checkTemperatureAlert(ctx *AppContext, bot BotAPI) {
 	}
 	ctx.Monitor.Mu.Unlock()
 
-	cfg := ctx.Config
-	if temp >= cfg.Temperature.CriticalThreshold {
-		var m tgbotapi.MessageConfig
-		sendMsg := false
+	cfg := ctx.Cfg()
+	if thresholdReached(temp, cfg.Temperature.CriticalThreshold) {
 		if !ctx.IsQuietHours() {
 			msg := fmt.Sprintf(ctx.Tr("temp_crit_alert"), temp, cfg.Temperature.CriticalThreshold)
-			m = tgbotapi.NewMessage(cfg.AllowedUserID, msg)
+			m := tgbotapi.NewMessage(cfg.AllowedUserID, msg)
 			m.ParseMode = "Markdown"
-			sendMsg = true
-		}
-
-		ctx.Monitor.Mu.Lock()
-		ctx.Monitor.LastTempAlert = time.Now()
-		ctx.Monitor.Mu.Unlock()
-
-		if sendMsg {
 			safeSend(bot, m)
+			// Only consume the cooldown when the alert actually went out. The
+			// timestamp used to be written before the quiet-hours check, so a
+			// critical temperature during quiet hours started a 30 minute
+			// cooldown nobody was ever told about, and a condition that cleared
+			// inside that window was never reported at all.
+			ctx.Monitor.Mu.Lock()
+			ctx.Monitor.LastTempAlert = time.Now()
+			ctx.Monitor.Mu.Unlock()
 		}
 		ctx.State.AddEvent("critical", fmt.Sprintf("CPU temp critical: %.1f°C", temp))
-	} else if temp >= cfg.Temperature.WarningThreshold {
-		var m tgbotapi.MessageConfig
-		sendMsg := false
+	} else if thresholdReached(temp, cfg.Temperature.WarningThreshold) {
 		if !ctx.IsQuietHours() {
 			msg := fmt.Sprintf(ctx.Tr("temp_warn_alert"), temp, cfg.Temperature.WarningThreshold)
-			m = tgbotapi.NewMessage(cfg.AllowedUserID, msg)
+			m := tgbotapi.NewMessage(cfg.AllowedUserID, msg)
 			m.ParseMode = "Markdown"
-			sendMsg = true
-		}
-
-		ctx.Monitor.Mu.Lock()
-		ctx.Monitor.LastTempAlert = time.Now()
-		ctx.Monitor.Mu.Unlock()
-
-		if sendMsg {
 			safeSend(bot, m)
+			ctx.Monitor.Mu.Lock()
+			ctx.Monitor.LastTempAlert = time.Now()
+			ctx.Monitor.Mu.Unlock()
 		}
 		ctx.State.AddEvent("warning", fmt.Sprintf("CPU temp high: %.1f°C", temp))
 	}
 }
+
+// Trend retention and display widths.
+//
+// recordTrendPoint runs every 5 minutes, so trendRetainedPoints is 6 hours of
+// history. getTrendSummary used to ask for 12 points (1 hour) while 72 were
+// kept, so 60 of every 72 collected points were never displayed and the two
+// numbers were never tied to each other.
+const (
+	trendRetainedPoints = 72
+	trendGraphPoints    = 24
+)
 
 func recordTrendPoint(ctx *AppContext) {
 	s, ready := ctx.Stats.Get()
@@ -469,7 +514,7 @@ func recordTrendPoint(ctx *AppContext) {
 	ctx.Monitor.CPUTrend = append(ctx.Monitor.CPUTrend, TrendPoint{Time: now, Value: s.CPU})
 	ctx.Monitor.RAMTrend = append(ctx.Monitor.RAMTrend, TrendPoint{Time: now, Value: s.RAM})
 
-	maxPoints := 72
+	maxPoints := trendRetainedPoints
 	if len(ctx.Monitor.CPUTrend) > maxPoints {
 		ctx.Monitor.CPUTrend = ctx.Monitor.CPUTrend[len(ctx.Monitor.CPUTrend)-maxPoints:]
 	}
@@ -482,16 +527,18 @@ func getTrendSummary(ctx *AppContext) (cpuGraph, ramGraph string) {
 	ctx.Monitor.Mu.Lock()
 	defer ctx.Monitor.Mu.Unlock()
 
-	cpuGraph = getMiniGraph(ctx.Monitor.CPUTrend, 12)
-	ramGraph = getMiniGraph(ctx.Monitor.RAMTrend, 12)
+	cpuGraph = getMiniGraph(ctx.Monitor.CPUTrend, trendGraphPoints)
+	ramGraph = getMiniGraph(ctx.Monitor.RAMTrend, trendGraphPoints)
 	return
 }
 
+// getMiniGraph renders the last maxPoints samples as a sparkline of block
+// runes. maxPoints <= 0 means "all points".
 func getMiniGraph(points []TrendPoint, maxPoints int) string {
 	if len(points) == 0 {
 		return ""
 	}
-	if len(points) > maxPoints {
+	if maxPoints > 0 && len(points) > maxPoints {
 		points = points[len(points)-maxPoints:]
 	}
 
@@ -499,7 +546,10 @@ func getMiniGraph(points []TrendPoint, maxPoints int) string {
 	var result strings.Builder
 
 	for _, p := range points {
-		idx := int(p.Value / 12.5)
+		idx := 0
+		if !math.IsNaN(p.Value) && p.Value > 0 {
+			idx = int(p.Value / 12.5)
+		}
 		if idx < 0 {
 			idx = 0
 		}
@@ -513,7 +563,7 @@ func getMiniGraph(points []TrendPoint, maxPoints int) string {
 }
 
 func checkCriticalContainers(ctx *AppContext, bot BotAPI) {
-	if len(ctx.Config.CriticalContainers) == 0 {
+	if len(ctx.Cfg().CriticalContainers) == 0 {
 		return
 	}
 
@@ -523,7 +573,7 @@ func checkCriticalContainers(ctx *AppContext, bot BotAPI) {
 		containerMap[c.Name] = c.Running
 	}
 
-	for _, name := range ctx.Config.CriticalContainers {
+	for _, name := range ctx.Cfg().CriticalContainers {
 		running, exists := containerMap[name]
 		if !exists || !running {
 			ctx.Monitor.Mu.Lock()
@@ -534,50 +584,134 @@ func checkCriticalContainers(ctx *AppContext, bot BotAPI) {
 				continue
 			}
 
-			var m tgbotapi.MessageConfig
-			sendMsg := false
 			if !ctx.IsQuietHours() {
 				status := ctx.Tr("status_not_running")
 				if !exists {
 					status = ctx.Tr("status_not_found")
 				}
 				msg := fmt.Sprintf(ctx.Tr("crit_cont_alert"), name, status)
-				m = tgbotapi.NewMessage(ctx.Config.AllowedUserID, msg)
+				m := tgbotapi.NewMessage(ctx.Cfg().AllowedUserID, msg)
 				m.ParseMode = "Markdown"
-				sendMsg = true
-			}
-
-			ctx.Monitor.Mu.Lock()
-			ctx.Monitor.LastCriticalContainerAlert[name] = time.Now()
-			ctx.Monitor.Mu.Unlock()
-
-			if sendMsg {
 				safeSend(bot, m)
+				// The cooldown is consumed only when the alert was delivered:
+				// during quiet hours the user got nothing, and a container that
+				// came back before the 10 minutes elapsed was never reported.
+				ctx.Monitor.Mu.Lock()
+				ctx.Monitor.LastCriticalContainerAlert[name] = time.Now()
+				ctx.Monitor.Mu.Unlock()
 			}
 			ctx.State.AddEvent("critical", fmt.Sprintf("Critical container %s down", name))
 		}
 	}
 }
 
+// dockerCacheErrCooldown is how long a failed `docker ps` is remembered before
+// the next attempt. Keyed by *DockerManager so two AppContexts (tests, a second
+// InitApp) never share it.
+//
+// TODO(model): this exists only because model.DockerCache has no way to
+// distinguish "valid, empty" from "unknown". With a `Valid bool` (or a
+// `LastError time.Time`) field on DockerCache this table disappears.
+const dockerCacheErrCooldown = 30 * time.Second
+
+var (
+	dockerCacheErrMu    model.Mutex
+	dockerCacheErrSince = map[*model.DockerManager]time.Time{}
+)
+
+// dockerProbeRecentlyFailed reports whether a probe for this manager failed
+// within dockerCacheErrCooldown. It does not refresh the marker: a persistent
+// outage must not be able to postpone the next attempt forever.
+func dockerProbeRecentlyFailed(dm *model.DockerManager) bool {
+	dockerCacheErrMu.Lock()
+	defer dockerCacheErrMu.Unlock()
+	if len(dockerCacheErrSince) > 64 {
+		// Keep the table bounded: one entry per manager, pruned lazily.
+		cutoff := time.Now().Add(-10 * dockerCacheErrCooldown)
+		for k, t := range dockerCacheErrSince {
+			if t.Before(cutoff) {
+				delete(dockerCacheErrSince, k)
+			}
+		}
+	}
+	last, ok := dockerCacheErrSince[dm]
+	return ok && time.Since(last) < dockerCacheErrCooldown
+}
+
+func markDockerProbeFailed(dm *model.DockerManager) {
+	dockerCacheErrMu.Lock()
+	defer dockerCacheErrMu.Unlock()
+	dockerCacheErrSince[dm] = time.Now()
+}
+
+func clearDockerProbeFailed(dm *model.DockerManager) {
+	dockerCacheErrMu.Lock()
+	defer dockerCacheErrMu.Unlock()
+	delete(dockerCacheErrSince, dm)
+}
+
+func copyContainerList(in []ContainerInfo) []ContainerInfo {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]ContainerInfo, len(in))
+	copy(out, in)
+	return out
+}
+
+// getCachedContainerList returns the container list, using the cached copy while
+// it is fresh.
+//
+// Cache contract (the other lane changing getContainerList must preserve it):
+//   - A cache entry is VALID as soon as time.Since(Cache.LastUpdate) < ttl.
+//     Validity does NOT depend on the number of containers: an empty list is a
+//     real answer and must be cached, otherwise a stopped daemon makes
+//     checkDockerHealth and checkCriticalContainers run `docker ps` twice every
+//     10 seconds for the whole day.
+//   - A SUCCESSFUL probe always refreshes Cache.LastUpdate, even when it returns
+//     zero containers, and stores a non-nil (possibly empty) slice.
+//   - A FAILED probe must NOT touch Cache.Containers nor Cache.LastUpdate, and
+//     returns no containers. Serving a stale list as if it were fresh would make
+//     "container not found" alerts fire for a Docker outage; serving an empty
+//     list as valid would defeat the TTL.
+//   - A failed probe is rate limited by dockerCacheErrCooldown so an outage does
+//     not turn into a `docker ps` storm. The cache is still not refreshed, so the
+//     next successful probe wins.
 func getCachedContainerList(ctx *AppContext) []ContainerInfo {
+	ttl := time.Duration(ctx.Cfg().Cache.DockerTTLSeconds) * time.Second
+	if ttl <= 0 {
+		ttl = 5 * time.Second
+	}
+
 	ctx.Docker.Mu.RLock()
-	ttl := time.Duration(ctx.Config.Cache.DockerTTLSeconds) * time.Second
-	if time.Since(ctx.Docker.Cache.LastUpdate) < ttl && len(ctx.Docker.Cache.Containers) > 0 {
-		result := make([]ContainerInfo, len(ctx.Docker.Cache.Containers))
-		copy(result, ctx.Docker.Cache.Containers)
+	if time.Since(ctx.Docker.Cache.LastUpdate) < ttl {
+		result := copyContainerList(ctx.Docker.Cache.Containers)
 		ctx.Docker.Mu.RUnlock()
 		return result
 	}
 	ctx.Docker.Mu.RUnlock()
 
-	containers := getContainerList()
+	if dockerProbeRecentlyFailed(ctx.Docker) {
+		return nil
+	}
 
+	containers, err := getContainerListWithError()
+	if err != nil {
+		markDockerProbeFailed(ctx.Docker)
+		slog.Warn("Docker container list failed, cache left untouched", "err", err)
+		return nil
+	}
+	clearDockerProbeFailed(ctx.Docker)
+
+	// Always a non-nil slice, so "no containers" is cached as a real answer.
+	cached := containers
+	if cached == nil {
+		cached = []ContainerInfo{}
+	}
 	ctx.Docker.Mu.Lock()
-	ctx.Docker.Cache.Containers = containers
+	ctx.Docker.Cache.Containers = cached
 	ctx.Docker.Cache.LastUpdate = time.Now()
 	ctx.Docker.Mu.Unlock()
 
-	result := make([]ContainerInfo, len(containers))
-	copy(result, containers)
-	return result
+	return copyContainerList(containers)
 }

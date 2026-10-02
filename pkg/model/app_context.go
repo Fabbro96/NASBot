@@ -3,14 +3,29 @@ package model
 import (
 	"log/slog"
 	"net/http"
-	"os"
 	"sort"
+	"strings"
+	"sync/atomic"
 	"time"
 )
 
 // AppContext holds the application dependencies and state.
 type AppContext struct {
-	Config   *Config
+	// Config is the legacy configuration pointer.
+	//
+	// Deprecated: read the configuration with Cfg(). This field is kept only so
+	// that contexts assembled by hand still carry a configuration, and because
+	// InitApp fills it for backwards compatibility. Nothing in the live path
+	// may read it: a configuration reload publishes a brand-new snapshot
+	// instead of mutating this struct, so readers of this pointer would keep
+	// seeing the values from boot time.
+	Config *Config
+
+	// cfg holds the published configuration snapshot. It is swapped by pointer
+	// and never written in place, so a reader can hold the pointer it got from
+	// Cfg() and keep a consistent view for as long as it needs it.
+	cfg atomic.Pointer[Config]
+
 	Stats    *ThreadSafeStats
 	State    *RuntimeState
 	Bot      *BotContext
@@ -36,7 +51,6 @@ type RuntimeState struct {
 	LastReleaseNotified string
 	ReportEvents        []ReportEvent
 	DiskHistory         []DiskUsagePoint
-	PIDFile             *os.File
 	TimeLocation        *time.Location
 }
 
@@ -98,7 +112,12 @@ type MonitorState struct {
 	DiskMountAlertCooldown     map[string]time.Time
 }
 
-// UserSettings holds persistent user preferences (loaded from JSON)
+// UserSettings holds persistent user preferences (loaded from JSON).
+//
+// The fields are exported so that state.go can restore a persisted blob in one
+// shot while holding Mu. Every other writer must go through the setters below:
+// IsQuietHours and the getters read under RLock, and a plain field assignment
+// would not take the write lock at all.
 type UserSettings struct {
 	Mu             RWMutex
 	Language       string
@@ -108,6 +127,12 @@ type UserSettings struct {
 	ReportDays     []int // 0=Sunday, 1=Monday, ..., 6=Saturday. Empty = based on ReportInterval
 	QuietHours     QuietSettings
 	DockerPrune    PruneSettings
+
+	// reportsChanged is closed and replaced every time the report schedule
+	// changes, so the scheduler can wait on a notification instead of sleeping
+	// until the next scheduled report. nil until the first reader asks for it,
+	// which is why OnReportsChanged takes the write lock.
+	reportsChanged chan struct{}
 }
 
 type TimePoint struct {
@@ -216,6 +241,13 @@ func InitApp(cfg *Config) *AppContext {
 		HTTP: httpClient,
 	}
 
+	// Publish the initial configuration. A nil argument still yields a usable
+	// snapshot so that readers never have to nil-check Cfg().
+	if cfg == nil {
+		cfg = &Config{}
+	}
+	app.SetConfig(cfg)
+
 	// Initialize Stress trackers
 	for _, res := range []string{"CPU", "RAM", "Swap", "SSD", "HDD"} {
 		app.State.ResourceStress[res] = &StressTracker{}
@@ -224,11 +256,70 @@ func InitApp(cfg *Config) *AppContext {
 	return app
 }
 
+// Cfg returns the published configuration snapshot.
+//
+// The snapshot is never modified after publication: a reload builds a new
+// Config and swaps the pointer with SetConfig. A caller may therefore keep the
+// pointer it received for the whole duration of a unit of work and read
+// consistent values from it.
+func (c *AppContext) Cfg() *Config {
+	if c == nil {
+		return nil
+	}
+	if snapshot := c.cfg.Load(); snapshot != nil {
+		return snapshot
+	}
+	// Nothing has been published yet: contexts built by hand (tests) still carry
+	// the legacy field.
+	return c.Config
+}
+
+// SetConfig publishes cfg as the configuration snapshot.
+//
+// The caller must not modify cfg afterwards: every reader that got it from Cfg()
+// can still be holding the pointer. To change the configuration, build a new
+// Config from the file and publish that one instead.
+func (ctx *AppContext) SetConfig(cfg *Config) {
+	if ctx == nil || cfg == nil {
+		return
+	}
+	ctx.cfg.Store(cfg)
+}
+
 // ThreadSafeStats Methods
 func (ts *ThreadSafeStats) Get() (Stats, bool) {
 	ts.Mu.RLock()
 	defer ts.Mu.RUnlock()
-	return ts.Data, ts.Ready
+	return cloneStats(ts.Data), ts.Ready
+}
+
+// cloneStats deep-copies the map and slice fields of Stats.
+//
+// Stats is returned by value, but SecondaryVols is a map and TopCPU/TopRAM are
+// slices: handing those out by reference lets a caller keep reading them while
+// the collector replaces them, which the race detector reports and which can
+// panic with "concurrent map iteration and map write". The copy is shallow on
+// purpose: VolumeStats and ProcInfo hold only scalars.
+func cloneStats(s Stats) Stats {
+	if s.SecondaryVols != nil {
+		vols := make(map[string]VolumeStats, len(s.SecondaryVols))
+		for k, v := range s.SecondaryVols {
+			vols[k] = v
+		}
+		s.SecondaryVols = vols
+	}
+	s.TopCPU = cloneProcInfo(s.TopCPU)
+	s.TopRAM = cloneProcInfo(s.TopRAM)
+	return s
+}
+
+func cloneProcInfo(src []ProcInfo) []ProcInfo {
+	if src == nil {
+		return nil
+	}
+	out := make([]ProcInfo, len(src))
+	copy(out, src)
+	return out
 }
 
 func (ts *ThreadSafeStats) Set(s Stats) {
@@ -300,6 +391,45 @@ func (s *UserSettings) SetLanguage(lang string) {
 	s.Language = lang
 }
 
+// OnReportsChanged returns a channel that is closed the next time the report
+// schedule changes. Every report setter calls signalReportsChanged, so a change
+// made from the settings buttons reaches the scheduler immediately instead of
+// waiting for the next run.
+//
+// Callers must re-read the channel after it fires: signalReportsChanged replaces
+// the field before closing the old channel, so a reader that kept the closed one
+// gets a live one on the next call. That is what keeps a scheduler loop from
+// spinning on an already-closed channel.
+func (s *UserSettings) OnReportsChanged() <-chan struct{} {
+	// The write lock, not RLock: a context built by hand (tests) has no channel
+	// yet, and this is where it gets created.
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	if s.reportsChanged == nil {
+		s.reportsChanged = make(chan struct{})
+	}
+	return s.reportsChanged
+}
+
+// signalReportsChanged wakes the report scheduler. Call with s.Mu held for
+// writing.
+//
+// The field is replaced *before* the old channel is closed, so a reader that
+// already grabbed the closed channel can re-read and find a live one. Closing
+// under the lock is safe: receivers only select on the channel and never need
+// s.Mu to receive, so nobody can block on a lock we are holding.
+func (s *UserSettings) signalReportsChanged() {
+	if s.reportsChanged == nil {
+		// No reader yet. OnReportsChanged creates a fresh live channel, so
+		// there is nothing to notify.
+		s.reportsChanged = make(chan struct{})
+		return
+	}
+	old := s.reportsChanged
+	s.reportsChanged = make(chan struct{})
+	close(old)
+}
+
 func (s *UserSettings) GetReportsSettings() (enabled bool, interval int, times []TimePoint) {
 	s.Mu.RLock()
 	defer s.Mu.RUnlock()
@@ -324,6 +454,7 @@ func (s *UserSettings) SetReportsDays(days []int) {
 	s.ReportDays = make([]int, len(days))
 	copy(s.ReportDays, days)
 	sort.Ints(s.ReportDays)
+	s.signalReportsChanged()
 }
 
 func (s *UserSettings) ToggleReportDay(day int) {
@@ -343,6 +474,7 @@ func (s *UserSettings) ToggleReportDay(day int) {
 	}
 	sort.Ints(newDays)
 	s.ReportDays = newDays
+	s.signalReportsChanged()
 }
 
 func (s *UserSettings) HasReportDay(day int) bool {
@@ -368,6 +500,111 @@ func (s *UserSettings) GetReportsDetailedSettings() (enabled bool, interval int,
 	return
 }
 
+func (s *UserSettings) SetReportsEnabled(enabled bool) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	s.ReportsEnabled = enabled
+	s.signalReportsChanged()
+}
+
+func (s *UserSettings) SetReportInterval(interval int) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	s.ReportInterval = interval
+	s.signalReportsChanged()
+}
+
+// SetReportsSettings replaces the report schedule as a unit, which is how the
+// button handlers change it: they compute the new value from the old one and
+// must not expose a half-updated schedule to a concurrent reader.
+func (s *UserSettings) SetReportsSettings(enabled bool, interval int, times []TimePoint) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	s.ReportsEnabled = enabled
+	s.ReportInterval = interval
+	s.ReportTimes = append(make([]TimePoint, 0, len(times)), times...)
+	s.signalReportsChanged()
+}
+
+func (s *UserSettings) AddReportTime(tp TimePoint) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	s.ReportTimes = append(s.ReportTimes, tp)
+	s.signalReportsChanged()
+}
+
+// RemoveReportTime drops the time point at idx and reports whether it existed.
+func (s *UserSettings) RemoveReportTime(idx int) bool {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	if idx < 0 || idx >= len(s.ReportTimes) {
+		return false
+	}
+	s.ReportTimes = append(s.ReportTimes[:idx], s.ReportTimes[idx+1:]...)
+	s.signalReportsChanged()
+	return true
+}
+
+// GetQuietHours returns a copy of the quiet hours window.
+func (s *UserSettings) GetQuietHours() QuietSettings {
+	s.Mu.RLock()
+	defer s.Mu.RUnlock()
+	return s.QuietHours
+}
+
+// SetQuietHours replaces the quiet hours window as a unit.
+func (s *UserSettings) SetQuietHours(q QuietSettings) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	s.QuietHours = q
+}
+
+func (s *UserSettings) SetQuietHoursEnabled(enabled bool) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	s.QuietHours.Enabled = enabled
+}
+
+// GetDockerPrune returns a copy of the weekly prune schedule.
+func (s *UserSettings) GetDockerPrune() PruneSettings {
+	s.Mu.RLock()
+	defer s.Mu.RUnlock()
+	return s.DockerPrune
+}
+
+// SetDockerPrune replaces the weekly prune schedule as a unit.
+func (s *UserSettings) SetDockerPrune(p PruneSettings) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	s.DockerPrune = p
+}
+
+func (s *UserSettings) SetDockerPruneEnabled(enabled bool) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	s.DockerPrune.Enabled = enabled
+}
+
+// SetDockerPruneDay stores a weekday name and reports whether it is a valid one.
+func (s *UserSettings) SetDockerPruneDay(day string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(day))
+	switch normalized {
+	case "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday":
+	default:
+		return false
+	}
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	s.DockerPrune.Day = normalized
+	return true
+}
+
+func (s *UserSettings) SetDockerPruneHour(hour int) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	s.DockerPrune.Hour = hour
+}
+
 // Helpers designed to bridge the gap during refactor
 func (ctx *AppContext) GetStats() (Stats, bool) {
 	return ctx.Stats.Get()
@@ -383,7 +620,14 @@ func (ctx *AppContext) IsQuietHours() bool {
 		return false
 	}
 
-	now := time.Now().In(ctx.State.TimeLocation)
+	// TimeLocation is set once at start-up, but a context built by hand (tests)
+	// leaves it nil, and time.Now().In(nil) panics.
+	loc := ctx.State.TimeLocation
+	if loc == nil {
+		loc = time.Local
+	}
+
+	now := time.Now().In(loc)
 	nowMin := now.Hour()*60 + now.Minute()
 	startMin := q.Start.Hour*60 + q.Start.Minute
 	endMin := q.End.Hour*60 + q.End.Minute

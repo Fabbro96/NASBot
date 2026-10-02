@@ -1,9 +1,7 @@
 package commands
 
 import (
-	"context"
 	"fmt"
-	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -24,54 +22,26 @@ func (c *ProcessesCmd) Description() string {
 }
 
 func getProcessesMenu(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup) {
-	reqCtx, cancel := context.WithTimeout(context.Background(), psTimeout)
-	defer cancel()
-
-	out, err := runCommandOutput(reqCtx, "ps", "-Ao", "pid,comm,pcpu,pmem", "--sort=-pcpu")
+	procs, err := collectTopProcesses(procMenuMaxCount, procMenuMaxNameLen)
 	if err != nil {
-		return fmt.Sprintf(ctx.Tr("proc_fetch_err"), err), tgbotapi.NewInlineKeyboardMarkup()
+		return trf(ctx.Tr, "proc_fetch_err", err), tgbotapi.NewInlineKeyboardMarkup()
 	}
-
-	lines := strings.Split(string(out), "\n")
-	if len(lines) < 2 {
+	if len(procs) == 0 {
 		return ctx.Tr("proc_none_found"), tgbotapi.NewInlineKeyboardMarkup()
 	}
 
 	text := ctx.Tr("proc_header")
 
-	count := 0
-	var rows [][]tgbotapi.InlineKeyboardButton
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, len(procs)+1)
+	for _, p := range procs {
+		text += fmt.Sprintf("`%-5s %-4s %-4s %s`\n", p.PID, p.CPU, p.MEM, p.Name)
 
-	for i := 1; i < len(lines) && count < 10; i++ {
-		line := strings.TrimSpace(lines[i])
-		if line == "" {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) < 4 {
-			continue
-		}
-
-		pid := fields[0]
-		cmdName := fields[1]
-		cpuPct := fields[2]
-		memPct := fields[3]
-
-		cmdRunes := []rune(cmdName)
-		if len(cmdRunes) > 12 {
-			cmdName = string(cmdRunes[:10]) + ".."
-		}
-
-		text += fmt.Sprintf("`%-5s %-4s %-4s %s`\n", pid, cpuPct, memPct, cmdName)
-
-		btnText := fmt.Sprintf("🛑 %s (%s)", cmdName, pid)
-		btnData := fmt.Sprintf("proc_manage_%s", pid)
+		btnText := fmt.Sprintf("🛑 %s (%s)", p.Name, p.PID)
+		btnData := fmt.Sprintf("proc_manage_%s", p.PID)
 
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(btnText, btnData),
 		))
-
-		count++
 	}
 
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(

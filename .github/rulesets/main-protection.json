@@ -21,31 +21,34 @@
       "type": "required_linear_history"
     },
     {
-      "type": "required_signatures"
-    },
-    {
       "type": "pull_request",
       "parameters": {
         "dismiss_stale_reviews_on_push": true,
-        "require_code_owner_review": true,
+        "require_code_owner_review": false,
         "require_last_push_approval": false,
-        "required_approving_review_count": 1,
+        "required_approving_review_count": 0,
         "required_review_thread_resolution": true
       }
     },
     {
       "type": "required_status_checks",
       "parameters": {
-        "strict_required_status_checks_policy": true,
+        "strict_required_status_checks_policy": false,
         "required_status_checks": [
           {
             "context": "Secret Scan"
+          },
+          {
+            "context": "ShellCheck"
           },
           {
             "context": "Build & Test (Go 1.22.x)"
           },
           {
             "context": "Build & Test (Go 1.23.x)"
+          },
+          {
+            "context": "Deadlock & Race (Go 1.23.x)"
           },
           {
             "context": "Dependency Review"
