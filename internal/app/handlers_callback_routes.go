@@ -292,7 +292,10 @@ func thresholdPatch(cfg *Config, res, mount, level string, value float64) map[st
 		// deepMerge replaces a map wholesale only when the destination is not a
 		// map, so the whole secondary_disks map is rebuilt to keep the other
 		// mounts. The source is cfg, read-only.
-		disks := make(map[string]interface{}, len(cfg.Notifications.SecondaryDisks)+1)
+		// No capacity hint from len(cfg): the map holds a handful of mounts, so
+		// the hint is worth nothing, and deriving an allocation size from
+		// configuration is exactly the flow CodeQL flags.
+		disks := make(map[string]interface{})
 		for name, diskCfg := range cfg.Notifications.SecondaryDisks {
 			disks[name] = map[string]interface{}{
 				"enabled":            diskCfg.Enabled,

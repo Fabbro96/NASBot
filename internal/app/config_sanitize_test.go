@@ -1,6 +1,9 @@
 package app
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestSanitizeConfig_DefaultsAndClamps(t *testing.T) {
 	cfg := Config{
@@ -176,5 +179,75 @@ func TestNormalizeStringList(t *testing.T) {
 	result := normalizeStringList(items)
 	if len(result) != 3 || result[0] != "a" || result[1] != "b" || result[2] != "c" {
 		t.Fatalf("unexpected normalized list: %#v", result)
+	}
+}
+
+// TestSanitizeConfigNeverLogsCredentials is the regression test for a real leak.
+// The correction list is logged at boot as "Config corrected" and returned to
+// the Telegram handler as Corrected. When a credential carried a stray space,
+// trimField recorded the *trimmed value*, so bot_token, gemini_api_key,
+// adblock.token and the healthchecks ping URL all landed in var/nasbot.log.
+// The error sanitizer does not cover it: nothing was malformed.
+//
+// It asserts two things on purpose. That no secret value appears in any
+// recorded change, and that the correction is still recorded at all — a fix
+// that silently dropped the entry would pass the first assertion while leaving
+// the user with no record of a rewritten config.
+func TestSanitizeConfigNeverLogsCredentials(t *testing.T) {
+	const (
+		botToken   = "123456:SECRET-BOT-TOKEN-VALUE"
+		geminiKey  = "SECRET-GEMINI-API-KEY-VALUE"
+		adblockTok = "SECRET-ADBLOCK-TOKEN-VALUE"
+		pingSecret = "SECRET-PING-URL-PATH-VALUE"
+	)
+
+	cfg := Config{
+		// Trailing spaces force trimField to actually fire on every field.
+		BotToken:     botToken + " ",
+		GeminiAPIKey: geminiKey + "  ",
+		AdBlock:      AdBlockConfig{Enabled: true, Type: "pihole", URL: "http://pi.hole ", Token: adblockTok + " "},
+		Healthchecks: HealthchecksConfig{
+			Enabled:       true,
+			PingURL:       "https://hc-ping.com/" + pingSecret + " ",
+			PeriodSeconds: 300,
+			GraceSeconds:  10,
+		},
+	}
+
+	changes := sanitizeConfig(&cfg)
+
+	// The sanitizing still has to happen, or the test below would pass for the
+	// wrong reason.
+	if strings.TrimSpace(cfg.BotToken) != botToken {
+		t.Errorf("bot_token was not trimmed: %q", cfg.BotToken)
+	}
+	if strings.TrimSpace(cfg.GeminiAPIKey) != geminiKey {
+		t.Errorf("gemini_api_key was not trimmed: %q", cfg.GeminiAPIKey)
+	}
+	if cfg.Healthchecks.PingURL != "https://hc-ping.com/"+pingSecret {
+		t.Errorf("healthchecks.ping_url was not trimmed: %q", cfg.Healthchecks.PingURL)
+	}
+
+	joined := strings.Join(changes, "\n")
+	for _, secret := range []string{botToken, geminiKey, adblockTok, pingSecret} {
+		if strings.Contains(joined, secret) {
+			t.Errorf("a credential leaked into the correction log, which is written to the log file and to Telegram:\n  %q\nin\n  %s", secret, joined)
+		}
+	}
+
+	// The entry must survive, without the value.
+	for _, field := range []string{"bot_token", "gemini_api_key", "adblock.token", "healthchecks.ping_url"} {
+		found := false
+		for _, c := range changes {
+			if strings.Contains(c, field) {
+				found = true
+				if c != field+" -> trimmed" {
+					t.Errorf("%s: expected the record to be %q, got %q", field, field+" -> trimmed", c)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("%s was corrected but not recorded; the user would get no trace of a rewritten config", field)
+		}
 	}
 }

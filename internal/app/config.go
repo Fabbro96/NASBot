@@ -560,11 +560,20 @@ func sanitizeConfig(c *Config) []string {
 			add(field, fmt.Sprintf("%.2f", v))
 		}
 	}
+	// trimField records that a value was trimmed, never what it became. These
+	// changes are logged at boot ("Config corrected") and returned to the
+	// Telegram handler, and four of the fields passed through here are
+	// credentials: bot_token, gemini_api_key, adblock.token and the healthchecks
+	// ping URL, whose path is the secret. Recording the trimmed value put all four
+	// into var/nasbot.log whenever a stray space triggered the correction — the
+	// one leak the error sanitizer does not cover, because nothing was malformed.
+	// The value is not diagnostic for a whitespace trim anyway: knowing *that* it
+	// changed is the whole point of the entry.
 	trimField := func(field string, val *string) {
 		trimmed := strings.TrimSpace(*val)
 		if trimmed != *val {
 			*val = trimmed
-			add(field, trimmed)
+			add(field, "trimmed")
 		}
 	}
 	normalizeListField := func(field string, val *[]string) {
