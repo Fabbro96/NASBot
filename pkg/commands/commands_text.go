@@ -325,6 +325,7 @@ func getHelpText(ctx *AppContext) string {
 	b.WriteString(fmt.Sprintf("/logs — %s\n", tr("cmd_logs_desc")))
 	b.WriteString(fmt.Sprintf("/ask <question> — %s\n", tr("cmd_ask_desc")))
 	b.WriteString(fmt.Sprintf("/update — %s\n", tr("cmd_update_desc")))
+	b.WriteString(fmt.Sprintf("/changelog — %s\n", tr("cmd_changelog_desc")))
 	b.WriteString(fmt.Sprintf("/reboot · /shutdown — %s\n", tr("cmd_power_desc")))
 	b.WriteString(fmt.Sprintf("/reboot force · /forcereboot — %s\n\n", tr("cmd_forcereboot_desc")))
 
