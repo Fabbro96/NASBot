@@ -158,6 +158,8 @@ At startup NASBot pushes its main command list to Telegram itself (`setMyCommand
 | `/help` | List every available command |
 
 > [!NOTE]
+> **Aliases:** `/start` → `/status`, `/q` → `/quick`, `/processes` → `/top`, `/prediction` → `/diskpred`, `/healthchecks` → `/health`, `/v` → `/version`, `/shell` and `/exec` → `/cmd`.
+>
 > Wake-on-LAN (`/wol`) was **removed** in `v0.12.1` and is not part of the bot. See [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ---

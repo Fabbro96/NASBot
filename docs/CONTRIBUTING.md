@@ -78,8 +78,8 @@ go build -o nasbot .
   or others can read, so a copy made without `chmod` is a broken install.
 - Use `config.example.json` for templates and examples.
 - A new capability that reaches the host (new command, new socket mount, new
-  privileged capability) must be written down in [SECURITY.md](SECURITY.md).
-- Follow [SECURITY.md](SECURITY.md) before release/tag.
+  privileged capability) must be written down in [SECURITY.md](../SECURITY.md).
+- Follow [SECURITY.md](../SECURITY.md) before release/tag.
 
 ## Project Structure
 

@@ -97,7 +97,8 @@ func getStatusText(ctx *AppContext) string {
 	}
 	sections = append(sections, strings.Join(computeLines, "\n"))
 
-	// Section 3: Storage (SSD & Secondary Disks)
+	// Section 3: Storage (SSD & Secondary Disks) — separated visually
+	sections = append(sections, "")
 	var storageLines []string
 	storageLines = append(storageLines, trf(tr, "ssd_fmt", s.VolSSD.Used, format.FormatBytes(s.VolSSD.Free)))
 	for _, m := range volumeMounts(s.SecondaryVols) {
@@ -293,6 +294,7 @@ func getHelpText(ctx *AppContext) string {
 	tr := ctx.Tr
 	var b strings.Builder
 	b.WriteString(tr("help_intro"))
+	b.WriteString("\n")
 
 	b.WriteString(tr("help_mon"))
 	b.WriteString(fmt.Sprintf("/status — %s\n", tr("cmd_status_desc")))
@@ -301,6 +303,7 @@ func getHelpText(ctx *AppContext) string {
 	b.WriteString(fmt.Sprintf("/top — %s\n", tr("cmd_top_desc")))
 	b.WriteString(fmt.Sprintf("/sysinfo — %s\n", tr("cmd_sysinfo_desc")))
 	b.WriteString(fmt.Sprintf("/diskpred — %s\n\n", tr("cmd_diskpred_desc")))
+	b.WriteString("\n")
 
 	b.WriteString(tr("help_docker"))
 	b.WriteString(fmt.Sprintf("/docker — %s\n", tr("cmd_docker_desc")))
@@ -308,6 +311,7 @@ func getHelpText(ctx *AppContext) string {
 	b.WriteString(fmt.Sprintf("/kill `name` — %s\n", tr("cmd_kill_desc")))
 	b.WriteString(fmt.Sprintf("/logsearch `name` `keyword` — %s\n", tr("cmd_logsearch_desc")))
 	b.WriteString(fmt.Sprintf("/restartdocker — %s\n\n", tr("cmd_restartdocker_desc")))
+	b.WriteString("\n")
 
 	b.WriteString(tr("help_net"))
 	b.WriteString(fmt.Sprintf("/net — %s\n", tr("cmd_net_desc")))
@@ -384,7 +388,7 @@ func getPingText(ctx *AppContext) string {
 	b.WriteString(statusText)
 	b.WriteString("\n\n")
 	b.WriteString(trf(tr, "ping_uptime", format.FormatDuration(uptime)))
-	b.WriteString("\n")
+	b.WriteString("\n\n")
 	b.WriteString(trf(tr, "ping_collecting", ready))
 	b.WriteString("\n")
 	b.WriteString(trf(tr, "ping_last_check", now.Format("15:04:05")))
