@@ -235,6 +235,9 @@ func TestGetHelpText(t *testing.T) {
 	if !strings.Contains(text, "[cmd_settings_desc]") {
 		t.Errorf("Expected settings command description key, got: %s", text)
 	}
+	if !strings.Contains(text, "/changelog") || !strings.Contains(text, "[cmd_changelog_desc]") {
+		t.Errorf("Expected changelog command in help, got: %s", text)
+	}
 	assertNoFormatMismatch(t, "GetHelpText", text)
 }
 

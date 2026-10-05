@@ -309,6 +309,8 @@ func registerBotCommands(ctx *AppContext, bot BotAPI) {
 		{Command: "settings", Description: ctx.Tr("cmd_settings_desc")},
 		{Command: "update", Description: ctx.Tr("cmd_update_desc")},
 		{Command: "changelog", Description: ctx.Tr("cmd_changelog_desc")},
+		{Command: "ping", Description: ctx.Tr("cmd_ping_desc")},
+		{Command: "version", Description: ctx.Tr("cmd_version_desc")},
 		{Command: "reboot", Description: ctx.Tr("cmd_reboot_desc")},
 		{Command: "shutdown", Description: ctx.Tr("cmd_shutdown_desc")},
 		{Command: "help", Description: ctx.Tr("cmd_help_desc")},
