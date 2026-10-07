@@ -140,6 +140,15 @@ func (m *SMARTMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
 
 	var cache map[string]model.SmartResult
 	if needsCheck {
+		// Hotplug, PRIMA di rigenerare la cache: la lista di config.json viene
+		// riallineata ai dischi presenti e il ciclo di lettura qui sotto usa
+		// già la lista aggiornata, così un disco plugato entra in cache da
+		// subito invece di aspettare il ciclo successivo (massimo 10 minuti,
+		// il rate-limit implicito di questa sync). Un detection vuoto o una
+		// lista già corretta sono no-op: nessuna riscrittura. Nessun lock è
+		// tenuto in questo punto: ctx.Monitor.Mu è stato rilasciato sopra.
+		syncSMARTDevicesPeriodic(ctx)
+
 		newCache := make(map[string]model.SmartResult)
 		for _, dev := range getSmartDevices(ctx) {
 			temp, health := readDiskSMART(dev)
