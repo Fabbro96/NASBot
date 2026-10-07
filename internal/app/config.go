@@ -42,6 +42,16 @@ var (
 	cfgMu sync.RWMutex
 	cfg   Config
 
+	// configWriteMu serializza ogni riscrittura di config.json: la
+	// read-modify-write di applyConfigPatch (usata dalla UI e dalla sync
+	// periodica dei dispositivi SMART) e la write di loadConfig. Senza questo
+	// mutex due patch simultanee si leggono a vicenda il file e l'ultima
+	// cancella la chiave scritta dall'altra, un dato perso che nessun errore
+	// segnala. Non è uno dei mutex con deadlock detection: non viene mai
+	// acquisito mentre si tiene un altro lock, non c'è un ordine di lock da
+	// violare.
+	configWriteMu sync.Mutex
+
 	// Default paths
 	defaultPathSSD = "/Volume1"
 
@@ -109,8 +119,26 @@ func loadConfig() *Config {
 		os.Exit(1)
 	}
 
+	// Sync dei dispositivi SMART con i dischi realmente presenti in sysfs.
+	// Prima della decisione di scrittura, così una lista cambiata entra in
+	// "qualcosa è cambiato" e riusa la writeConfigFile qui sotto: nessun
+	// percorso di scrittura dedicato. Una detection vuota o fallita non
+	// modifica nulla (syncSMARTDevicesAtBoot), quindi non forza nemmeno la
+	// riscrittura. Saltata sotto go test: vedi smartBootSyncAtLoad.
+	if smartBootSyncAtLoad {
+		changes = append(changes, syncSMARTDevicesAtBoot(loaded)...)
+	}
+
 	// Only write when something actually changed: rewriting on every boot
 	// touched the file needlessly and reported a correction that was a no-op.
+	//
+	// Il lock resta preso fino a dopo publishConfig, con lo stesso percorso
+	// di applyConfigPatch: tra la write del file e la pubblicazione della
+	// snapshot non ci deve passare nessuna patch, che altrimenti leggerebbe
+	// (e riscriverebbe) il file con un contenuto che il caricamento sta per
+	// sostituire. publishConfig prende cfgMu solo dopo configWriteMu, ordine
+	// già stabilito da applyConfigPatch, quindi qui non si inverte nulla.
+	configWriteMu.Lock()
 	if defaultsAdded || len(changes) > 0 {
 		if err := writeConfigFile(path, loaded, configMap); err != nil {
 			slog.Error("Failed to save corrected config", "err", err)
@@ -136,6 +164,7 @@ func loadConfig() *Config {
 	}
 
 	publishConfig(loaded)
+	configWriteMu.Unlock()
 
 	slog.Info("Configuration loaded successfully",
 		"ssd", loaded.Paths.SSD,
@@ -991,6 +1020,12 @@ func applyConfigPatch(patch map[string]interface{}) (ConfigPatchResult, error) {
 	if len(patch) == 0 {
 		return result, nil
 	}
+
+	// Read-modify-write del file: l'intera sequenza (leggere, mergiare,
+	// riscrivere, ripubblicare) sta sotto lo stesso lock, altrimenti due patch
+	// partite insieme si cancellano a vicenda le chiavi.
+	configWriteMu.Lock()
+	defer configWriteMu.Unlock()
 
 	path, err := resolveConfigPath()
 	if err != nil {

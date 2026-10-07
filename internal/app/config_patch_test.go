@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -133,5 +134,96 @@ func TestApplyConfigPatch_DeepMergePreservesNestedNotifications(t *testing.T) {
 	}
 	if saved.Notifications.DiskSSD.WarningThreshold != 82 || saved.Notifications.DiskSSD.CriticalThreshold != 92 {
 		t.Fatalf("expected SSD thresholds 82/92 preserved, got %v/%v", saved.Notifications.DiskSSD.WarningThreshold, saved.Notifications.DiskSSD.CriticalThreshold)
+	}
+}
+
+// TestApplyConfigPatchConcurrentPatchesAreAllKept è la prova di configWriteMu.
+//
+// applyConfigPatch è una read-modify-write sul file: senza il lock, due patch
+// partite insieme leggono entrambe lo stato precedente e l'ultima riscrittura
+// cancella la chiave scritta dall'altra. Il guasto è un dato che sparisce da
+// config.json senza alcun errore, ed è esattamente ciò che la sync periodica
+// dei dispositivi SMART avrebbe messo in circolo (una patch ogni 10 minuti
+// accanto a quelle dell'operatore).
+//
+// Gira sotto -race: la mutazione concorrente del file e della snapshot
+// pubblicata è il motivo per cui il lock esiste.
+func TestApplyConfigPatchConcurrentPatchesAreAllKept(t *testing.T) {
+	path := writeCompleteConfig(t, nil)
+	pinConfigPathAndSysfs(t, path, t.TempDir())
+
+	// Un campo per routine, tutti dentro i clamp di sanitizeConfig: se una
+	// patch venisse persa, il valore corrispondente mancherebbe alla fine.
+	patches := []map[string]interface{}{
+		{"reports": map[string]interface{}{"interval_days": 7}},
+		{"intervals": map[string]interface{}{"stats_seconds": 11}},
+		{"cache": map[string]interface{}{"docker_ttl_seconds": 22}},
+		{"healthchecks": map[string]interface{}{"period_seconds": 33}},
+		{"kernel_watchdog": map[string]interface{}{"check_interval_seconds": 44}},
+		{"raid_watchdog": map[string]interface{}{"check_interval_seconds": 55}},
+		{"network_watchdog": map[string]interface{}{"check_interval_seconds": 66}},
+		{"docker": map[string]interface{}{"watchdog": map[string]interface{}{"timeout_minutes": 77}}},
+	}
+
+	var ready, done sync.WaitGroup
+	start := make(chan struct{})
+	errs := make(chan error, len(patches))
+
+	ready.Add(len(patches))
+	for _, patch := range patches {
+		done.Add(1)
+		go func(patch map[string]interface{}) {
+			defer done.Done()
+			ready.Done()
+			<-start
+			if _, err := applyConfigPatch(patch); err != nil {
+				errs <- err
+			}
+		}(patch)
+	}
+	ready.Wait()
+	close(start)
+	done.Wait()
+	close(errs)
+
+	for err := range errs {
+		t.Errorf("applyConfigPatch: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	var saved Config
+	if err := json.Unmarshal(data, &saved); err != nil {
+		t.Fatalf("unmarshal config: %v", err)
+	}
+
+	// Ogni valore è diverso da quello di default del fixture: una patch persa
+	// lascia il valore di default, non zero.
+	want := map[string]int{
+		"reports.interval_days":                   7,
+		"intervals.stats_seconds":                 11,
+		"cache.docker_ttl_seconds":                22,
+		"healthchecks.period_seconds":             33,
+		"kernel_watchdog.check_interval_seconds":  44,
+		"raid_watchdog.check_interval_seconds":    55,
+		"network_watchdog.check_interval_seconds": 66,
+		"docker.watchdog.timeout_minutes":         77,
+	}
+	got := map[string]int{
+		"reports.interval_days":                   saved.Reports.IntervalDays,
+		"intervals.stats_seconds":                 saved.Intervals.StatsSeconds,
+		"cache.docker_ttl_seconds":                saved.Cache.DockerTTLSeconds,
+		"healthchecks.period_seconds":             saved.Healthchecks.PeriodSeconds,
+		"kernel_watchdog.check_interval_seconds":  saved.KernelWatchdog.CheckIntervalSecs,
+		"raid_watchdog.check_interval_seconds":    saved.RaidWatchdog.CheckIntervalSecs,
+		"network_watchdog.check_interval_seconds": saved.NetworkWatchdog.CheckIntervalSecs,
+		"docker.watchdog.timeout_minutes":         saved.Docker.Watchdog.TimeoutMinutes,
+	}
+	for field, expected := range want {
+		if got[field] != expected {
+			t.Errorf("%s = %d, want %d (a concurrent patch was lost)", field, got[field], expected)
+		}
 	}
 }

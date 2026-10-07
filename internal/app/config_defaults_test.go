@@ -58,6 +58,14 @@ func TestLoadConfig_AddsMissingFieldsToLegacyConfig(t *testing.T) {
 	configFile = path
 	t.Cleanup(func() { configFile = oldConfigFile })
 
+	// La sync di boot dei dispositivi SMART legge /sys/block: senza puntarla a
+	// un tmpdir i dischi della macchina che esegue i test finirebbero dentro
+	// questa fixture e il test diventerebbe dipendente dall'hardware su cui
+	// gira. Una root inesistente equivale a "detection fallita" = no-op.
+	oldSysfsRoot := smartSysfsRoot
+	smartSysfsRoot = filepath.Join(t.TempDir(), "no-sysfs")
+	t.Cleanup(func() { smartSysfsRoot = oldSysfsRoot })
+
 	loadConfig()
 
 	saved, err := os.ReadFile(path)
