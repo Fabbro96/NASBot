@@ -11,7 +11,7 @@ section per tag, in reverse chronological order. The date is the tag's creation 
 > release <tag>` only requires a section for the tag being released, so those releases are
 > unaffected — but new tags must follow this format.
 
-## Unreleased
+## v1.7.0 - 2026-10-07
 
 ### Security
 - **Config file permissions are now enforced.** `config.json` must be mode `0600`:
@@ -118,6 +118,16 @@ section per tag, in reverse chronological order. The date is the tag's creation 
   `CodeQL Analysis (go)` that no workflow produces, so no pull request could ever be
   merged, and required signed commits while none are signed. A tag ruleset blocked the
   creation of `v*` tags for everyone, which would have made every release impossible.
+- **The release pipeline had not run since 2026-09-01.** `permissions:` written inside a
+  step is not valid: GitHub rejects the whole file, creates no job, and reports a failed
+  run on every push with `This run likely failed because of a workflow file issue`. YAML
+  parsers accept it happily, so every other check stayed green while the pipeline was
+  dead. The single job is now four, each carrying its own job-level permissions — the same
+  least-privilege result, at the granularity GitHub supports. The tag check also runs
+  before the checkout, so a bad tag is refused with an explicit message instead of dying
+  in the ref resolver. `scripts/check_workflows.sh` is wired into the gate so a file GitHub
+  would refuse cannot pass silently again: unparseable YAML, duplicate keys and permissions
+  on a step, each tested in both directions.
 
 ### Changed
 - **`update.auto_apply` defaults to `false`** in both the code and `config.example.json`,
