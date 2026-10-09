@@ -26,6 +26,11 @@ const (
 	reportDisabledPoll = 1 * time.Hour
 	// reportSettingsPollInterval is the wake-up ceiling for a pending report.
 	reportSettingsPollInterval = 10 * time.Minute
+	// reportDueTolerance absorbs timer/scheduling jitter when deciding whether
+	// a wake-up means the scheduled slot really arrived. Anything waking up
+	// more than this before the slot (poll ceiling, settings change) just
+	// recomputes the schedule instead of sending a report.
+	reportDueTolerance = 30 * time.Second
 )
 
 // getNextReportTime calculates the next report time based on settings (interval or specific days of week)
@@ -239,6 +244,18 @@ func periodicReport(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 			return
 		}
 
+		// sleepReportWake returns on three events: the timer expiring (report
+		// due), a settings change, or the 10-minute poll ceiling. Only the
+		// first one means the report is due: without this guard every poll
+		// wake-up looked like an expired timer (reportsStillDue below still
+		// matched the unchanged schedule) and a report was generated every
+		// 10 minutes.
+		if !reportSlotDue(nextReport) {
+			slog.Info("Report woke early (settings/poll), recomputing",
+				"time", nextReport.Format("02/01 15:04"))
+			continue
+		}
+
 		// Re-read the settings after waking up: the user may have disabled the
 		// reports, or moved the time/day, while we were sleeping.
 		if !reportsStillDue(ctx, nextReport) {
@@ -292,7 +309,9 @@ func deliverReport(ctx *AppContext, bot BotAPI, report string, runCtx context.Co
 		if attempt == reportMaxSendAttempts {
 			break
 		}
-		if !sleepReportWake(runCtx, ctx, reportRetryBackoff(attempt)) {
+		// Sleep the full backoff: sleepReportWake would wake up early on the
+		// 10-minute poll ceiling and retry sooner than intended.
+		if !sleepWithContext(runCtx, reportRetryBackoff(attempt)) {
 			return false
 		}
 	}
@@ -319,6 +338,14 @@ func reportRetryBackoff(attempt int) time.Duration {
 		d = reportRetryMaxBackoff
 	}
 	return d
+}
+
+// reportSlotDue reports whether a scheduled slot has actually arrived,
+// tolerating timer/scheduling jitter. Wake-ups from the 10-minute poll ceiling
+// or a settings change arrive well before the slot and must only recompute the
+// schedule, never send a report.
+func reportSlotDue(scheduled time.Time) bool {
+	return time.Until(scheduled) <= reportDueTolerance
 }
 
 // reportsStillDue re-validates a scheduled slot against the current settings.
