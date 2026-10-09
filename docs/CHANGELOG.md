@@ -11,6 +11,24 @@ section per tag, in reverse chronological order. The date is the tag's creation 
 > release <tag>` only requires a section for the tag being released, so those releases are
 > unaffected — but new tags must follow this format.
 
+## v1.7.2 - 2026-10-09
+
+### Fixed
+- **Scheduled reports survive non-UTF-8 bytes.** Report text embeds kernel logs,
+  filenames and container output, which can carry stray bytes (latin-1, binary
+  garbage). They reached Telegram verbatim and the whole report was rejected.
+  Messages are normalized once before splitting, so every chunk is valid UTF-8.
+- **RAID alerts are capped.** One `/proc/mdstat` header line can match an
+  unbounded number of failed devices, building an alert longer than the
+  4096-character Bot API limit — rejected exactly when it matters. Issues are
+  capped at 25 with a `+N more` tail.
+
+### Added
+- **Fuzz coverage for the parsers.** Twelve Go fuzz targets (docker JSON/stats,
+  mdstat, semver, checksum manifest, callback data, Telegram splitter) with
+  structural invariants, plus a scheduler clock-skew test. Crasher inputs are
+  kept as regression seeds.
+
 ## v1.7.1 - 2026-10-09
 
 ### Fixed
