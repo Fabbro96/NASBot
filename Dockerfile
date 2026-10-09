@@ -60,6 +60,9 @@ FROM alpine:3.24
 #   util-linux     -> blkid, lsblk, mount information
 #   iputils/curl   -> network reachability checks
 #   tzdata         -> correct timestamps in reports
+#   procps         -> /top and the process manager need `ps --sort`, which the
+#                     BusyBox ps cannot do (exit 1, no flag). Without it every
+#                     process view fails and only the gopsutil fallback answers.
 RUN apk add --no-cache \
     smartmontools \
     docker-cli \
@@ -69,7 +72,8 @@ RUN apk add --no-cache \
     iputils \
     lm-sensors \
     dmidecode \
-    util-linux
+    util-linux \
+    procps
 
 ENV NASBOT_DOCKER=true
 WORKDIR /app

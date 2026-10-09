@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"runtime/debug"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/shirou/gopsutil/v3/host"
 	"github.com/shirou/gopsutil/v3/mem"
+	"github.com/shirou/gopsutil/v3/process"
 )
 
 // ═══════════════════════════════════════════════════════════════════
@@ -260,6 +263,21 @@ func collectTopProcesses(maxCount, maxNameLen int) ([]psProcess, error) {
 
 	out, err := runCommandOutput(reqCtx, "ps", "-Ao", "pid,comm,pcpu,pmem", "--sort=-pcpu")
 	if err != nil {
+		// Minimal environments (Alpine without procps, whose ps ignores
+		// --sort) fail here. Try the host's ps through the /hostfs bind mount
+		// from docker-compose.yml (a busybox chroot applet is enough), then
+		// native gopsutil enumeration, which unlike the monitor path below
+		// keeps every named process: gopsutil reports 0% CPU on the first
+		// sample, so filtering by activity would always come back empty.
+		if hostOut, hostErr := runCommandOutput(reqCtx, "chroot", "/hostfs", "ps", "-Ao", "pid,comm,pcpu,pmem", "--sort=-pcpu"); hostErr == nil {
+			out = hostOut
+			err = nil
+		}
+	}
+	if err != nil {
+		if procs := collectTopProcessesNative(maxCount, maxNameLen); len(procs) > 0 {
+			return procs, nil
+		}
 		return nil, err
 	}
 
@@ -288,6 +306,63 @@ func collectTopProcesses(maxCount, maxNameLen int) ([]psProcess, error) {
 		})
 	}
 	return procs, nil
+}
+
+// collectTopProcessesNative enumerates processes via gopsutil instead of ps.
+// Unlike getTopProcesses in internal/app (which drops anything under 0.1% CPU
+// or memory), it keeps every named process: CPUPercent is ~0 on the first
+// sample, so filtering would always return an empty list here.
+func collectTopProcessesNative(maxCount, maxNameLen int) []psProcess {
+	psList, err := process.Processes()
+	if err != nil {
+		return nil
+	}
+	type procData struct {
+		pid  int32
+		name string
+		cpu  float64
+		mem  float32
+	}
+	var data []procData
+	for _, p := range psList {
+		name, err := p.Name()
+		if err != nil || name == "" {
+			continue
+		}
+		cpu, _ := p.CPUPercent()
+		mem, _ := p.MemoryPercent()
+		data = append(data, procData{
+			pid:  p.Pid,
+			name: name,
+			cpu:  cpu,
+			mem:  mem,
+		})
+	}
+	sort.Slice(data, func(i, j int) bool {
+		if data[i].cpu == data[j].cpu {
+			return data[i].mem > data[j].mem
+		}
+		return data[i].cpu > data[j].cpu
+	})
+	if len(data) > maxCount {
+		data = data[:maxCount]
+	}
+	procs := make([]psProcess, 0, len(data))
+	for _, d := range data {
+		name := d.name
+		if maxNameLen > 2 {
+			if r := []rune(name); len(r) > maxNameLen {
+				name = string(r[:maxNameLen-2]) + ".."
+			}
+		}
+		procs = append(procs, psProcess{
+			PID:  strconv.Itoa(int(d.pid)),
+			Name: name,
+			CPU:  fmt.Sprintf("%.1f", d.cpu),
+			MEM:  fmt.Sprintf("%.1f", d.mem),
+		})
+	}
+	return procs
 }
 
 func getHelpText(ctx *AppContext) string {
