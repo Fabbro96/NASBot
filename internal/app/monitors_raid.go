@@ -104,6 +104,13 @@ var reMdStatusGroup = regexp.MustCompile(`\[(\d+)/(\d+)\]\s*\[([U_]+)\]`)
 // mdSyncKeywords are the resync-like operations reported on their own line.
 var mdSyncKeywords = []string{"recovery", "resync", "reshape", "check", "scrub"}
 
+// maxRaidIssues bounds the issues one mdstat read can report. Every match on a
+// header line appends one issue per failed device, so without a cap a
+// pathological /proc/mdstat builds an alert longer than the 4096-character Bot
+// API limit and Telegram rejects exactly the message that matters. Real
+// hardware never reaches this; the tail keeps count of what was omitted.
+const maxRaidIssues = 25
+
 // parseMdstatIssues extracts every problem found in the text of /proc/mdstat.
 // It is pure so the test table can drive it without touching the filesystem.
 func parseMdstatIssues(text string) []string {
@@ -160,6 +167,10 @@ func parseMdstatIssues(text string) []string {
 		}
 	}
 
+	if len(issues) > maxRaidIssues {
+		omitted := len(issues) - maxRaidIssues
+		issues = append(issues[:maxRaidIssues], fmt.Sprintf("… +%d more RAID issues omitted", omitted))
+	}
 	return issues
 }
 

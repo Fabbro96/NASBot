@@ -446,6 +446,11 @@ func splitTelegramMessage(text string, budget int, maxChunks int, notice string)
 	if maxChunks <= 0 {
 		maxChunks = maxReportChunks
 	}
+	// Report text embeds kernel logs, filenames and container output, which can
+	// carry non-UTF-8 bytes (latin-1, binary garbage). Telegram rejects such a
+	// message outright, losing the whole report. Normalize once here so every
+	// chunk below — including the short-circuit return — is valid UTF-8.
+	text = strings.ToValidUTF8(text, "�")
 	if utf8.RuneCountInString(text) <= budget {
 		return []string{text}
 	}

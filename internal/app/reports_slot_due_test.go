@@ -34,3 +34,21 @@ func TestReportSlotDue_TimerExpiryIsDue(t *testing.T) {
 		t.Fatalf("slot a few seconds away must be due (jitter tolerance)")
 	}
 }
+
+// TestGetNextReportTimeSurvivesClockSkew: with LastReport in the future (NTP
+// jump, manual clock change) the scheduler must return a future slot, never a
+// past one that would fire immediately in a tight loop.
+func TestGetNextReportTimeSurvivesClockSkew(t *testing.T) {
+	ctx := newTestAppContext()
+	ctx.Settings.ReportsEnabled = true
+	ctx.Settings.ReportInterval = 1
+	ctx.Settings.ReportTimes = []TimePoint{{Hour: 7, Minute: 30}}
+	ctx.State.Mu.Lock()
+	ctx.State.LastReport = time.Now().Add(2 * time.Hour)
+	ctx.State.Mu.Unlock()
+
+	next, _ := getNextReportTime(ctx)
+	if time.Until(next) < -reportDueTolerance {
+		t.Fatalf("skewed LastReport produced an overdue slot %s (loop risk)", next)
+	}
+}
