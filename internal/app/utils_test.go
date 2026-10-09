@@ -1,6 +1,7 @@
 package app
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -66,5 +67,23 @@ func TestMakeProgressBar(t *testing.T) {
 				t.Fatalf("makeProgressBar(%.1f) = %q, want %q", tc.in, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestSmartctlArgvSkipsSudoAsRoot(t *testing.T) {
+	got := smartctlArgv("-H", "/dev/sda")
+	if os.Geteuid() == 0 {
+		// The image ships no sudo and the container runs as root: sudo -n
+		// would fail and every disk would read UNKNOWN.
+		if len(got) != 2 || got[0] != "smartctl" {
+			t.Fatalf("as root expected [smartctl -H /dev/sda], got %v", got)
+		}
+	} else {
+		if len(got) != 5 || got[0] != "sudo" || got[1] != "-n" || got[2] != "smartctl" || got[3] != "-H" {
+			t.Fatalf("as non-root expected [sudo -n smartctl -H ...], got %v", got)
+		}
+	}
+	if got[len(got)-1] != "/dev/sda" {
+		t.Fatalf("device lost from argv: %v", got)
 	}
 }

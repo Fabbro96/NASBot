@@ -83,6 +83,17 @@ func readCPUTemp() float64 {
 	return 0
 }
 
+// smartctlArgv prefixes a smartctl invocation. The container and a root
+// native install run as uid 0 and call smartctl directly — the image ships no
+// sudo, so `sudo -n` fails there with "command not found" and every disk reads
+// UNKNOWN. Anything else keeps the old `sudo -n` escalation.
+func smartctlArgv(args ...string) []string {
+	if os.Geteuid() == 0 {
+		return append([]string{"smartctl"}, args...)
+	}
+	return append([]string{"sudo", "-n", "smartctl"}, args...)
+}
+
 // readDiskSMART reads disk SMART data
 func readDiskSMART(device string) (temp int, health string) {
 	temp = -1
@@ -90,7 +101,8 @@ func readDiskSMART(device string) (temp int, health string) {
 
 	// Use separate contexts for sequential commands to avoid timeout overlaps
 	ctxA, cancelA := context.WithTimeout(context.Background(), 2*time.Second)
-	outA, attrErr := runCommandStdout(ctxA, "sudo", "-n", "smartctl", "-A", "/dev/"+device)
+	argvA := smartctlArgv("-A", "/dev/"+device)
+	outA, attrErr := runCommandStdout(ctxA, argvA[0], argvA[1:]...)
 	cancelA()
 
 	for _, line := range strings.Split(string(outA), "\n") {
@@ -126,7 +138,8 @@ func readDiskSMART(device string) (temp int, health string) {
 	}
 
 	ctxH, cancelH := context.WithTimeout(context.Background(), 2*time.Second)
-	outH, healthErr := runCommandStdout(ctxH, "sudo", "-n", "smartctl", "-H", "/dev/"+device)
+	argvH := smartctlArgv("-H", "/dev/"+device)
+	outH, healthErr := runCommandStdout(ctxH, argvH[0], argvH[1:]...)
 	cancelH()
 
 	passed := false

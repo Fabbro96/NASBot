@@ -48,6 +48,12 @@ services:
     volumes:
       # Configuration (bot_token, gemini_api_key). Provided by the host, never
       # baked into the image: the image ships no credentials.
+      #
+      # WARNING: mount ONLY this file into /app. Never add something like
+      # `- ./bin/nasbot:/app/nasbot:ro`: a host binary is usually glibc-linked
+      # while this image is Alpine/musl, so it shadows the working static
+      # binary and the container dies with
+      # `exec ./nasbot: no such file or directory` in a restart loop.
       - ./config.json:/app/config.json
 
       # Docker API for the /docker commands (list, logs, start/stop, prune).
@@ -65,4 +71,10 @@ services:
       # Read-only host root filesystem, used to measure free space per mount
       # point and to resolve host paths. Read-only on purpose: the bot never
       # writes to the host filesystem.
+      #
+      # The mount point inside the container is /hostfs, and that exact prefix
+      # is what the code expects (chroot fallback for ps, host path mapping).
+      # There is no /host here: if config.json says e.g. "paths": {"ssd": ...},
+      # point it at the /hostfs-prefixed host path (e.g. host /Volume1 becomes
+      # /hostfs/Volume1), otherwise disk checks report "not reachable".
       - /:/hostfs:ro

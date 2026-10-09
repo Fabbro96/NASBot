@@ -1,6 +1,8 @@
 package commands
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -387,5 +389,28 @@ func TestTextGeneratorsRejectFormatMismatch(t *testing.T) {
 	if len(seen) != len(textGeneratorFormatKeys) {
 		t.Errorf("the probe covered %d keys, textGeneratorFormatKeys lists %d: "+
 			"the two lists have drifted apart", len(seen), len(textGeneratorFormatKeys))
+	}
+}
+
+func TestCollectTopProcesses_FallbackWhenPsFails(t *testing.T) {
+	// Bind a runner that fails (simulating BusyBox ps without --sort=-pcpu)
+	BindRuntime(RuntimeDeps{
+		RunCommandOutput: func(ctx context.Context, name string, args ...string) ([]byte, error) {
+			return nil, errors.New("ps: unrecognized option '--sort=-pcpu'")
+		},
+	})
+	t.Cleanup(func() { BindRuntime(RuntimeDeps{}) })
+
+	procs, err := collectTopProcesses(5, 16)
+	if err != nil {
+		t.Fatalf("expected fallback to succeed when ps fails, got error: %v", err)
+	}
+	if len(procs) == 0 {
+		t.Fatalf("expected at least 1 process from native fallback, got 0")
+	}
+	for _, p := range procs {
+		if p.PID == "" || p.Name == "" {
+			t.Errorf("invalid proc returned: %+v", p)
+		}
 	}
 }
