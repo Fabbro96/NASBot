@@ -54,7 +54,7 @@ A single Go binary that provides a **live server dashboard**, proactive hardware
    > **refuses to start** when `config.json` is readable by group or others.
 3. Start the container:
    ```bash
-   docker-compose up -d
+   docker compose up -d
    ```
 
 ---

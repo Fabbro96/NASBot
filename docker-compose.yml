@@ -13,10 +13,9 @@
 # was weakened: they are all required to read disk/SMART/temperature data and
 # to talk to the Docker daemon.
 #
-# `version` is obsolete in Compose v2 (it only prints a warning) but it is kept
-# so that older `docker-compose` binaries still parse this file.
-version: "3.8"
-
+# No `version:` key: it is obsolete in Compose v2 (only a warning) and
+# Compose v1 is EOL, so keeping it bought nothing but the warning on every
+# command.
 # Image tag: NOT pinned to a digest or to an explicit version, it tracks
 # :latest. That keeps `docker compose pull` simple but means an image update
 # can change behaviour without a change in this file. Pinning it (for example
