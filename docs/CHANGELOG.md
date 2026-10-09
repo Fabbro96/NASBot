@@ -11,6 +11,25 @@ section per tag, in reverse chronological order. The date is the tag's creation 
 > release <tag>` only requires a section for the tag being released, so those releases are
 > unaffected — but new tags must follow this format.
 
+## v1.7.1 - 2026-10-09
+
+### Fixed
+- **Scheduled reports no longer fire every 10 minutes.** The scheduler woke up on
+  the 10-minute settings-poll ceiling (or a settings change) and treated every
+  wake-up as an expired timer, so an unchanged schedule still produced a report
+  (plus a Gemini call) per wake-up. A wake-up now sends a report only when the
+  scheduled slot actually arrived (30s jitter tolerance); early wake-ups just
+  recompute the schedule.
+- **Report retries now sleep the full backoff.** The retry path used the same
+  wakeable sleep, so backoffs longer than 10 minutes fired early. They use a
+  plain sleep instead, preserving the 5-minute to 6-hour exponential schedule.
+
+### Added
+- **Lockdown regression tests for `/configset`.** Thirteen bypass spellings of the
+  locked keys (`bot_token`, `allowed_user_id`, `update.auto_apply`,
+  `shell_command`, including case variants and nested maps) are all refused and
+  leave the config file untouched.
+
 ## v1.7.0 - 2026-10-07
 
 ### Security
