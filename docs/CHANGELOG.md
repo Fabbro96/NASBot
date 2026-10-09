@@ -11,6 +11,24 @@ section per tag, in reverse chronological order. The date is the tag's creation 
 > release <tag>` only requires a section for the tag being released, so those releases are
 > unaffected — but new tags must follow this format.
 
+## v1.7.3 - 2026-10-09
+
+### Fixed
+- **SMART readings in Docker.** Disk checks ran `sudo -n smartctl`, but the
+  image ships no `sudo` — and the container runs as root anyway, so every disk
+  reported UNKNOWN. `smartctl` now runs directly when uid is 0 and keeps the
+  `sudo -n` escalation otherwise.
+- **`/top` in Docker.** The image had no `procps`, whose `ps --sort` the BusyBox
+  `ps` cannot do, so every process view failed with exit status 1. `procps` is
+  installed, and the lookup falls back to the host `ps` through the `/hostfs`
+  bind mount and then to unfiltered native enumeration.
+
+### Changed
+- **`docker-compose.yml` documents two outage lessons:** never mount a host
+  binary over `/app/nasbot` (glibc vs musl kills the container in a restart
+  loop), and `paths.ssd` must use the `/hostfs`-prefixed host path — there is
+  no `/host` in this setup.
+
 ## v1.7.2 - 2026-10-09
 
 ### Fixed
