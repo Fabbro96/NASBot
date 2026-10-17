@@ -15,6 +15,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"nasbot/internal/cmdexec"
 	"sync"
 	"time"
 )
@@ -663,7 +665,17 @@ func sanitizeConfig(c *Config) []string {
 			}
 			validTimes = append(validTimes, TimeConfig{Hour: h, Minute: m})
 		}
-		c.Reports.Times = validTimes
+		seen := make(map[TimeConfig]bool, len(validTimes))
+		unique := validTimes[:0]
+		for _, t := range validTimes {
+			if seen[t] {
+				add("reports.times.duplicate", fmt.Sprintf("%02d:%02d", t.Hour, t.Minute))
+				continue
+			}
+			seen[t] = true
+			unique = append(unique, t)
+		}
+		c.Reports.Times = unique
 	}
 
 	// Quiet hours
@@ -763,6 +775,10 @@ func sanitizeConfig(c *Config) []string {
 	clampIntField("healthchecks.period_seconds", &c.Healthchecks.PeriodSeconds, 10, 3600)
 	clampIntField("healthchecks.grace_seconds", &c.Healthchecks.GraceSeconds, 10, 3600)
 	trimField("healthchecks.ping_url", &c.Healthchecks.PingURL)
+	if c.Healthchecks.PingURL != "" && !isHTTPURL(c.Healthchecks.PingURL) {
+		c.Healthchecks.PingURL = ""
+		add("healthchecks.ping_url", "dropped (not an http/https URL)")
+	}
 	if c.Healthchecks.GraceSeconds < c.Healthchecks.PeriodSeconds {
 		c.Healthchecks.GraceSeconds = c.Healthchecks.PeriodSeconds
 		add("healthchecks.grace_seconds", c.Healthchecks.GraceSeconds)
@@ -804,12 +820,25 @@ func sanitizeConfig(c *Config) []string {
 	}
 	trimField("network_watchdog.dns_host", &c.NetworkWatchdog.DNSHost)
 	trimField("network_watchdog.gateway", &c.NetworkWatchdog.Gateway)
+	if !isPingHostName(c.NetworkWatchdog.Gateway) && c.NetworkWatchdog.Gateway != "" {
+		add("network_watchdog.gateway", "dropped "+c.NetworkWatchdog.Gateway)
+		c.NetworkWatchdog.Gateway = ""
+	}
 	if c.NetworkWatchdog.DNSHost == "" {
 		c.NetworkWatchdog.DNSHost = "quad9.net"
 		add("network_watchdog.dns_host", c.NetworkWatchdog.DNSHost)
 	}
 	if len(c.NetworkWatchdog.Targets) > 0 {
 		normalizeListField("network_watchdog.targets", &c.NetworkWatchdog.Targets)
+		validTargets := c.NetworkWatchdog.Targets[:0]
+		for _, tgt := range c.NetworkWatchdog.Targets {
+			if isPingHostName(tgt) {
+				validTargets = append(validTargets, tgt)
+			} else {
+				add("network_watchdog.targets", "dropped "+tgt)
+			}
+		}
+		c.NetworkWatchdog.Targets = validTargets
 	}
 	if len(c.NetworkWatchdog.Targets) == 0 {
 		c.NetworkWatchdog.Targets = []string{"9.9.9.9", "1.1.1.1"}
@@ -852,6 +881,14 @@ func sanitizeConfig(c *Config) []string {
 	if kept, dropped := filterShellBinaries(c.ShellCommand.AllowedBinaries); len(dropped) > 0 {
 		c.ShellCommand.AllowedBinaries = kept
 		add("shell_command.allowed_binaries", "dropped "+strings.Join(dropped, ", "))
+	}
+	if c.ShellCommand.Enabled {
+		for _, name := range c.ShellCommand.AllowedBinaries {
+			if cmdexec.IsEscapeBinary(name) {
+				slog.Warn("shell_command.allowed_binaries contains a binary that can run arbitrary code; "+
+					"the allowlist is not a boundary for it", "binary", name)
+			}
+		}
 	}
 	if c.ShellCommand.Enabled && len(c.ShellCommand.AllowedBinaries) == 0 {
 		// "Enabled" with nothing to run is indistinguishable from broken at the
@@ -1313,3 +1350,27 @@ func callbackDataFits(payload string) bool {
 // telegramCallbackDataLimit is the hard cap Telegram puts on inline callback
 // data.
 const telegramCallbackDataLimit = 64
+
+// isHTTPURL reports whether raw is an absolute http or https URL with a host.
+func isHTTPURL(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+}
+
+// isPingHostName accepts an IP or hostname made only of letters, digits, dots,
+// dashes, underscores and colons (IPv6), and never one starting with "-" which
+// ping would take for an option.
+func isPingHostName(h string) bool {
+	if h == "" || len(h) > 253 || strings.HasPrefix(h, "-") {
+		return false
+	}
+	for _, r := range h {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '.' || r == '-' || r == '_' || r == ':':
+		default:
+			return false
+		}
+	}
+	return true
+}

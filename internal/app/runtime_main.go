@@ -156,7 +156,9 @@ func RunBot() {
 				return
 			}
 
-			if update.Message.Chat.ID != app.Cfg().AllowedUserID {
+			// Same identity the callback path checks: the sender, not the chat.
+			// Chat.ID only equals it in a private chat.
+			if update.Message.From == nil || update.Message.From.ID != app.Cfg().AllowedUserID {
 				return
 			}
 

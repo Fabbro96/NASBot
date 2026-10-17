@@ -9,8 +9,10 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -77,12 +79,35 @@ type releaseCandidate struct {
 	Changelog    string
 }
 
+var reGitHubRepo = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
+
 func updaterRepo() string {
 	repo := strings.TrimSpace(os.Getenv("NASBOT_GITHUB_REPO"))
 	if repo == "" {
 		return defaultGitHubRepo
 	}
+	if !reGitHubRepo.MatchString(repo) {
+		slog.Warn("Ignoring NASBOT_GITHUB_REPO: expected owner/name", "value", repo)
+		return defaultGitHubRepo
+	}
 	return repo
+}
+
+// downloadHostAllowed reports whether a release asset may be fetched from rawURL:
+// https only, on github.com or a githubusercontent.com host. The release JSON is
+// attacker-influenced data if the API response or the configured repo is, so the
+// binary that gets executed must not come from an arbitrary host. A variable so
+// tests can serve assets from a fake client.
+var downloadHostAllowed = productionDownloadHostAllowed
+
+func productionDownloadHostAllowed(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Scheme != "https" {
+		return false
+	}
+	h := strings.ToLower(u.Hostname())
+	return h == "github.com" || strings.HasSuffix(h, ".github.com") ||
+		h == "githubusercontent.com" || strings.HasSuffix(h, ".githubusercontent.com")
 }
 
 // releaseVersion is a parsed release tag, ordered by semver precedence.
@@ -447,6 +472,9 @@ func updaterHTTPClient(timeout time.Duration) *http.Client {
 // a single byte is written, and from the number of bytes actually copied, so a
 // body longer than the cap can never be mistaken for a complete download.
 func downloadToFile(dir, url, prefix string, sizeCap int64, timeout time.Duration) (string, error) {
+	if !downloadHostAllowed(url) {
+		return "", fmt.Errorf("refusing to download from untrusted URL")
+	}
 	reqCtx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 

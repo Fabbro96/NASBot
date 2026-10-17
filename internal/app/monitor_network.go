@@ -176,6 +176,10 @@ func networkForceRebootAfter(cfg *Config) time.Duration {
 // as runCtx is done, so a shutdown during a probe does not wait out the
 // remaining attempts.
 func pingHost(runCtx context.Context, host string) bool {
+	// A host starting with "-" would be parsed by ping as an option.
+	if host == "" || strings.HasPrefix(host, "-") {
+		return false
+	}
 	for i := 0; i < 2; i++ {
 		ctx, cancel := context.WithTimeout(runCtx, 2*time.Second)
 		err := runCommand(ctx, "ping", "-c", "1", "-W", "2", host)

@@ -1030,3 +1030,29 @@ func TestPackageFunctionsDelegateToActiveRunner(t *testing.T) {
 		t.Fatalf("after restore CombinedOutput = %q, %v: the fake runner was not restored", out, err)
 	}
 }
+
+func TestLimitedBufferKeepsPrefixAndReportsFullWrites(t *testing.T) {
+	b := &limitedBuffer{limit: 5}
+	for _, chunk := range []string{"abc", "defg", "hij"} {
+		n, err := b.Write([]byte(chunk))
+		if err != nil || n != len(chunk) {
+			t.Fatalf("Write(%q) = %d, %v; the child must never see a short write", chunk, n, err)
+		}
+	}
+	if got := string(b.Bytes()); got != "abcde" {
+		t.Fatalf("got %q, want the first 5 bytes", got)
+	}
+}
+
+func TestIsEscapeBinary(t *testing.T) {
+	for _, name := range []string{"sh", "BASH", "env", "find", "python3", "docker"} {
+		if !IsEscapeBinary(name) {
+			t.Errorf("IsEscapeBinary(%q) = false, want true", name)
+		}
+	}
+	for _, name := range []string{"ls", "df", "uptime", "smartctl", "journalctl"} {
+		if IsEscapeBinary(name) {
+			t.Errorf("IsEscapeBinary(%q) = true, want false", name)
+		}
+	}
+}

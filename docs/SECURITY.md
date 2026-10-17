@@ -155,6 +155,15 @@ Rules for anything added next:
   refused by `/configset` (`lockedConfigPaths` in `internal/app/config.go`).
 - Prefixes, globs and "anything not in the denylist" are not allowlists.
 
+### Do not allowlist interpreters or launchers
+
+The allowlist only checks the executable name, not its arguments. Binaries that
+run other programs or arbitrary code turn it into a full shell: `sh`, `bash`,
+`env`, `xargs`, `find` (`-exec`), `awk`, `sed`, `tee`, `python*`, `perl`,
+`docker` (`run -v /:/h`), `nsenter`, `sudo`, `ssh` and similar. NASBot logs a
+warning at load time when `shell_command.allowed_binaries` contains one of them.
+Prefer read-only tools (`df`, `uptime`, `smartctl`, `journalctl`).
+
 ## Incident Response (Leak)
 1. Rotate leaked secrets immediately.
 2. Remove secret from tracked history if present.

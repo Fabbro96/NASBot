@@ -869,3 +869,17 @@ func TestLogHelpersAreAvailableOutsideAMain(t *testing.T) {
 	ctx.LogInfo("from a hand-built context")
 	_ = context.Background()
 }
+
+func TestPendingActionExpires(t *testing.T) {
+	b := &BotContext{}
+	b.SetPendingAction("reboot")
+	if got := b.GetPendingAction(); got != "reboot" {
+		t.Fatalf("fresh pending action = %q", got)
+	}
+	b.Mu.Lock()
+	b.PendingActionSince = time.Now().Add(-PendingActionTTL - time.Second)
+	b.Mu.Unlock()
+	if got := b.GetPendingAction(); got != "" {
+		t.Fatalf("expired pending action must be cleared, got %q", got)
+	}
+}
