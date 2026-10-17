@@ -11,6 +11,27 @@ section per tag, in reverse chronological order. The date is the tag's creation 
 > release <tag>` only requires a section for the tag being released, so those releases are
 > unaffected — but new tags must follow this format.
 
+## v1.8.1 - 2026-10-17
+
+### Changed
+- **Go 1.23 is the minimum.** `go.mod` declares 1.23.0 (1.22 is end of life),
+  releases are built with Go 1.23.x, the CI matrix is 1.23.x / 1.27.x and the
+  `main` ruleset requires those checks. `golang.org/x/sys` is updated.
+- **`docker-compose.yml` tracks the `1.8` minor series** instead of `:latest`,
+  so `docker compose pull` takes patch releases but never a new minor on its own.
+
+### Added
+- **`docker-compose.hardened.yml` (experimental).** Replaces `privileged: true`
+  with an explicit capability list, `no-new-privileges` and a block-device
+  cgroup rule. Not validated on real hardware: try it on a test run first and
+  fall back to `docker-compose.yml` if SMART, process or reboot features come
+  back empty. See `docs/SECURITY.md`.
+
+### Internal
+- The legacy `cfg` / `cfgMu` configuration mirror is replaced by an atomic
+  bootstrap pointer; test-only helpers (`parseSemverTag`, `sendScheduledReport`)
+  are removed.
+
 ## v1.8.0 - 2026-10-17
 
 ### Added
