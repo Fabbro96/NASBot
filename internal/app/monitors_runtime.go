@@ -423,18 +423,51 @@ func statsCollector(ctx *AppContext, runCtx context.Context) {
 	}
 }
 
+// topProcessSampleGap is the interval between the two CPU-time samples that
+// turn cumulative CPU seconds into a current percentage.
+const topProcessSampleGap = 400 * time.Millisecond
+
+// cpuSeconds returns the cumulative user+system CPU time of p.
+func cpuSeconds(p *process.Process) (float64, bool) {
+	t, err := p.Times()
+	if err != nil || t == nil {
+		return 0, false
+	}
+	return t.User + t.System, true
+}
+
 func getTopProcesses(limit int) (topCPU, topRAM []ProcInfo) {
 	ps, err := process.Processes()
 	if err != nil {
 		return nil, nil
 	}
 
+	// Process.CPUPercent on a fresh Process is the average since the process
+	// started, not what it uses now. Sample the CPU time twice instead.
+	first := make(map[int32]float64, len(ps))
+	for _, p := range ps {
+		if s, ok := cpuSeconds(p); ok {
+			first[p.Pid] = s
+		}
+	}
+	start := time.Now()
+	time.Sleep(topProcessSampleGap)
+	elapsed := time.Since(start).Seconds()
+
 	var list []ProcInfo
 	for _, p := range ps {
-		name, _ := p.Name()
+		name, err := p.Name()
+		if err != nil || name == "" {
+			continue
+		}
 		memP, _ := p.MemoryPercent()
-		cpuP, _ := p.CPUPercent()
-		if name != "" && (memP > 0.1 || cpuP > 0.1) {
+		var cpuP float64
+		if s0, ok := first[p.Pid]; ok && elapsed > 0 {
+			if s1, ok := cpuSeconds(p); ok && s1 >= s0 {
+				cpuP = (s1 - s0) / elapsed * 100
+			}
+		}
+		if memP > 0.1 || cpuP > 0.1 {
 			list = append(list, ProcInfo{Name: name, Mem: float64(memP), Cpu: cpuP})
 		}
 	}
