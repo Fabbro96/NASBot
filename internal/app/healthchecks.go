@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	neturl "net/url"
 	"strings"
 	"time"
 
@@ -854,7 +855,12 @@ func pingHealthchecksStart(ctx *AppContext) {
 		return
 	}
 
+	// Append to the path, not the string: a ping URL may carry a query string.
 	url := pingURL + "/start"
+	if u, err := neturl.Parse(pingURL); err == nil {
+		u.Path = strings.TrimRight(u.Path, "/") + "/start"
+		url = u.String()
+	}
 	timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

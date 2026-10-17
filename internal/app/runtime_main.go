@@ -110,6 +110,7 @@ func RunBot() {
 	goSafe("monitor-alerts", func() { monitorAlerts(app, bot, rootCtx) })
 	goSafe("autonomous-manager", func() { autonomousManager(app, bot, rootCtx) })
 	goSafeResilient("periodic-report", rootCtx, 5*time.Second, func() { periodicReport(app, bot, rootCtx) })
+	goSafe("log-size-guard", func() { logSizeGuard(app, rootCtx) })
 	goSafe("healthchecks-pinger", func() { startHealthchecksPinger(app, bot, rootCtx) })
 	goSafe("release-update-notifier", func() { updaterLoop(app, bot, rootCtx) })
 

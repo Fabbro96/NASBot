@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -176,7 +177,15 @@ func checkResourceAlerts(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 
 	if cfg.Docker.AutoRestartOnRAMCritical.Enabled {
 		if s.RAM >= cfg.Docker.AutoRestartOnRAMCritical.RAMThreshold {
-			handleCriticalRAM(ctx, bot, s)
+			// docker stats and docker restart can take tens of seconds; running
+			// them inline would delay the next stress/temperature checks in this
+			// 10s lane exactly when RAM is critical. One at a time.
+			if criticalRAMInFlight.CompareAndSwap(false, true) {
+				goSafe("critical-ram", func() {
+					defer criticalRAMInFlight.Store(false)
+					handleCriticalRAM(ctx, bot, s)
+				})
+			}
 		}
 	}
 
@@ -277,3 +286,6 @@ func autonomousManager(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 	<-runCtx.Done()
 	wg.Wait()
 }
+
+// criticalRAMInFlight guards the background critical-RAM handler.
+var criticalRAMInFlight atomic.Bool

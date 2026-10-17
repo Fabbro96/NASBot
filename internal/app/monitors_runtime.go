@@ -291,7 +291,7 @@ func statsCollector(ctx *AppContext, runCtx context.Context) {
 		h, _ := host.Info()
 		var dSSD *disk.UsageStat
 		if ctx.Cfg().Paths.SSD != "" {
-			dSSD, _ = disk.Usage(ctx.Cfg().Paths.SSD)
+			dSSD, _ = guardedDiskUsage(ctx.Cfg().Paths.SSD)
 		}
 
 		secVols := make(map[string]VolumeStats)
@@ -313,7 +313,7 @@ func statsCollector(ctx *AppContext, runCtx context.Context) {
 				if p.Mountpoint == ctx.Cfg().Paths.SSD {
 					continue
 				}
-				dSec, err := disk.Usage(p.Mountpoint)
+				dSec, err := guardedDiskUsage(p.Mountpoint)
 				if err == nil {
 					secVols[p.Mountpoint] = VolumeStats{Used: dSec.UsedPercent, Free: dSec.Free}
 				}
@@ -741,3 +741,84 @@ func getCachedContainerList(ctx *AppContext) []ContainerInfo {
 
 // containerRefreshMu serializes cache refreshes in getCachedContainerList.
 var containerRefreshMu sync.Mutex
+
+// diskUsageTimeout bounds one statfs. A dead NFS/CIFS mount blocks the syscall
+// indefinitely, and statsCollector is the single producer of ctx.Stats: one
+// stuck mount would freeze CPU, RAM and every alert built on them.
+const diskUsageTimeout = 3 * time.Second
+
+type usageSlot struct {
+	inflight bool
+	last     *disk.UsageStat
+}
+
+var (
+	usageSlotsMu sync.Mutex
+	usageSlots   = map[string]*usageSlot{}
+	// diskUsageFn is swapped by tests.
+	diskUsageFn = disk.Usage
+)
+
+// guardedDiskUsage is disk.Usage with a deadline. While a previous call for the
+// same path is still blocked no new goroutine is started (they would pile up);
+// the last known value is returned instead, with an error when there is none.
+func guardedDiskUsage(path string) (*disk.UsageStat, error) {
+	return diskUsageWithDeadline(path, true)
+}
+
+// probeDiskUsage is guardedDiskUsage for the mount watchdog: a mount that does
+// not answer is an error, never a stale success, because detecting a dead mount
+// is the whole point of that caller.
+func probeDiskUsage(path string) (*disk.UsageStat, error) {
+	return diskUsageWithDeadline(path, false)
+}
+
+func diskUsageWithDeadline(path string, useLast bool) (*disk.UsageStat, error) {
+	usageSlotsMu.Lock()
+	slot := usageSlots[path]
+	if slot == nil {
+		slot = &usageSlot{}
+		usageSlots[path] = slot
+	}
+	if slot.inflight {
+		last := slot.last
+		usageSlotsMu.Unlock()
+		if useLast && last != nil {
+			return last, nil
+		}
+		return nil, fmt.Errorf("statfs %s still blocked", path)
+	}
+	slot.inflight = true
+	usageSlotsMu.Unlock()
+
+	type result struct {
+		u   *disk.UsageStat
+		err error
+	}
+	ch := make(chan result, 1)
+	usage := diskUsageFn // read here, not in the goroutine
+	go func() {
+		u, err := usage(path)
+		usageSlotsMu.Lock()
+		slot.inflight = false
+		if err == nil {
+			slot.last = u
+		}
+		usageSlotsMu.Unlock()
+		ch <- result{u, err}
+	}()
+
+	select {
+	case r := <-ch:
+		return r.u, r.err
+	case <-time.After(diskUsageTimeout):
+		slog.Warn("statfs timed out", "path", path, "timeout", diskUsageTimeout)
+		usageSlotsMu.Lock()
+		last := slot.last
+		usageSlotsMu.Unlock()
+		if useLast && last != nil {
+			return last, nil
+		}
+		return nil, fmt.Errorf("statfs %s timed out", path)
+	}
+}
