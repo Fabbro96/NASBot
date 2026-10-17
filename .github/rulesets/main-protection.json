@@ -42,10 +42,10 @@
             "context": "ShellCheck"
           },
           {
-            "context": "Build & Test (Go 1.22.x)"
+            "context": "Build & Test (Go 1.23.x)"
           },
           {
-            "context": "Build & Test (Go 1.23.x)"
+            "context": "Build & Test (Go 1.27.x)"
           },
           {
             "context": "Deadlock & Race (Go 1.23.x)"

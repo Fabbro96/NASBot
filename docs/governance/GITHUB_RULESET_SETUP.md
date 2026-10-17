@@ -41,8 +41,8 @@ scripts/apply_github_rulesets.sh --repo Fabbro96/NASBot --dry-run
    workflow `name:` fields:
    - `Secret Scan`
    - `ShellCheck`
-   - `Build & Test (Go 1.22.x)`
    - `Build & Test (Go 1.23.x)`
+   - `Build & Test (Go 1.27.x)`
    - `Deadlock & Race (Go 1.23.x)`
    - `Dependency Review`
    - `CodeQL Analysis`
