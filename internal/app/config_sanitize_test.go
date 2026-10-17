@@ -251,3 +251,26 @@ func TestSanitizeConfigNeverLogsCredentials(t *testing.T) {
 		}
 	}
 }
+
+func TestSanitizeConfigValidatesNetworkAndURLs(t *testing.T) {
+	cfg := Config{}
+	cfg.NetworkWatchdog.Gateway = "-f"
+	cfg.NetworkWatchdog.Targets = []string{"-c", "9.9.9.9", "host name", "example.org"}
+	cfg.Healthchecks.PingURL = "file:///etc/passwd"
+	cfg.Reports.Times = []TimeConfig{{Hour: 7, Minute: 30}, {Hour: 7, Minute: 30}, {Hour: 18, Minute: 0}}
+
+	sanitizeConfig(&cfg)
+
+	if cfg.NetworkWatchdog.Gateway != "" {
+		t.Errorf("option-like gateway kept: %q", cfg.NetworkWatchdog.Gateway)
+	}
+	if got := strings.Join(cfg.NetworkWatchdog.Targets, ","); got != "9.9.9.9,example.org" {
+		t.Errorf("targets = %q", got)
+	}
+	if cfg.Healthchecks.PingURL != "" {
+		t.Errorf("non-http ping URL kept: %q", cfg.Healthchecks.PingURL)
+	}
+	if len(cfg.Reports.Times) != 2 {
+		t.Errorf("duplicate report times kept: %v", cfg.Reports.Times)
+	}
+}

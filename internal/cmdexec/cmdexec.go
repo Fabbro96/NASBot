@@ -1,6 +1,7 @@
 package cmdexec
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -138,7 +139,12 @@ func (defaultRunner) CombinedOutput(ctx context.Context, name string, args ...st
 	if err != nil {
 		return nil, err
 	}
-	return newCommand(ctx, resolved, args).CombinedOutput()
+	cmd := newCommand(ctx, resolved, args)
+	buf := &limitedBuffer{limit: maxCapturedOutput}
+	cmd.Stdout = buf
+	cmd.Stderr = buf
+	err = cmd.Run()
+	return buf.Bytes(), err
 }
 
 func (defaultRunner) Output(ctx context.Context, name string, args ...string) ([]byte, error) {
@@ -149,7 +155,17 @@ func (defaultRunner) Output(ctx context.Context, name string, args ...string) ([
 	if err != nil {
 		return nil, err
 	}
-	return newCommand(ctx, resolved, args).Output()
+	cmd := newCommand(ctx, resolved, args)
+	out := &limitedBuffer{limit: maxCapturedOutput}
+	errBuf := &limitedBuffer{limit: maxCapturedOutput}
+	cmd.Stdout = out
+	cmd.Stderr = errBuf
+	err = cmd.Run()
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		ee.Stderr = errBuf.Bytes()
+	}
+	return out.Bytes(), err
 }
 
 func (defaultRunner) Run(ctx context.Context, name string, args ...string) error {
@@ -187,3 +203,46 @@ func Output(ctx context.Context, name string, args ...string) ([]byte, error) {
 func Run(ctx context.Context, name string, args ...string) error {
 	return runner.Run(ctx, name, args...)
 }
+
+// escapeBinaries are executables that can run arbitrary code or other programs
+// from their arguments, so allowlisting one of them makes the /cmd allowlist
+// equivalent to a full shell (`sh -c`, `find -exec`, `docker run -v /:/h`, ...).
+var escapeBinaries = map[string]bool{
+	"sh": true, "bash": true, "dash": true, "zsh": true, "ash": true, "ksh": true, "busybox": true,
+	"env": true, "xargs": true, "find": true, "awk": true, "gawk": true, "sed": true, "tee": true,
+	"python": true, "python2": true, "python3": true, "perl": true, "ruby": true, "node": true, "php": true, "lua": true,
+	"docker": true, "nsenter": true, "chroot": true, "sudo": true, "su": true, "ssh": true,
+	"nohup": true, "timeout": true, "watch": true, "script": true, "vi": true, "vim": true, "less": true, "man": true,
+}
+
+// IsEscapeBinary reports whether name (a bare executable name) is able to
+// execute arbitrary code, which defeats the purpose of an allowlist.
+func IsEscapeBinary(name string) bool {
+	return escapeBinaries[strings.ToLower(name)]
+}
+
+// maxCapturedOutput caps what a single command may leave in memory. Callers
+// truncate to a few thousand characters anyway; without a cap `cat /dev/zero`
+// inside the timeout window buffers gigabytes.
+const maxCapturedOutput = 4 << 20
+
+// limitedBuffer keeps the first limit bytes and silently discards the rest. It
+// keeps reporting full writes so the child is drained rather than blocked on a
+// full pipe, and is killed by the context deadline like any other command.
+type limitedBuffer struct {
+	buf   bytes.Buffer
+	limit int
+}
+
+func (b *limitedBuffer) Write(p []byte) (int, error) {
+	if room := b.limit - b.buf.Len(); room > 0 {
+		if len(p) > room {
+			b.buf.Write(p[:room])
+		} else {
+			b.buf.Write(p)
+		}
+	}
+	return len(p), nil
+}
+
+func (b *limitedBuffer) Bytes() []byte { return b.buf.Bytes() }

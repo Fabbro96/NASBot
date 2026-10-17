@@ -166,3 +166,39 @@ func TestFakeReleasePayloadCoversEveryReleaseArchitecture(t *testing.T) {
 			runtime.GOARCH, wanted)
 	}
 }
+
+func TestRealDownloadHostPolicy(t *testing.T) {
+	// The package-wide test override is replaced by the production policy here.
+	allowed := func(raw string) bool {
+		saved := downloadHostAllowed
+		defer func() { downloadHostAllowed = saved }()
+		downloadHostAllowed = productionDownloadHostAllowed
+		return downloadHostAllowed(raw)
+	}
+	for _, ok := range []string{
+		"https://github.com/Fabbro96/NASBot/releases/download/v1/nasbot",
+		"https://objects.githubusercontent.com/x",
+	} {
+		if !allowed(ok) {
+			t.Errorf("%s must be allowed", ok)
+		}
+	}
+	for _, bad := range []string{
+		"http://github.com/x", "https://evil.example/x", "https://github.com.evil.example/x", "https://notgithub.com/x", "ftp://github.com/x",
+	} {
+		if allowed(bad) {
+			t.Errorf("%s must be refused", bad)
+		}
+	}
+}
+
+func TestUpdaterRepoRejectsMalformedOverride(t *testing.T) {
+	t.Setenv("NASBOT_GITHUB_REPO", "evil/repo/../../x")
+	if got := updaterRepo(); got != defaultGitHubRepo {
+		t.Fatalf("malformed override accepted: %q", got)
+	}
+	t.Setenv("NASBOT_GITHUB_REPO", "me/fork")
+	if got := updaterRepo(); got != "me/fork" {
+		t.Fatalf("valid override rejected: %q", got)
+	}
+}

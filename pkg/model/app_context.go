@@ -59,6 +59,7 @@ type BotContext struct {
 	Mu                     Mutex
 	StartTime              time.Time
 	PendingAction          string
+	PendingActionSince     time.Time
 	PendingContainerAction string
 	PendingContainerName   string
 }
@@ -364,11 +365,22 @@ func (b *BotContext) SetPendingAction(action string) {
 	b.Mu.Lock()
 	defer b.Mu.Unlock()
 	b.PendingAction = action
+	b.PendingActionSince = time.Now()
 }
 
+// PendingActionTTL bounds how long a pending action (power confirmation,
+// free-text prompt) stays armed. A "Confirm" button or a stray message hours
+// later must not trigger or be swallowed by an action nobody remembers.
+const PendingActionTTL = 3 * time.Minute
+
+// GetPendingAction returns the armed action, or "" when none is armed or it
+// has expired (an expired action is cleared).
 func (b *BotContext) GetPendingAction() string {
 	b.Mu.Lock()
 	defer b.Mu.Unlock()
+	if b.PendingAction != "" && time.Since(b.PendingActionSince) > PendingActionTTL {
+		b.PendingAction = ""
+	}
 	return b.PendingAction
 }
 
@@ -376,6 +388,7 @@ func (b *BotContext) ClearPendingAction() {
 	b.Mu.Lock()
 	defer b.Mu.Unlock()
 	b.PendingAction = ""
+	b.PendingActionSince = time.Time{}
 }
 
 // Settings methods (Thread-safe accessors)

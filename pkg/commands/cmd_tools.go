@@ -174,7 +174,7 @@ type AgyCmd struct{}
 
 func (c *AgyCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, args string) {
 	cmdArgs := strings.TrimSpace(args)
-	slog.Info("Executing agy command via NASBot", "args", cmdArgs, "user_id", userIDOf(msg))
+	slog.Info("Executing agy command via NASBot", "arg_count", len(strings.Fields(cmdArgs)), "user_id", userIDOf(msg))
 	var execArgs []string
 	if cmdArgs != "" {
 		execArgs = strings.Fields(cmdArgs)

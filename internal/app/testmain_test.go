@@ -257,3 +257,9 @@ func joinCommand(name string, args []string) string {
 	}
 	return filepathBase(name) + " " + strings.Join(args, " ")
 }
+
+// Updater tests serve assets from fake http:// URLs; the host allowlist is
+// exercised by its own test, which restores the real check.
+func init() {
+	downloadHostAllowed = func(string) bool { return true }
+}
