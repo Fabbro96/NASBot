@@ -125,7 +125,7 @@ func GetFSWatchdog() *FSWatchdog {
 		w := &FSWatchdog{
 			lastAlerts: make(map[string]time.Time),
 		}
-		w.publishConfig(&cfg)
+		w.publishConfig(bootCfg.Load())
 		fsWatchdog = w
 	})
 	return fsWatchdog
@@ -152,7 +152,10 @@ func (w *FSWatchdog) Cfg() *Config {
 	if conf := w.full.Load(); conf != nil {
 		return conf
 	}
-	return &cfg
+	if boot := bootCfg.Load(); boot != nil {
+		return boot
+	}
+	return &Config{}
 }
 
 // fsWatchdogConfigFrom takes the FS watchdog section out of a config snapshot.

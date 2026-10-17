@@ -114,6 +114,12 @@ be able to read the hardware and talk to the daemon. The mitigations are elsewhe
 If you do not need container management, do not use the compose file: the native bundle
 runs as a single unprivileged user process.
 
+An experimental variant, `docker-compose.hardened.yml`, replaces `privileged: true`
+with an explicit capability list, `no-new-privileges` and a block-device cgroup
+rule. It has not been validated on real hardware: try it on a test run and fall
+back to `docker-compose.yml` if SMART, process or reboot features report empty
+values. The Docker socket stays root-equivalent in both.
+
 ### `/cmd` (aliases `/shell`, `/exec`)
 
 `/cmd <command> [args…]` executes a program on the host. Historically it handed the whole

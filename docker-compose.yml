@@ -16,14 +16,13 @@
 # No `version:` key: it is obsolete in Compose v2 (only a warning) and
 # Compose v1 is EOL, so keeping it bought nothing but the warning on every
 # command.
-# Image tag: NOT pinned to a digest or to an explicit version, it tracks
-# :latest. That keeps `docker compose pull` simple but means an image update
-# can change behaviour without a change in this file. Pinning it (for example
-# to a release tag) is left as an explicit decision, not a silent change here.
+# Image tag: pinned to the minor series (1.8 = latest 1.8.x). It receives patch
+# releases on `docker compose pull` but never jumps to a new minor on its own.
+# Use :latest only if you want every release as soon as it ships.
 # ============================================================================
 services:
   nasbot:
-    image: ghcr.io/fabbro96/nasbot:latest
+    image: ghcr.io/fabbro96/nasbot:1.8
     container_name: nasbot
     restart: unless-stopped
 

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -26,17 +27,12 @@ const (
 )
 
 var (
-	// cfg is a legacy mirror of the configuration, kept so that runtime_main.go
-	// can hand &cfg to InitApp and so that the standalone watchdog binary can
-	// read the configuration without an AppContext.
-	//
-	// It is a mirror, not the source of truth: the source of truth is the
-	// snapshot published by loadConfig through AppContext.SetConfig (bot) and
-	// FSWatchdog.publishConfig (watchdog). Reading cfg directly is unsafe once
-	// a reload can happen, because a reload rewrites it in place; new code must
-	// use currentCfg(), which returns the published snapshot.
-	cfgMu sync.RWMutex
-	cfg   Config
+	// bootCfg is the configuration loaded before an AppContext exists: it is
+	// what InitApp is built from, and what the standalone watchdog binary reads
+	// without an AppContext. After bootstrap the source of truth is the
+	// snapshot published through AppContext.SetConfig (bot) and
+	// FSWatchdog.publishConfig (watchdog); readers use currentCfg().
+	bootCfg atomic.Pointer[Config]
 
 	// configWriteMu serializza ogni riscrittura di config.json: la
 	// read-modify-write di applyConfigPatch (usata dalla UI e dalla sync
@@ -216,22 +212,17 @@ func missingFieldNames(c *Config) string {
 
 // publishConfig makes loaded the configuration every reader sees.
 //
-// At bootstrap there is no AppContext yet, so the package-level cfg is filled
-// for InitApp. On reload the snapshot is published through SetConfig and cfg is
-// left alone: it is only ever read by code that has not been migrated off the
-// deprecated field, and writing it would mutate a struct those readers hold.
+// At bootstrap there is no AppContext yet, so bootCfg is filled for InitApp. On
+// reload the snapshot is published through SetConfig and bootCfg is left alone.
 func publishConfig(loaded *Config) {
 	if app != nil {
-		// A reload. Swap the published pointer and leave cfg alone: InitApp was
-		// given &cfg, so writing here would mutate the snapshot every reader
-		// is holding, which is the race this design exists to remove.
+		// A reload. Swap the published pointer; the snapshots readers hold are
+		// never modified.
 		app.SetConfig(loaded)
 	} else {
 		// Bootstrap, or the standalone watchdog binary, which has no
-		// AppContext. cfg is not published anywhere yet, so writing it is safe.
-		cfgMu.Lock()
-		cfg = *loaded
-		cfgMu.Unlock()
+		// AppContext. Nothing else holds this pointer yet.
+		bootCfg.Store(loaded)
 	}
 
 	// The watchdog binary has no AppContext; the singleton keeps its own
@@ -254,10 +245,10 @@ func currentCfg() *Config {
 			return snapshot
 		}
 	}
-	cfgMu.RLock()
-	defer cfgMu.RUnlock()
-	snapshot := cfg
-	return &snapshot
+	if boot := bootCfg.Load(); boot != nil {
+		return boot
+	}
+	return &Config{}
 }
 
 // resolveConfigPath returns the config file to use.
