@@ -92,6 +92,11 @@ COPY --from=builder /app/nasbot .
 # preferred on a NAS.
 VOLUME ["/var/run/docker.sock"]
 
+# The container is healthy while the bot process is alive. pgrep comes from
+# procps (installed above); -x matches the exact process name.
+HEALTHCHECK --interval=60s --timeout=5s --start-period=30s --retries=3 \
+    CMD pgrep -x nasbot >/dev/null || exit 1
+
 # Note: the working directory is bind-mounted with config.json in
 # docker-compose.yml. The image itself ships no credentials.
 CMD ["./nasbot"]
