@@ -79,7 +79,13 @@ func rawTranslations(t *testing.T) map[string]map[string]string {
 		}
 		cl, ok := kv.Value.(*ast.CompositeLit)
 		if !ok {
-			t.Fatalf("language %q: expected a nested map literal, got %T", lang, kv.Value)
+			// One file per language: the registry references a package-level
+			// variable declared in translations_<lang>.go.
+			ident, isIdent := kv.Value.(*ast.Ident)
+			if !isIdent {
+				t.Fatalf("language %q: expected a map literal or variable, got %T", lang, kv.Value)
+			}
+			cl = langLiteral(t, "translations_"+lang+".go", ident.Name)
 		}
 		dict := make(map[string]string, len(cl.Elts))
 		for _, entry := range cl.Elts {
@@ -103,6 +109,33 @@ func rawTranslations(t *testing.T) map[string]map[string]string {
 		out[lang] = dict
 	}
 	return out
+}
+
+// langLiteral returns the composite literal assigned to the package-level
+// variable name in the given source file.
+func langLiteral(t *testing.T, file, name string) *ast.CompositeLit {
+	t.Helper()
+	f, err := parser.ParseFile(token.NewFileSet(), file, nil, 0)
+	if err != nil {
+		t.Fatalf("cannot parse %s: %v", file, err)
+	}
+	for _, decl := range f.Decls {
+		gd, ok := decl.(*ast.GenDecl)
+		if !ok || gd.Tok != token.VAR {
+			continue
+		}
+		for _, spec := range gd.Specs {
+			vs, ok := spec.(*ast.ValueSpec)
+			if !ok || len(vs.Names) != 1 || vs.Names[0].Name != name {
+				continue
+			}
+			if cl, ok := vs.Values[0].(*ast.CompositeLit); ok {
+				return cl
+			}
+		}
+	}
+	t.Fatalf("var %s = map[string]string{...} not found in %s", name, file)
+	return nil
 }
 
 // TestTranslationsRawMatchesMemory makes the guarantee explicit: nothing may
