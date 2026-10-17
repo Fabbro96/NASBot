@@ -335,6 +335,38 @@ func thresholdPatch(cfg *Config, res, mount, level string, value float64) map[st
 	return map[string]interface{}{}
 }
 
+// settingsRoute is a settings button that optionally changes one setting and
+// then re-renders a menu.
+type settingsRoute struct {
+	mutate func(ctx *AppContext)
+	menu   func(ctx *AppContext) (string, tgbotapi.InlineKeyboardMarkup)
+}
+
+var simpleSettingsRoutes = map[string]settingsRoute{
+	"settings_change_reports": {nil, getReportSettingsText},
+	"report_enable":           {func(c *AppContext) { c.Settings.SetReportsEnabled(true) }, getReportSettingsText},
+	"report_disable":          {func(c *AppContext) { c.Settings.SetReportsEnabled(false) }, getReportSettingsText},
+	"report_mode_days": {func(c *AppContext) {
+		if len(c.Settings.GetReportsDays()) == 0 {
+			c.Settings.SetReportsDays([]int{1, 2, 3, 4, 5})
+		}
+	}, getReportSettingsText},
+	"report_mode_interval":       {func(c *AppContext) { c.Settings.SetReportsDays([]int{}) }, getReportSettingsText},
+	"report_preset_all":          {func(c *AppContext) { c.Settings.SetReportsDays([]int{0, 1, 2, 3, 4, 5, 6}) }, getReportSettingsText},
+	"report_preset_workdays":     {func(c *AppContext) { c.Settings.SetReportsDays([]int{1, 2, 3, 4, 5}) }, getReportSettingsText},
+	"report_preset_weekend":      {func(c *AppContext) { c.Settings.SetReportsDays([]int{0, 6}) }, getReportSettingsText},
+	"settings_change_thresholds": {nil, getThresholdsMenuText},
+	"settings_change_backup":     {nil, getBackupSettingsText},
+	"back_settings":              {nil, getSettingsMenuText},
+	"settings_change_quiet":      {nil, getQuietHoursSettingsText},
+	"quiet_enable":               {func(c *AppContext) { c.Settings.SetQuietHoursEnabled(true) }, getQuietHoursSettingsText},
+	"quiet_disable":              {func(c *AppContext) { c.Settings.SetQuietHoursEnabled(false) }, getQuietHoursSettingsText},
+	"settings_change_prune":      {nil, getDockerPruneSettingsText},
+	"prune_enable":               {func(c *AppContext) { c.Settings.SetDockerPruneEnabled(true) }, getDockerPruneSettingsText},
+	"prune_disable":              {func(c *AppContext) { c.Settings.SetDockerPruneEnabled(false) }, getDockerPruneSettingsText},
+	"prune_change_schedule":      {nil, getPruneScheduleText},
+}
+
 func handleSettingsCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int, data string) bool {
 	if lang, fromSettings, ok := parseLanguageCallbackData(data); ok {
 		ctx.Settings.SetLanguage(lang)
@@ -348,65 +380,18 @@ func handleSettingsCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int
 		}
 		return true
 	}
+	if entry, ok := simpleSettingsRoutes[data]; ok {
+		if entry.mutate != nil {
+			entry.mutate(ctx)
+			saveState(ctx)
+		}
+		text, kb := entry.menu(ctx)
+		editMessage(bot, chatID, msgID, text, &kb)
+		return true
+	}
 	if data == "settings_change_lang" {
 		kb := getLanguageSelectionKeyboard(ctx, true)
 		editMessage(bot, chatID, msgID, ctx.Tr("lang_select"), &kb)
-		return true
-	}
-	if data == "settings_change_reports" {
-		text, kb := getReportSettingsText(ctx)
-		editMessage(bot, chatID, msgID, text, &kb)
-		return true
-	}
-	if data == "report_enable" {
-		ctx.Settings.SetReportsEnabled(true)
-		saveState(ctx)
-		text, kb := getReportSettingsText(ctx)
-		editMessage(bot, chatID, msgID, text, &kb)
-		return true
-	}
-	if data == "report_disable" {
-		ctx.Settings.SetReportsEnabled(false)
-		saveState(ctx)
-		text, kb := getReportSettingsText(ctx)
-		editMessage(bot, chatID, msgID, text, &kb)
-		return true
-	}
-	if data == "report_mode_days" {
-		if len(ctx.Settings.GetReportsDays()) == 0 {
-			ctx.Settings.SetReportsDays([]int{1, 2, 3, 4, 5})
-		}
-		saveState(ctx)
-		text, kb := getReportSettingsText(ctx)
-		editMessage(bot, chatID, msgID, text, &kb)
-		return true
-	}
-	if data == "report_mode_interval" {
-		ctx.Settings.SetReportsDays([]int{})
-		saveState(ctx)
-		text, kb := getReportSettingsText(ctx)
-		editMessage(bot, chatID, msgID, text, &kb)
-		return true
-	}
-	if data == "report_preset_all" {
-		ctx.Settings.SetReportsDays([]int{0, 1, 2, 3, 4, 5, 6})
-		saveState(ctx)
-		text, kb := getReportSettingsText(ctx)
-		editMessage(bot, chatID, msgID, text, &kb)
-		return true
-	}
-	if data == "report_preset_workdays" {
-		ctx.Settings.SetReportsDays([]int{1, 2, 3, 4, 5})
-		saveState(ctx)
-		text, kb := getReportSettingsText(ctx)
-		editMessage(bot, chatID, msgID, text, &kb)
-		return true
-	}
-	if data == "report_preset_weekend" {
-		ctx.Settings.SetReportsDays([]int{0, 6})
-		saveState(ctx)
-		text, kb := getReportSettingsText(ctx)
-		editMessage(bot, chatID, msgID, text, &kb)
 		return true
 	}
 	if strings.HasPrefix(data, "report_toggle_day_") {
@@ -448,11 +433,6 @@ func handleSettingsCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int
 		return true
 	}
 
-	if data == "settings_change_thresholds" {
-		text, kb := getThresholdsMenuText(ctx)
-		editMessage(bot, chatID, msgID, text, &kb)
-		return true
-	}
 	if strings.HasPrefix(data, "thresh_edit_") {
 		res := strings.TrimPrefix(data, "thresh_edit_")
 		canonical, _, ok := resolveThresholdResource(ctx, res)
@@ -492,11 +472,6 @@ func handleSettingsCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int
 		return true
 	}
 
-	if data == "settings_change_backup" {
-		text, kb := getBackupSettingsText(ctx)
-		editMessage(bot, chatID, msgID, text, &kb)
-		return true
-	}
 	if data == "backup_set_uid" {
 		ctx.Bot.SetPendingAction("set_backup_uid")
 		msg := tgbotapi.NewMessage(chatID, ctx.Tr("backup_prompt"))
@@ -505,54 +480,6 @@ func handleSettingsCallback(ctx *AppContext, bot BotAPI, chatID int64, msgID int
 		return true
 	}
 
-	if data == "back_settings" {
-		text, kb := getSettingsMenuText(ctx)
-		editMessage(bot, chatID, msgID, text, &kb)
-		return true
-	}
-	if data == "settings_change_quiet" {
-		text, kb := getQuietHoursSettingsText(ctx)
-		editMessage(bot, chatID, msgID, text, &kb)
-		return true
-	}
-	if data == "quiet_enable" {
-		ctx.Settings.SetQuietHoursEnabled(true)
-		saveState(ctx)
-		text, kb := getQuietHoursSettingsText(ctx)
-		editMessage(bot, chatID, msgID, text, &kb)
-		return true
-	}
-	if data == "quiet_disable" {
-		ctx.Settings.SetQuietHoursEnabled(false)
-		saveState(ctx)
-		text, kb := getQuietHoursSettingsText(ctx)
-		editMessage(bot, chatID, msgID, text, &kb)
-		return true
-	}
-	if data == "settings_change_prune" {
-		text, kb := getDockerPruneSettingsText(ctx)
-		editMessage(bot, chatID, msgID, text, &kb)
-		return true
-	}
-	if data == "prune_enable" {
-		ctx.Settings.SetDockerPruneEnabled(true)
-		saveState(ctx)
-		text, kb := getDockerPruneSettingsText(ctx)
-		editMessage(bot, chatID, msgID, text, &kb)
-		return true
-	}
-	if data == "prune_disable" {
-		ctx.Settings.SetDockerPruneEnabled(false)
-		saveState(ctx)
-		text, kb := getDockerPruneSettingsText(ctx)
-		editMessage(bot, chatID, msgID, text, &kb)
-		return true
-	}
-	if data == "prune_change_schedule" {
-		text, kb := getPruneScheduleText(ctx)
-		editMessage(bot, chatID, msgID, text, &kb)
-		return true
-	}
 	if strings.HasPrefix(data, "prune_day_") {
 		day := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(data, "prune_day_")))
 		// The weekday used to be stored verbatim from the payload and then

@@ -246,3 +246,23 @@ func TestBackupConfigFileKeepsGoodBackupWhenCurrentIsCorrupt(t *testing.T) {
 		t.Fatalf("backup overwritten with corrupt content: %q", got)
 	}
 }
+
+func TestCallbackRefForNeverSharesATokenBetweenMounts(t *testing.T) {
+	callbackRefs.mu.Lock()
+	saved := callbackRefs.refs
+	callbackRefs.refs = map[string]string{"/mnt/a": mountCallbackRef("/mnt/b")}
+	callbackRefs.mu.Unlock()
+	defer func() {
+		callbackRefs.mu.Lock()
+		callbackRefs.refs = saved
+		callbackRefs.mu.Unlock()
+	}()
+
+	refB := callbackRefFor("/mnt/b")
+	if refB == callbackRefFor("/mnt/a") {
+		t.Fatalf("two mounts share token %q", refB)
+	}
+	if got := resolveCallbackRef(refB); got != "/mnt/b" {
+		t.Fatalf("token %q resolves to %q", refB, got)
+	}
+}

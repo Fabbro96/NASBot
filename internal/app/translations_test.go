@@ -153,27 +153,10 @@ func TestTranslateByLanguageDoesNotMutate(t *testing.T) {
 
 	translateByLanguage("pt", "this_key_does_not_exist")
 	translateByLanguage("", "this_key_does_not_exist")
-	tr("this_key_does_not_exist")
 
 	for lang, dict := range translations {
 		if len(dict) != before[lang] {
 			t.Errorf("dictionary %q grew from %d to %d keys during a lookup", lang, before[lang], len(dict))
 		}
-	}
-}
-
-// TestTrShimFallsBackToEnglish documents the standing defect of tr(): the
-// standalone watchdog process has no AppContext and therefore no user language,
-// so the six call sites in fs_watchdog.go always render in English. The shim
-// exists only so that tree keeps compiling while those call sites move to
-// ctx.Tr; when the last one goes, this test and the function go together.
-func TestTranslationTrShimFallsBackToEnglish(t *testing.T) {
-	raw := rawTranslations(t)
-
-	if got, want := tr("yes"), raw["en"]["yes"]; got != want {
-		t.Errorf("tr(\"yes\") = %q, want the english value %q", got, want)
-	}
-	if got, want := tr("nonexistent_key_xyz"), "nonexistent_key_xyz"; got != want {
-		t.Errorf("tr(\"nonexistent_key_xyz\") = %q, want %q", got, want)
 	}
 }
