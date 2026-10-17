@@ -256,25 +256,30 @@ func startHealthchecksPinger(ctx *AppContext, bot BotAPI, runCtx context.Context
 		return
 	}
 
-	period := hc.PeriodSeconds
-	if period <= 0 {
-		period = 60 // default 1 minute
+	periodOf := func() time.Duration {
+		p := ctx.Cfg().Healthchecks.PeriodSeconds
+		if p <= 0 {
+			p = 60 // default 1 minute
+		}
+		return time.Duration(p) * time.Second
 	}
 
-	slog.Info("Healthchecks.io pinger started", "period_sec", period)
-
-	ticker := time.NewTicker(time.Duration(period) * time.Second)
-	defer ticker.Stop()
+	slog.Info("Healthchecks.io pinger started", "period_sec", int(periodOf().Seconds()))
 
 	// Initial ping on startup
-	pingHealthchecks(ctx, bot)
+	pingHealthchecks(ctx, bot, runCtx)
 
+	// A timer re-armed on every round, so a changed period_seconds applies
+	// without a restart (the same contract as the watchdog lanes).
+	timer := time.NewTimer(periodOf())
+	defer timer.Stop()
 	for {
 		select {
 		case <-runCtx.Done():
 			return
-		case <-ticker.C:
-			pingHealthchecks(ctx, bot)
+		case <-timer.C:
+			pingHealthchecks(ctx, bot, runCtx)
+			timer.Reset(periodOf())
 		}
 	}
 }
@@ -293,13 +298,13 @@ func redactPingURLIn(text, pingURL string) string {
 }
 
 // pingHealthchecks sends a ping to healthchecks.io
-func pingHealthchecks(appCtx *AppContext, bot BotAPI) {
+func pingHealthchecks(appCtx *AppContext, bot BotAPI, runCtx context.Context) {
 	pingURL := appCtx.Cfg().Healthchecks.PingURL
 	if pingURL == "" {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(runCtx, 10*time.Second)
 	defer cancel()
 
 	// The reason reaches the user: it lands in the hc_down_alert message and in

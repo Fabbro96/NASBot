@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"sync"
 	"syscall"
 	"time"
 
@@ -106,13 +107,15 @@ func RunBot() {
 	})
 
 	// Start Background Tasks
-	goSafe("stats-collector", func() { statsCollector(app, rootCtx) })
-	goSafe("monitor-alerts", func() { monitorAlerts(app, bot, rootCtx) })
-	goSafe("autonomous-manager", func() { autonomousManager(app, bot, rootCtx) })
+	goTracked(&bgWG, "stats-collector", func() { statsCollector(app, rootCtx) })
+	goTracked(&bgWG, "monitor-alerts", func() { monitorAlerts(app, bot, rootCtx) })
+	goTracked(&bgWG, "autonomous-manager", func() { autonomousManager(app, bot, rootCtx) })
+	// Not tracked by bgWG: goSafeResilient re-runs the function after a panic,
+	// which would call Done more than once.
 	goSafeResilient("periodic-report", rootCtx, 5*time.Second, func() { periodicReport(app, bot, rootCtx) })
-	goSafe("log-size-guard", func() { logSizeGuard(app, rootCtx) })
-	goSafe("healthchecks-pinger", func() { startHealthchecksPinger(app, bot, rootCtx) })
-	goSafe("release-update-notifier", func() { updaterLoop(app, bot, rootCtx) })
+	goTracked(&bgWG, "log-size-guard", func() { logSizeGuard(app, rootCtx) })
+	goTracked(&bgWG, "healthchecks-pinger", func() { startHealthchecksPinger(app, bot, rootCtx) })
+	goTracked(&bgWG, "release-update-notifier", func() { updaterLoop(app, bot, rootCtx) })
 
 	// The filesystem watchdog is not a goroutine of its own: it is the
 	// "fs-space" lane of autonomousManager, so its Timer, its shutdown and its
@@ -179,6 +182,10 @@ func RunBot() {
 		}()
 	}
 
+	// Let the long-lived loops observe the cancelled context before the final
+	// save, so none of them writes state after it. Bounded: a loop stuck in a
+	// slow external command must not hold the shutdown.
+	waitTimeout(&bgWG, 5*time.Second)
 	saveState(app)
 	select {
 	case <-shutdownDone:
@@ -187,6 +194,34 @@ func RunBot() {
 		slog.Warn("Updates channel closed unexpectedly")
 	}
 	closeLogger()
+}
+
+// bgWG tracks the long-lived background loops started in Run.
+var bgWG sync.WaitGroup
+
+// goTracked is goSafe for a loop that must be waited for at shutdown.
+func goTracked(wg *sync.WaitGroup, name string, fn func()) {
+	wg.Add(1)
+	goSafe(name, func() {
+		defer wg.Done()
+		fn()
+	})
+}
+
+// waitTimeout waits for wg, giving up after d. It reports whether it finished.
+func waitTimeout(wg *sync.WaitGroup, d time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return true
+	case <-time.After(d):
+		slog.Warn("Background loops still running at shutdown", "waited", d)
+		return false
+	}
 }
 
 func goSafe(name string, fn func()) {

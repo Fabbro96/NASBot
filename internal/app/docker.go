@@ -1075,11 +1075,26 @@ func executeRestartAllContainers(ctx *AppContext, bot BotAPI, chatID int64, msgI
 
 	editMessage(bot, chatID, msgID, fmt.Sprintf("🔄 %s (%d)...", ctx.Tr("docker_restart_all_running"), len(running)), nil)
 
+	// One overall deadline on top of the per-container one, so a daemon that
+	// answers slowly cannot keep this callback goroutine alive for ever.
+	overall, cancelAll := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancelAll()
+
 	var succeeded, failed []string
-	for _, name := range running {
-		timeoutCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	for i, name := range running {
+		if overall.Err() != nil {
+			failed = append(failed, name)
+			continue
+		}
+		timeoutCtx, cancel := context.WithTimeout(overall, 30*time.Second)
 		err := runCommand(timeoutCtx, "docker", "restart", name)
 		cancel()
+
+		// Progress, so a long list does not look frozen.
+		if i+1 < len(running) {
+			editMessage(bot, chatID, msgID,
+				fmt.Sprintf("🔄 %s (%d/%d)...", ctx.Tr("docker_restart_all_running"), i+1, len(running)), nil)
+		}
 
 		if err != nil {
 			slog.Error("Failed to restart container", "container", name, "err", sanitizeErr(err))

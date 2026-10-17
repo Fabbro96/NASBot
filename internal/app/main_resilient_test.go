@@ -235,3 +235,16 @@ func TestGoSafeResilientRunsFnOnceWithNoPanic(t *testing.T) {
 		t.Errorf("fn ran %d times with a one hour restart delay, want 1", got)
 	}
 }
+
+func TestWaitTimeoutReportsStuckAndFinishedGroups(t *testing.T) {
+	var done sync.WaitGroup
+	if !waitTimeout(&done, 50*time.Millisecond) {
+		t.Fatal("an empty group must finish immediately")
+	}
+	var stuck sync.WaitGroup
+	stuck.Add(1)
+	defer stuck.Done()
+	if waitTimeout(&stuck, 50*time.Millisecond) {
+		t.Fatal("a group that never finishes must time out")
+	}
+}
