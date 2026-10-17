@@ -227,3 +227,22 @@ func TestApplyConfigPatchConcurrentPatchesAreAllKept(t *testing.T) {
 		}
 	}
 }
+
+func TestBackupConfigFileKeepsGoodBackupWhenCurrentIsCorrupt(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	good := []byte(`{"bot_token":"x"}`)
+	if err := os.WriteFile(path+".bak", good, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"bot_tok`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := backupConfigFile(path); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(path + ".bak")
+	if string(got) != string(good) {
+		t.Fatalf("backup overwritten with corrupt content: %q", got)
+	}
+}

@@ -299,9 +299,14 @@ func handleOOMLoop(ctx *AppContext, bot BotAPI) {
 	slog.Error("OOM Loop detected. Triggering reboot.", "count", oomCount, "window", oomLoopWindow)
 
 	// Execute reboot in a separate goroutine to allow message to send
+	// Same path as the other reboot triggers: record the power event, persist
+	// state, and use nsenter/systemctl fallbacks when running in a container.
+	addPowerLifecycleEvent(ctx, "reboot", true, powerSourceFromReason("oom-loop"), "reboot", "oom-loop")
+	saveState(ctx)
 	goSafe("oom-reboot", func() {
+		time.Sleep(1 * time.Second)
 		slog.Info("Rebooting system now...")
-		if err := runCommand(context.Background(), "reboot"); err != nil {
+		if err := executeSystemPowerCommand("reboot"); err != nil {
 			slog.Error("OOM reboot command failed", "err", err)
 		}
 	})

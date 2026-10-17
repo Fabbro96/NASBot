@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -175,8 +176,21 @@ func TestHandleOOMLoopRebootsOnlyAtThreshold(t *testing.T) {
 		t.Fatalf("reboot was not invoked after %d OOM kills", oomLoopThreshold)
 	}
 	runs := runner.Runs()
-	if len(runs) != 1 || runs[0] != "reboot" {
-		t.Fatalf("expected exactly one `reboot`, got %v", runs)
+	// The shared power path runs plain `reboot` or, when nsenter exists on the
+	// host, the nsenter-wrapped form; either way exactly one command ends in it.
+	if len(runs) != 1 || !strings.HasSuffix(runs[0], "reboot") {
+		t.Fatalf("expected exactly one reboot command, got %v", runs)
+	}
+	found := false
+	ctx.State.Mu.Lock()
+	for _, e := range ctx.State.ReportEvents {
+		if strings.Contains(e.Message, "reason=oom-loop") {
+			found = true
+		}
+	}
+	ctx.State.Mu.Unlock()
+	if !found {
+		t.Errorf("OOM reboot must be recorded as a power event")
 	}
 	if len(b.sent) != 1 {
 		t.Errorf("expected one warning message before the reboot, got %d", len(b.sent))

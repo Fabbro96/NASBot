@@ -247,7 +247,7 @@ func callGeminiAPI(ctx *AppContext, parentCtx context.Context, prompt string, mo
 		// Truncate error body to avoid flooding logs
 		errBody := string(body)
 		if len(errBody) > geminiErrorBodyChars {
-			errBody = errBody[:geminiErrorBodyChars] + "..."
+			errBody = takeRunePrefix(errBody, geminiErrorBodyChars) + "..."
 		}
 		return "", fmt.Errorf("API error %d: %s", resp.StatusCode, errBody)
 	}
