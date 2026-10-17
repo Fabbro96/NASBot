@@ -514,3 +514,33 @@ func filesCount(res *DeepScanResult) int {
 	}
 	return n
 }
+
+func TestDeepScanContextStopsWhenCancelled(t *testing.T) {
+	root := t.TempDir()
+	for d := 0; d < 5; d++ {
+		sub := fmt.Sprintf("%s/d%d", root, d)
+		if err := os.MkdirAll(sub, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(sub+"/f", []byte("data"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx := InitApp(&Config{FSWatchdog: model.FSWatchdogConfig{TopNFiles: 5}})
+	w := GetFSWatchdog()
+
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	res := w.DeepScanContext(cancelled, ctx, []string{root})
+	if res == nil {
+		t.Skip("another scan is running")
+	}
+	if len(res.DirUsages) != 0 || res.TotalScanned != 0 {
+		t.Fatalf("a cancelled scan must not walk the tree: %+v", res)
+	}
+
+	full := w.DeepScanContext(context.Background(), ctx, []string{root})
+	if full == nil || full.TotalScanned == 0 {
+		t.Fatalf("an uncancelled scan must see the files: %+v", full)
+	}
+}

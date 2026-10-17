@@ -143,7 +143,7 @@ func getCurrentDiskMounts(ctx *AppContext) map[string]DiskMountInfo {
 			}
 
 			// Check accessibility and get space
-			d, usageErr := disk.Usage(p.Mountpoint)
+			d, usageErr := probeDiskUsage(p.Mountpoint)
 			if usageErr == nil {
 				info.TotalBytes = d.Total
 				info.FreeBytes = d.Free
@@ -171,7 +171,7 @@ func getCurrentDiskMounts(ctx *AppContext) map[string]DiskMountInfo {
 		for _, path := range configuredPaths {
 			if _, exists := result[path]; !exists {
 				// Path configured but missing in partitions: check if accessible via statfs
-				d, usageErr := disk.Usage(path)
+				d, usageErr := probeDiskUsage(path)
 				if usageErr == nil {
 					result[path] = DiskMountInfo{
 						Mountpoint: path,

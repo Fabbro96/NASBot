@@ -323,6 +323,24 @@ type deepScanState struct {
 	patterns    []string
 	skipped     int
 	skippedList []string
+	// stop ends the walk early (shutdown); nil never stops.
+	stop context.Context
+	// rootDev is the device of the volume being scanned. Directories on another
+	// device (nested mounts, bind mounts) are not part of this volume's usage.
+	rootDev uint64
+}
+
+// cancelled reports whether the scan was asked to stop.
+func (s *deepScanState) cancelled() bool {
+	return s.stop != nil && s.stop.Err() != nil
+}
+
+// deviceOf returns the device id of a FileInfo, 0 when unavailable.
+func deviceOf(info os.FileInfo) uint64 {
+	if st, ok := info.Sys().(*syscall.Stat_t); ok {
+		return uint64(st.Dev)
+	}
+	return 0
 }
 
 func (s *deepScanState) noteSkipped(path string, err error) {
@@ -346,6 +364,9 @@ func (s *deepScanState) scanDirectory(dirPath string) (int64, int) {
 	}
 
 	for _, entry := range entries {
+		if s.cancelled() {
+			return totalSize, fileCount
+		}
 		fullPath := filepath.Join(dirPath, entry.Name())
 
 		// Skip excluded paths
@@ -361,6 +382,9 @@ func (s *deepScanState) scanDirectory(dirPath string) (int64, int) {
 		}
 
 		if info.IsDir() {
+			if dev := deviceOf(info); s.rootDev != 0 && dev != 0 && dev != s.rootDev {
+				continue // another filesystem mounted below this one
+			}
 			// Recursive scan for directories
 			subSize, subCount := s.scanDirectory(fullPath)
 			totalSize += subSize
@@ -415,6 +439,11 @@ func (s *deepScanState) insertTopFile(newFile FileInfo) {
 // DeepScan performs a comprehensive filesystem scan
 // Only called when disk usage exceeds critical threshold
 func (w *FSWatchdog) DeepScan(ctx *AppContext, paths []string) *DeepScanResult {
+	return w.DeepScanContext(context.Background(), ctx, paths)
+}
+
+// DeepScanContext is DeepScan that stops walking when stop is cancelled.
+func (w *FSWatchdog) DeepScanContext(stop context.Context, ctx *AppContext, paths []string) *DeepScanResult {
 	w.mu.Lock()
 	if w.isScanning {
 		w.mu.Unlock()
@@ -450,6 +479,7 @@ func (w *FSWatchdog) DeepScan(ctx *AppContext, paths []string) *DeepScanResult {
 		topFiles:    result.LargestFiles,
 		maxTopFiles: topNFiles,
 		patterns:    conf.ExcludePatterns,
+		stop:        stop,
 	}
 
 	slog.Info("[FSWatchdog] Starting deep scan...")
@@ -457,6 +487,14 @@ func (w *FSWatchdog) DeepScan(ctx *AppContext, paths []string) *DeepScanResult {
 	for _, basePath := range paths {
 		if shouldExcludePath(st.patterns, basePath) {
 			continue
+		}
+
+		if stop.Err() != nil {
+			break
+		}
+		st.rootDev = 0
+		if bi, err := os.Stat(basePath); err == nil {
+			st.rootDev = deviceOf(bi)
 		}
 
 		// Scan first-level directories to get per-directory usage
@@ -467,6 +505,9 @@ func (w *FSWatchdog) DeepScan(ctx *AppContext, paths []string) *DeepScanResult {
 		}
 
 		for _, entry := range entries {
+			if stop.Err() != nil {
+				break
+			}
 			fullPath := filepath.Join(basePath, entry.Name())
 
 			if shouldExcludePath(st.patterns, fullPath) {
@@ -480,6 +521,9 @@ func (w *FSWatchdog) DeepScan(ctx *AppContext, paths []string) *DeepScanResult {
 			}
 
 			if info.IsDir() {
+				if dev := deviceOf(info); st.rootDev != 0 && dev != 0 && dev != st.rootDev {
+					continue // another filesystem mounted below this one
+				}
 				// Scan directory recursively
 				size, files := st.scanDirectory(fullPath)
 				if size > 0 {
@@ -692,7 +736,7 @@ func (w *FSWatchdog) checkAndAlert(ctx *AppContext, bot BotAPI, path string, run
 		if runCtx.Err() != nil {
 			return // shutting down, no point in walking the whole volume
 		}
-		result := w.DeepScan(ctx, deepScanPaths)
+		result := w.DeepScanContext(runCtx, ctx, deepScanPaths)
 		if result == nil {
 			return // Scan already in progress
 		}

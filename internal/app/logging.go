@@ -2,6 +2,7 @@ package app
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"io"
 	"log/slog"
@@ -106,6 +107,42 @@ func prunePersistentLogsAfterReport(ctx *AppContext) {
 		return
 	}
 	slog.Info("Persistent logs pruned", "retention", retention.String())
+}
+
+// maxPersistentLogBytes is the size above which the log is pruned even when no
+// report is due. Pruning otherwise only runs after a report, so with reports
+// disabled the file would grow forever.
+const maxPersistentLogBytes = 50 << 20
+
+// pruneLogsIfOversized prunes the persistent log when it exceeds
+// maxPersistentLogBytes, keeping the configured retention.
+func pruneLogsIfOversized(ctx *AppContext) {
+	loggingMu.Lock()
+	path := persistentLogPath
+	loggingMu.Unlock()
+	if path == "" {
+		path = defaultPersistentLogPath()
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.Size() <= maxPersistentLogBytes {
+		return
+	}
+	slog.Info("Persistent log is oversized, pruning", "bytes", info.Size())
+	prunePersistentLogsAfterReport(ctx)
+}
+
+// logSizeGuard checks the log size periodically until runCtx is done.
+func logSizeGuard(ctx *AppContext, runCtx context.Context) {
+	t := time.NewTicker(30 * time.Minute)
+	defer t.Stop()
+	for {
+		select {
+		case <-runCtx.Done():
+			return
+		case <-t.C:
+			pruneLogsIfOversized(ctx)
+		}
+	}
 }
 
 func reportLogRetentionDuration(ctx *AppContext) time.Duration {
