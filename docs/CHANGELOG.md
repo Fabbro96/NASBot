@@ -11,7 +11,7 @@ section per tag, in reverse chronological order. The date is the tag's creation 
 > release <tag>` only requires a section for the tag being released, so those releases are
 > unaffected — but new tags must follow this format.
 
-## Unreleased
+## v1.8.0 - 2026-10-17
 
 ### Added
 - **Severity marks on the dashboard.** `/status` flags CPU, RAM and disk lines
