@@ -367,3 +367,13 @@ func zipEntryNames(t *testing.T, path string) []string {
 	}
 	return names
 }
+
+func TestUniqueEntryNameAvoidsCollisions(t *testing.T) {
+	used := map[string]bool{}
+	a := uniqueEntryName("var/nasbot.log", used)
+	b := uniqueEntryName("nasbot.log", used)
+	c := uniqueEntryName("other/var/nasbot.log", used)
+	if a != "nasbot.log" || b == a || c == a || c == b {
+		t.Fatalf("names collide: %q %q %q", a, b, c)
+	}
+}

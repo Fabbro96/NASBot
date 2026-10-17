@@ -246,3 +246,21 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 }
 
 func (b *limitedBuffer) Bytes() []byte { return b.buf.Bytes() }
+
+// deniedBinaries are shells, script interpreters and privilege/remote launchers.
+// Allowlisting one of them is never a restriction: `sh -c`, `python -c`,
+// `sudo ...` run anything. They are refused outright, unlike the broader
+// escapeBinaries set (find, docker, ...) which only warns because those have
+// legitimate read-only uses.
+var deniedBinaries = map[string]bool{
+	"sh": true, "bash": true, "dash": true, "zsh": true, "ash": true, "ksh": true, "busybox": true,
+	"env": true, "xargs": true,
+	"python": true, "python2": true, "python3": true, "perl": true, "ruby": true, "node": true, "php": true, "lua": true,
+	"nsenter": true, "chroot": true, "sudo": true, "su": true, "ssh": true,
+}
+
+// IsDeniedBinary reports whether name must never be accepted in the /cmd
+// allowlist.
+func IsDeniedBinary(name string) bool {
+	return deniedBinaries[strings.ToLower(name)]
+}

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"nasbot/internal/cmdexec"
 	"nasbot/internal/format"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -271,7 +272,7 @@ func readShellCommandGate(c *Config) shellCommandGate {
 		// The same check sanitizeConfig applies, re-applied here: this is the
 		// boundary, and a Config that never went through the loader must not be
 		// able to name a path from here.
-		if isShellBinaryName(name) {
+		if isShellBinaryName(name) && !cmdexec.IsDeniedBinary(name) {
 			gate.allowlist = append(gate.allowlist, name)
 		}
 	}

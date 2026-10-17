@@ -274,3 +274,13 @@ func TestSanitizeConfigValidatesNetworkAndURLs(t *testing.T) {
 		t.Errorf("duplicate report times kept: %v", cfg.Reports.Times)
 	}
 }
+
+func TestSanitizeConfigDropsInterpretersFromShellAllowlist(t *testing.T) {
+	cfg := Config{}
+	cfg.ShellCommand.Enabled = true
+	cfg.ShellCommand.AllowedBinaries = []string{"ls", "bash", "python3", "df", "env"}
+	sanitizeConfig(&cfg)
+	if got := strings.Join(cfg.ShellCommand.AllowedBinaries, ","); got != "ls,df" {
+		t.Fatalf("allowlist = %q, want ls,df", got)
+	}
+}

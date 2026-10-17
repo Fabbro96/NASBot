@@ -131,8 +131,9 @@ func createBackupArchive(files []string, primary string) (string, error) {
 func writeBackupArchive(zipFile *os.File, files []string, primary string) error {
 	archive := zip.NewWriter(zipFile)
 	primaryAdded := false
+	used := make(map[string]bool, len(files))
 	for _, f := range files {
-		ok, err := addFileToZip(archive, f)
+		ok, err := addFileToZipNamed(archive, f, uniqueEntryName(f, used))
 		if err != nil {
 			// Best effort: close so the writer state is consistent, the caller
 			// discards the file anyway.
@@ -156,6 +157,31 @@ func writeBackupArchive(zipFile *os.File, files []string, primary string) error 
 // a missing optional file (log, state) is not an error, every other failure is
 // propagated instead of being swallowed.
 func addFileToZip(archive *zip.Writer, path string) (bool, error) {
+	return addFileToZipNamed(archive, path, filepath.Base(path))
+}
+
+// backupMaxFileBytes caps one archived file. Only the tail is kept for a file
+// above it (logs), so a runaway log cannot turn the backup into a huge upload.
+const backupMaxFileBytes = 8 << 20
+
+// uniqueEntryName returns the archive name for path: its base name, prefixed
+// with the parent directory when another file already took that name
+// ("var/nasbot.log" and "nasbot.log" both used to land as "nasbot.log").
+func uniqueEntryName(path string, used map[string]bool) string {
+	name := filepath.Base(path)
+	if used[name] {
+		if dir := filepath.Base(filepath.Dir(path)); dir != "." && dir != string(filepath.Separator) {
+			name = dir + "_" + name
+		}
+		for i := 2; used[name]; i++ {
+			name = fmt.Sprintf("%d_%s", i, filepath.Base(path))
+		}
+	}
+	used[name] = true
+	return name
+}
+
+func addFileToZipNamed(archive *zip.Writer, path, name string) (bool, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -174,8 +200,16 @@ func addFileToZip(archive *zip.Writer, path string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	header.Name = filepath.Base(path)
+	header.Name = name
 	header.Method = zip.Deflate
+
+	// Keep the tail of an oversized file; config.json is never that large.
+	if info.Size() > backupMaxFileBytes {
+		if _, err := file.Seek(info.Size()-backupMaxFileBytes, io.SeekStart); err != nil {
+			return false, err
+		}
+		header.UncompressedSize64 = 0
+	}
 
 	writer, err := archive.CreateHeader(header)
 	if err != nil {
