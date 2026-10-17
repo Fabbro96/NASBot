@@ -7,6 +7,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"nasbot/pkg/model"
@@ -700,6 +701,19 @@ func getCachedContainerList(ctx *AppContext) []ContainerInfo {
 	}
 	ctx.Docker.Mu.RUnlock()
 
+	// Only one caller probes at a time; the others wait and then find the
+	// cache fresh instead of each running their own `docker ps`.
+	containerRefreshMu.Lock()
+	defer containerRefreshMu.Unlock()
+
+	ctx.Docker.Mu.RLock()
+	if time.Since(ctx.Docker.Cache.LastUpdate) < ttl {
+		result := copyContainerList(ctx.Docker.Cache.Containers)
+		ctx.Docker.Mu.RUnlock()
+		return result
+	}
+	ctx.Docker.Mu.RUnlock()
+
 	if dockerProbeRecentlyFailed(ctx.Docker) {
 		return nil
 	}
@@ -724,3 +738,6 @@ func getCachedContainerList(ctx *AppContext) []ContainerInfo {
 
 	return copyContainerList(containers)
 }
+
+// containerRefreshMu serializes cache refreshes in getCachedContainerList.
+var containerRefreshMu sync.Mutex

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -320,6 +321,7 @@ func pingHealthchecks(appCtx *AppContext, bot BotAPI) {
 		return
 	}
 	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		recordHealthcheckSuccess(appCtx, bot)
@@ -516,7 +518,6 @@ func recordHealthcheckFailure(ctx *AppContext, bot BotAPI, reason string) {
 		ctx.State.AddEvent("critical", fmt.Sprintf("Forced reboot triggered: Healthchecks down for %s", downtimeStr))
 		saveState(ctx)
 
-		time.Sleep(1 * time.Second) // gives telegram time to send
 		executeForcedReboot(ctx, bot, chatID, 0, "healthchecks-down-timeout")
 	}
 }
@@ -871,5 +872,6 @@ func pingHealthchecksStart(ctx *AppContext) {
 		return
 	}
 	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	slog.Info("Healthchecks.io /start signal sent")
 }

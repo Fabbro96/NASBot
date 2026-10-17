@@ -456,11 +456,18 @@ func writeConfigFile(path string, c *Config, original map[string]interface{}) er
 	return writeFileAtomic(path, finalContent, configFileMode)
 }
 
-// backupConfigFile copies the current config file to <path>.bak.
+// backupConfigFile copies the current config file to <path>.bak, unless the
+// current file is not valid JSON.
 func backupConfigFile(path string) error {
 	current, err := os.ReadFile(path)
 	if err != nil {
 		return err
+	}
+	// A corrupt file must never replace a good backup: the backup is the only
+	// copy readConfigFile can still restore from.
+	if !json.Valid(current) {
+		slog.Warn("Config file is not valid JSON, keeping the existing backup", "file", path)
+		return nil
 	}
 	return writeFileAtomic(path+".bak", current, configFileMode)
 }

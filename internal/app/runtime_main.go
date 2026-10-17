@@ -98,8 +98,11 @@ func RunBot() {
 		<-sigChan
 		slog.Info("Shutdown signal received")
 		cancel()
-		bot.StopReceivingUpdates()
+		// Mark the shutdown as intentional before the updates channel closes,
+		// otherwise the main loop can observe the close first and log it as
+		// unexpected.
 		close(shutdownDone)
+		bot.StopReceivingUpdates()
 	})
 
 	// Start Background Tasks

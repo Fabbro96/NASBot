@@ -298,8 +298,14 @@ func deliverReport(ctx *AppContext, bot BotAPI, report string, runCtx context.Co
 	chatID := ctx.Cfg().AllowedUserID
 	notice := ctx.Tr("report_truncated")
 
+	// Chunks already delivered are not sent again on a retry.
+	chunks := splitTelegramMessage(report, telegramMessageBudget, maxReportChunks, notice)
+	sent := 0
+
 	for attempt := 1; attempt <= reportMaxSendAttempts; attempt++ {
-		if err := sendScheduledReportSplit(bot, chatID, report, notice); err == nil {
+		var err error
+		sent, err = sendReportChunks(bot, chatID, chunks, sent)
+		if err == nil {
 			return true
 		} else {
 			slog.Error("Failed to send scheduled report", "err", sanitizeErr(err),
@@ -528,7 +534,15 @@ func sendScheduledReport(bot BotAPI, chatID int64, report string) error {
 // localized.
 func sendScheduledReportSplit(bot BotAPI, chatID int64, report, notice string) error {
 	chunks := splitTelegramMessage(report, telegramMessageBudget, maxReportChunks, notice)
-	for i, chunk := range chunks {
+	_, err := sendReportChunks(bot, chatID, chunks, 0)
+	return err
+}
+
+// sendReportChunks sends chunks[from:] and returns how many chunks of the whole
+// slice have been delivered, so a caller can resume after a failure.
+func sendReportChunks(bot BotAPI, chatID int64, chunks []string, from int) (int, error) {
+	for i := from; i < len(chunks); i++ {
+		chunk := chunks[i]
 		msg := tgbotapi.NewMessage(chatID, chunk)
 		msg.ParseMode = "Markdown"
 		if _, err := bot.Send(msg); err != nil {
@@ -538,11 +552,11 @@ func sendScheduledReportSplit(bot BotAPI, chatID int64, report, notice string) e
 				// Sanitized before it is wrapped, because this error travels to the
 				// caller and to the log above it, and every one of those would
 				// otherwise re-print the token the Bot API URL carries.
-				return fmt.Errorf("chunk %d/%d: markdown send failed: %w; plain text send failed: %v", i+1, len(chunks), sanitizeErr(err), sanitizeErr(plainErr))
+				return i, fmt.Errorf("chunk %d/%d: markdown send failed: %w; plain text send failed: %v", i+1, len(chunks), sanitizeErr(err), sanitizeErr(plainErr))
 			}
 		}
 	}
-	return nil
+	return len(chunks), nil
 }
 
 func sleepWithContext(ctx context.Context, d time.Duration) bool {

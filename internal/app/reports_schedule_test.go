@@ -1,8 +1,11 @@
 package app
 
 import (
+	"errors"
 	"testing"
 	"time"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 func TestGetNextReportTime_DaysOfWeek(t *testing.T) {
@@ -75,5 +78,37 @@ func TestFormatDaysList(t *testing.T) {
 	workdays := formatDaysList(ctx, []int{1, 2, 3, 4, 5})
 	if workdays != "Lun, Mar, Mer, Gio, Ven" {
 		t.Fatalf("expected 'Lun, Mar, Mer, Gio, Ven', got %q", workdays)
+	}
+}
+
+// failFromBot fails every Send once `okSends` messages went through.
+type failFromBot struct {
+	fakeBot
+	okSends int
+}
+
+func (b *failFromBot) Send(c tgbotapi.Chattable) (tgbotapi.Message, error) {
+	if len(b.sent) >= b.okSends {
+		return tgbotapi.Message{}, errors.New("boom")
+	}
+	return b.fakeBot.Send(c)
+}
+
+func TestSendReportChunksResumesWithoutResending(t *testing.T) {
+	chunks := []string{"a", "b", "c"}
+	bot := &failFromBot{okSends: 1}
+
+	sent, err := sendReportChunks(bot, 1, chunks, 0)
+	if err == nil || sent != 1 {
+		t.Fatalf("expected failure after 1 delivered chunk, got sent=%d err=%v", sent, err)
+	}
+
+	bot.okSends = 10
+	sent, err = sendReportChunks(bot, 1, chunks, sent)
+	if err != nil || sent != 3 {
+		t.Fatalf("resume failed: sent=%d err=%v", sent, err)
+	}
+	if len(bot.sent) != 3 {
+		t.Fatalf("each chunk must be delivered exactly once, got %d sends", len(bot.sent))
 	}
 }
