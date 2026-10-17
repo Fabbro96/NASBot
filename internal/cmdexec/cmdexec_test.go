@@ -1056,3 +1056,16 @@ func TestIsEscapeBinary(t *testing.T) {
 		}
 	}
 }
+
+func TestIsDeniedBinary(t *testing.T) {
+	for _, n := range []string{"sh", "Bash", "env", "python3", "sudo", "nsenter"} {
+		if !IsDeniedBinary(n) {
+			t.Errorf("%q must be denied", n)
+		}
+	}
+	for _, n := range []string{"ls", "df", "find", "docker", "smartctl"} {
+		if IsDeniedBinary(n) {
+			t.Errorf("%q must not be hard-denied", n)
+		}
+	}
+}

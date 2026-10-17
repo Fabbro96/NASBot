@@ -940,7 +940,7 @@ const maxShellBinaryNameLen = 64
 func filterShellBinaries(entries []string) (kept, dropped []string) {
 	kept = make([]string, 0, len(entries))
 	for _, entry := range entries {
-		if isShellBinaryName(entry) {
+		if isShellBinaryName(entry) && !cmdexec.IsDeniedBinary(entry) {
 			kept = append(kept, entry)
 			continue
 		}
