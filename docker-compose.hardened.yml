@@ -1,0 +1,55 @@
+# ============================================================================
+# NASBot - EXPERIMENTAL hardened compose variant (not the supported path).
+#
+# Same as docker-compose.yml, but `privileged: true` is replaced by an explicit
+# capability list plus `no-new-privileges`. Fewer rights, so something may stop
+# working on YOUR hardware; this file has not been validated on a real NAS.
+# Try it on a test run first:
+#
+#   docker compose -f docker-compose.hardened.yml up -d
+#   # then, from Telegram: /status, /smart, /top, /docker, and a harmless
+#   # reboot-free action. If a section reports "UNKNOWN" or empty values, the
+#   # capability below that feeds it is missing: fall back to docker-compose.yml.
+#
+# Capabilities and why (remove one and the listed feature breaks):
+#   SYS_RAWIO   smartctl / SMART ioctls on /dev/sdX, NVMe passthrough
+#   SYS_ADMIN   nsenter into the host mount/pid namespaces (reboot, shutdown)
+#   SYS_PTRACE  reading /proc/<pid> details of host processes (pid: host)
+#   SYS_CHROOT  chroot into /hostfs for host-side `ps`
+#   SYS_BOOT    reboot(2) when nsenter is unavailable
+#   DAC_READ_SEARCH  reading root-only files on /hostfs
+#
+# The Docker socket is still mounted, which is root-equivalent on the host no
+# matter which capabilities are dropped (see docs/SECURITY.md#attack-surface).
+# ============================================================================
+services:
+  nasbot:
+    image: ghcr.io/fabbro96/nasbot:1.8
+    container_name: nasbot
+    restart: unless-stopped
+    network_mode: "host"
+    pid: "host"
+
+    cap_drop:
+      - ALL
+    cap_add:
+      - SYS_RAWIO
+      - SYS_ADMIN
+      - SYS_PTRACE
+      - SYS_CHROOT
+      - SYS_BOOT
+      - DAC_READ_SEARCH
+    security_opt:
+      - no-new-privileges:true
+
+    # Block devices for SMART. `privileged` used to allow every device; here the
+    # cgroup rule allows block devices (b) and nothing else.
+    device_cgroup_rules:
+      - "b *:* rmw"
+
+    volumes:
+      - ./config.json:/app/config.json
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /dev:/dev:ro
+      - /sys:/sys:ro
+      - /:/hostfs:ro

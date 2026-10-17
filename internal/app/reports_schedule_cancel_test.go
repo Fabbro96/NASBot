@@ -63,7 +63,7 @@ func (b *markdownFailBot) Request(c tgbotapi.Chattable) (*tgbotapi.APIResponse, 
 func TestSendScheduledReportFallsBackToPlainText(t *testing.T) {
 	bot := &markdownFailBot{}
 
-	err := sendScheduledReport(bot, 1, "*hello*")
+	err := sendScheduledReportSplit(bot, 1, "*hello*", reportTruncatedNotice())
 	if err != nil {
 		t.Fatalf("expected fallback success, got error: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestSendScheduledReportFallsBackToPlainText(t *testing.T) {
 func TestSendScheduledReportReturnsErrorWhenBothFail(t *testing.T) {
 	bot := &markdownFailBot{alwaysError: true}
 
-	err := sendScheduledReport(bot, 1, "hello")
+	err := sendScheduledReportSplit(bot, 1, "hello", reportTruncatedNotice())
 	if err == nil {
 		t.Fatalf("expected error when both markdown and plain text fail")
 	}

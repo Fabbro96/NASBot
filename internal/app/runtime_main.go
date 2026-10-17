@@ -20,7 +20,7 @@ var app *AppContext
 
 func init() {
 	setupLogger()
-	loadConfig() // Populates global 'cfg'
+	loadConfig() // Populates bootCfg
 }
 
 func RunBot() {
@@ -39,8 +39,8 @@ func RunBot() {
 	acquirePIDLock()
 	defer releasePIDLock()
 
-	// Initialize AppContext with global cfg
-	app = InitApp(&cfg)
+	// Initialize AppContext from the bootstrap configuration
+	app = InitApp(currentCfg())
 
 	// Set Timezone
 	tz := app.Cfg().Timezone

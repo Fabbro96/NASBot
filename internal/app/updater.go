@@ -119,15 +119,6 @@ type releaseVersion struct {
 	pre string
 }
 
-// parseSemverTag is the historical 3-integer view of a tag, kept for callers
-// that only need major.minor.patch. Version ordering goes through
-// parseReleaseVersion/compareReleaseVersions, which also honour the prerelease
-// suffix and the fourth segment.
-func parseSemverTag(tag string) ([3]int, bool) {
-	v, ok := parseReleaseVersion(tag)
-	return [3]int{v.core[0], v.core[1], v.core[2]}, ok
-}
-
 // parseReleaseVersion parses a release tag such as "v1.2.3", "v1.2.3-rc.1" or
 // "v1.2.3.4". ok is false when no numeric segment can be read at all (for
 // example "dev" or "nightly"): such a tag must never be treated as a version,

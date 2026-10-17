@@ -523,10 +523,6 @@ func reportTruncatedNotice() string {
 	return translateByLanguage("", "report_truncated")
 }
 
-func sendScheduledReport(bot BotAPI, chatID int64, report string) error {
-	return sendScheduledReportSplit(bot, chatID, report, reportTruncatedNotice())
-}
-
 // sendScheduledReportSplit sends a report, splitting it to respect the Bot API
 // length limit. Telegram rejects anything over 4096 characters, and the daily
 // report easily exceeds that: 100 events at 35 runes plus headers is ~4.5k.
