@@ -11,6 +11,21 @@
 
 A single Go binary that provides a **live server dashboard**, proactive hardware alerts, and Docker management directly inside Telegram—no web UI or heavy daemon required.
 
+### What it looks like
+
+```text
+🖥 NAS at 08:30
+🧠 CPU  ██░░░░░░░░  18%  ▁▂▂▃▂▂
+💾 RAM  ███████░░░  71%  ▄▅▅▆▆▇ 🟡
+💿 SSD 42% · 612 GB free
+🗄 data 91% · 1.1 TB free 🔴
+🐳 12 containers running · 1 stopped
+⏱ Running for 14d 6h
+```
+
+A 🟡 / 🔴 appears only when a reading crosses its configured warning / critical
+threshold, so a healthy dashboard stays clean.
+
 ---
 
 ## ✨ Key Features

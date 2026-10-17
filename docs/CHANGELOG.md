@@ -11,6 +11,35 @@ section per tag, in reverse chronological order. The date is the tag's creation 
 > release <tag>` only requires a section for the tag being released, so those releases are
 > unaffected — but new tags must follow this format.
 
+## Unreleased
+
+### Added
+- **Severity marks on the dashboard.** `/status` flags CPU, RAM and disk lines
+  with 🟡 / 🔴 once they cross their configured warning / critical thresholds;
+  healthy lines stay clean.
+- **AdGuard Home support** for the AdBlock pause/resume buttons
+  (`adblock.type: "adguard"`, token as `user:password`).
+
+### Changed
+- **`/cmd` allowlist refuses shells and interpreters** (`sh`, `bash`, `env`,
+  `python*`, `sudo`, `ssh`, ...); `find`, `docker` and similar log a warning.
+- **Updater downloads only over HTTPS from GitHub hosts** and validates
+  `NASBOT_GITHUB_REPO`.
+- **Pending confirmations expire after 3 minutes**; messages are accepted only
+  when both sender and chat match `allowed_user_id`.
+- `config.go` and `translations.go` are split into topical files (no behavior
+  change).
+
+### Fixed
+- OOM-loop reboot now goes through the shared power path (event recorded,
+  state saved, `nsenter` fallback in containers).
+- A dead NFS/CIFS mount no longer freezes statistics collection (3 s `statfs`
+  deadline); the deep scan stops on shutdown and stays on one filesystem.
+- A corrupt `config.json` no longer overwrites a good `config.json.bak`.
+- Report retries resume after the last delivered chunk instead of resending.
+- `/top` shows current CPU usage instead of the lifetime average.
+- Healthchecks pinger applies `period_seconds` changes without a restart.
+
 ## v1.7.3 - 2026-10-09
 
 ### Fixed

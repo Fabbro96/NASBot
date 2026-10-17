@@ -414,3 +414,31 @@ func TestCollectTopProcesses_FallbackWhenPsFails(t *testing.T) {
 		}
 	}
 }
+
+func TestSeverityMark(t *testing.T) {
+	rc := model.ResourceConfig{WarningThreshold: 80, CriticalThreshold: 95}
+	cases := []struct {
+		pct  float64
+		want string
+	}{{10, ""}, {79.9, ""}, {80, " 🟡"}, {94, " 🟡"}, {95, " 🔴"}, {100, " 🔴"}}
+	for _, c := range cases {
+		if got := severityMark(c.pct, rc); got != c.want {
+			t.Errorf("severityMark(%v) = %q, want %q", c.pct, got, c.want)
+		}
+	}
+	if got := severityMark(99, model.ResourceConfig{}); got != "" {
+		t.Errorf("unconfigured thresholds must never mark, got %q", got)
+	}
+}
+
+func TestGetStatusTextMarksHotResources(t *testing.T) {
+	ctx := setupTestContext(t)
+	c := *ctx.Cfg()
+	c.Notifications.CPU = model.ResourceConfig{Enabled: true, WarningThreshold: 80, CriticalThreshold: 90}
+	ctx.SetConfig(&c)
+	ctx.Stats.Set(model.Stats{CPU: 95, RAM: 10, Uptime: 1})
+	text := GetStatusText(ctx)
+	if !strings.Contains(text, "🔴") {
+		t.Errorf("a CPU past the critical threshold must be flagged:\n%s", text)
+	}
+}

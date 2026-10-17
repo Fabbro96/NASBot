@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"nasbot/internal/format"
+	"nasbot/pkg/model"
 
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
@@ -65,6 +66,20 @@ func countVerbs(tmpl string) int {
 //  TEXT GENERATORS (use cache, instant response)
 // ═══════════════════════════════════════════════════════════════════
 
+// severityMark flags a reading that crossed its alert thresholds: " 🟡" past the
+// warning level, " 🔴" past the critical one, nothing otherwise. A healthy
+// dashboard therefore stays uncluttered, and a hot line is visible at a glance.
+// Thresholds <= 0 mean "not configured" and never mark.
+func severityMark(pct float64, rc ResourceConfig) string {
+	switch {
+	case rc.CriticalThreshold > 0 && pct >= rc.CriticalThreshold:
+		return " 🔴"
+	case rc.WarningThreshold > 0 && pct >= rc.WarningThreshold:
+		return " 🟡"
+	}
+	return ""
+}
+
 func getStatusText(ctx *AppContext) string {
 	tr := ctx.Tr
 	s, ready := ctx.Stats.Get()
@@ -83,13 +98,18 @@ func getStatusText(ctx *AppContext) string {
 	var computeLines []string
 	cpuGraph, ramGraph := getTrendSummary(ctx)
 
-	cpuLine := trf(tr, "cpu_fmt", format.MakeProgressBar(s.CPU), s.CPU)
+	var notif model.NotificationsConfig
+	if c := cfg(ctx); c != nil {
+		notif = c.Notifications
+	}
+
+	cpuLine := trf(tr, "cpu_fmt", format.MakeProgressBar(s.CPU), s.CPU) + severityMark(s.CPU, notif.CPU)
 	if cpuGraph != "" {
 		cpuLine += "  `" + cpuGraph + "`"
 	}
 	computeLines = append(computeLines, cpuLine)
 
-	ramLine := trf(tr, "ram_fmt", format.MakeProgressBar(s.RAM), s.RAM)
+	ramLine := trf(tr, "ram_fmt", format.MakeProgressBar(s.RAM), s.RAM) + severityMark(s.RAM, notif.RAM)
 	if ramGraph != "" {
 		ramLine += "  `" + ramGraph + "`"
 	}
@@ -103,10 +123,14 @@ func getStatusText(ctx *AppContext) string {
 	// Section 3: Storage (SSD & Secondary Disks) — separated visually
 	sections = append(sections, "")
 	var storageLines []string
-	storageLines = append(storageLines, trf(tr, "ssd_fmt", s.VolSSD.Used, format.FormatBytes(s.VolSSD.Free)))
+	storageLines = append(storageLines, trf(tr, "ssd_fmt", s.VolSSD.Used, format.FormatBytes(s.VolSSD.Free))+severityMark(s.VolSSD.Used, notif.DiskSSD))
 	for _, m := range volumeMounts(s.SecondaryVols) {
 		vol := s.SecondaryVols[m]
-		storageLines = append(storageLines, trf(tr, "disk_sec_fmt", diskDisplayName(m), vol.Used, format.FormatBytes(vol.Free)))
+		secRC, ok := notif.SecondaryDisks[m]
+		if !ok {
+			secRC = notif.DiskSSD
+		}
+		storageLines = append(storageLines, trf(tr, "disk_sec_fmt", diskDisplayName(m), vol.Used, format.FormatBytes(vol.Free))+severityMark(vol.Used, secRC))
 	}
 	sections = append(sections, strings.Join(storageLines, "\n"))
 
