@@ -24,8 +24,8 @@ change:
 
 - `Secret Scan` — `.github/workflows/ci.yml`
 - `ShellCheck` — `.github/workflows/ci.yml`
-- `Build & Test (Go 1.22.x)` — `.github/workflows/ci.yml` (matrix)
 - `Build & Test (Go 1.23.x)` — `.github/workflows/ci.yml` (matrix)
+- `Build & Test (Go 1.27.x)` — `.github/workflows/ci.yml` (matrix)
 - `Deadlock & Race (Go 1.23.x)` — `.github/workflows/deadlock-race-gate.yml`
 - `Dependency Review` — `.github/workflows/security.yml`
 - `CodeQL Analysis` — `.github/workflows/security.yml`
