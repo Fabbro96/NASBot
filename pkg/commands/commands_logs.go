@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ func getLogsText(ctx *AppContext) string {
 	tr := ctx.Tr
 	recentLogs, err := getRecentLogs(ctx)
 	if err != nil {
+		slog.Warn("/logs could not read system logs", "err", sanitizeErr(err))
 		return fmt.Sprintf("%s_No logs available_\n", tr("logs_title"))
 	}
 

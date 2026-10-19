@@ -68,6 +68,7 @@ func (c *AskCmd) Execute(ctx *AppContext, bot BotAPI, msg *tgbotapi.Message, arg
 
 	logs, err := getRecentLogs(ctx)
 	if err != nil {
+		slog.Warn("/ask could not read system logs", "err", sanitizeErr(err))
 		errText := ctx.Tr("ask_no_logs")
 		if sentMsg.MessageID != 0 {
 			editMessage(bot, msg.Chat.ID, sentMsg.MessageID, errText, nil)
