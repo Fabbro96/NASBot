@@ -23,7 +23,11 @@ import (
 )
 
 type MonitorAlert struct {
-	Level   string // "critical", "warning"
+	Level string // "critical", "warning"
+	// Key identifies what the alert is about ("cpu", "disk:/mnt/x", ...),
+	// independently of the value in Message, so repeated checks of the same
+	// condition can share one event cooldown.
+	Key     string
 	Message string
 }
 
@@ -53,9 +57,9 @@ func (m *CPUMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
 		return alerts
 	}
 	if thresholdReached(s.CPU, cfg.CriticalThreshold) {
-		alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf(ctx.Tr("mon_cpu_crit"), s.CPU)})
+		alerts = append(alerts, MonitorAlert{Level: "critical", Key: "cpu", Message: fmt.Sprintf(ctx.Tr("mon_cpu_crit"), s.CPU)})
 	} else if thresholdReached(s.CPU, cfg.WarningThreshold) {
-		alerts = append(alerts, MonitorAlert{"warning", fmt.Sprintf(ctx.Tr("mon_cpu_high"), s.CPU)})
+		alerts = append(alerts, MonitorAlert{Level: "warning", Key: "cpu", Message: fmt.Sprintf(ctx.Tr("mon_cpu_high"), s.CPU)})
 	}
 	return alerts
 }
@@ -69,9 +73,9 @@ func (m *RAMMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
 		return alerts
 	}
 	if thresholdReached(s.RAM, cfg.CriticalThreshold) {
-		alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf(ctx.Tr("mon_ram_crit"), s.RAM)})
+		alerts = append(alerts, MonitorAlert{Level: "critical", Key: "ram", Message: fmt.Sprintf(ctx.Tr("mon_ram_crit"), s.RAM)})
 	} else if thresholdReached(s.RAM, cfg.WarningThreshold) {
-		alerts = append(alerts, MonitorAlert{"warning", fmt.Sprintf(ctx.Tr("mon_ram_high"), s.RAM)})
+		alerts = append(alerts, MonitorAlert{Level: "warning", Key: "ram", Message: fmt.Sprintf(ctx.Tr("mon_ram_high"), s.RAM)})
 	}
 	return alerts
 }
@@ -86,7 +90,7 @@ func (m *SwapMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
 	}
 	// Note: Swap has no critical threshold check currently
 	if thresholdReached(s.Swap, cfg.WarningThreshold) {
-		alerts = append(alerts, MonitorAlert{"warning", fmt.Sprintf(ctx.Tr("mon_swap_high"), s.Swap)})
+		alerts = append(alerts, MonitorAlert{Level: "warning", Key: "swap", Message: fmt.Sprintf(ctx.Tr("mon_swap_high"), s.Swap)})
 	}
 	return alerts
 }
@@ -100,9 +104,9 @@ func (m *SSDMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
 		return alerts
 	}
 	if thresholdReached(s.VolSSD.Used, cfg.CriticalThreshold) {
-		alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf(ctx.Tr("mon_ssd_crit"), s.VolSSD.Used)})
+		alerts = append(alerts, MonitorAlert{Level: "critical", Key: "ssd", Message: fmt.Sprintf(ctx.Tr("mon_ssd_crit"), s.VolSSD.Used)})
 	} else if thresholdReached(s.VolSSD.Used, cfg.WarningThreshold) {
-		alerts = append(alerts, MonitorAlert{"warning", fmt.Sprintf(ctx.Tr("mon_ssd_high"), s.VolSSD.Used)})
+		alerts = append(alerts, MonitorAlert{Level: "warning", Key: "ssd", Message: fmt.Sprintf(ctx.Tr("mon_ssd_high"), s.VolSSD.Used)})
 	}
 	return alerts
 }
@@ -118,9 +122,9 @@ func (m *SecondaryDiskMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
 		}
 		if diskCfg.Enabled {
 			if thresholdReached(volStats.Used, diskCfg.CriticalThreshold) {
-				alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf(ctx.Tr("mon_disk_crit"), mountPoint, volStats.Used)})
+				alerts = append(alerts, MonitorAlert{Level: "critical", Key: "disk:" + mountPoint, Message: fmt.Sprintf(ctx.Tr("mon_disk_crit"), mountPoint, volStats.Used)})
 			} else if thresholdReached(volStats.Used, diskCfg.WarningThreshold) {
-				alerts = append(alerts, MonitorAlert{"warning", fmt.Sprintf(ctx.Tr("mon_disk_high"), mountPoint, volStats.Used)})
+				alerts = append(alerts, MonitorAlert{Level: "warning", Key: "disk:" + mountPoint, Message: fmt.Sprintf(ctx.Tr("mon_disk_high"), mountPoint, volStats.Used)})
 			}
 		}
 	}
@@ -171,10 +175,10 @@ func (m *SMARTMonitor) Check(ctx *AppContext, s *Stats) []MonitorAlert {
 
 	for dev, res := range cache {
 		if strings.Contains(strings.ToUpper(res.Health), "FAIL") {
-			alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf(ctx.Tr("mon_disk_failing"), dev)})
+			alerts = append(alerts, MonitorAlert{Level: "critical", Key: "smart-health:" + dev, Message: fmt.Sprintf(ctx.Tr("mon_disk_failing"), dev)})
 		}
 		if res.Temp > 0 && thresholdReached(float64(res.Temp), ctx.Cfg().Temperature.CriticalThreshold) {
-			alerts = append(alerts, MonitorAlert{"critical", fmt.Sprintf(ctx.Tr("mon_disk_temp_crit"), dev, res.Temp)})
+			alerts = append(alerts, MonitorAlert{Level: "critical", Key: "smart-temp:" + dev, Message: fmt.Sprintf(ctx.Tr("mon_disk_temp_crit"), dev, res.Temp)})
 		}
 	}
 	return alerts
@@ -240,14 +244,21 @@ func monitorAlerts(ctx *AppContext, bot BotAPI, runCtx context.Context) {
 				ctx.Monitor.Mu.Unlock()
 			}
 
-			for _, a := range allAlerts {
-				// We still add them to state, mapping critical string appropriately if needed
-				// For the UI state, it expects "critical" or "warning" with the raw text, but without markdown
-				// We'll clean up markdown for state log slightly, or just use as is.
-				cleanMsg := strings.ReplaceAll(a.Message, "`", "")
-				ctx.State.AddEvent(a.Level, cleanMsg)
-			}
+			recordMonitorEvents(ctx, allAlerts)
 		}
+	}
+}
+
+// recordMonitorEvents adds the alerts of one monitor tick to the report
+// history, at most once per eventCooldown for each level and key: a disk that
+// stays above its threshold must not add an event every 30 seconds.
+func recordMonitorEvents(ctx *AppContext, alerts []MonitorAlert) {
+	for _, a := range alerts {
+		if !eventDue(ctx, a.Level+"/"+a.Key) {
+			continue
+		}
+		// The report history is plain text: strip the Markdown backticks.
+		ctx.State.AddEvent(a.Level, strings.ReplaceAll(a.Message, "`", ""))
 	}
 }
 
@@ -489,27 +500,33 @@ func getTopProcesses(limit int) (topCPU, topRAM []ProcInfo) {
 	return topCPU, topRAM
 }
 
-// tempAlertCooldown spaces out both the Telegram alerts and the report events
-// for a CPU that stays hot.
+// tempAlertCooldown spaces out the Telegram alerts for a CPU that stays hot.
 const tempAlertCooldown = 30 * time.Minute
+
+// eventCooldown spaces out report events for a condition that persists across
+// checks (a hot CPU, a full disk, a stopped critical container).
+const eventCooldown = 30 * time.Minute
 
 func checkTemperatureAlert(ctx *AppContext, bot BotAPI) {
 	handleTemperature(ctx, bot, readCPUTemp())
 }
 
-// tempEventDue reports whether a temperature event may be recorded now, and
-// starts its cooldown when it may. The Telegram cooldown alone was not enough:
-// during quiet hours no message goes out, so it never started, and a CPU that
-// stayed hot added an event on every 10s check. One night filled the
-// 100-event history with "CPU temp high" and pushed every other event out of
-// the report.
-func tempEventDue(ctx *AppContext) bool {
+// eventDue reports whether an event for key may be recorded now, and starts
+// that key's cooldown when it may. Telegram cooldowns alone were not enough:
+// they start only when a message goes out (never during quiet hours), and the
+// monitor loop recorded an event on every check regardless. A condition that
+// persisted for one night filled the 100-event history and pushed every other
+// event out of the report.
+func eventDue(ctx *AppContext, key string) bool {
 	ctx.Monitor.Mu.Lock()
 	defer ctx.Monitor.Mu.Unlock()
-	if time.Since(ctx.Monitor.LastTempEvent) < tempAlertCooldown {
+	if ctx.Monitor.LastEventByKey == nil {
+		ctx.Monitor.LastEventByKey = make(map[string]time.Time)
+	}
+	if last, ok := ctx.Monitor.LastEventByKey[key]; ok && time.Since(last) < eventCooldown {
 		return false
 	}
-	ctx.Monitor.LastTempEvent = time.Now()
+	ctx.Monitor.LastEventByKey[key] = time.Now()
 	return true
 }
 
@@ -541,7 +558,7 @@ func handleTemperature(ctx *AppContext, bot BotAPI, temp float64) {
 			ctx.Monitor.LastTempAlert = time.Now()
 			ctx.Monitor.Mu.Unlock()
 		}
-		if tempEventDue(ctx) {
+		if eventDue(ctx, "temp") {
 			ctx.State.AddEvent("critical", fmt.Sprintf("CPU temp critical: %.1f°C", temp))
 		}
 	} else if thresholdReached(temp, cfg.Temperature.WarningThreshold) {
@@ -554,7 +571,7 @@ func handleTemperature(ctx *AppContext, bot BotAPI, temp float64) {
 			ctx.Monitor.LastTempAlert = time.Now()
 			ctx.Monitor.Mu.Unlock()
 		}
-		if tempEventDue(ctx) {
+		if eventDue(ctx, "temp") {
 			ctx.State.AddEvent("warning", fmt.Sprintf("CPU temp high: %.1f°C", temp))
 		}
 	}
@@ -670,7 +687,9 @@ func checkCriticalContainers(ctx *AppContext, bot BotAPI) {
 				ctx.Monitor.LastCriticalContainerAlert[name] = time.Now()
 				ctx.Monitor.Mu.Unlock()
 			}
-			ctx.State.AddEvent("critical", fmt.Sprintf("Critical container %s down", name))
+			if eventDue(ctx, "container:"+name) {
+				ctx.State.AddEvent("critical", fmt.Sprintf("Critical container %s down", name))
+			}
 		}
 	}
 }

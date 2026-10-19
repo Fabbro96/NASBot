@@ -22,6 +22,11 @@ section per tag, in reverse chronological order. The date is the tag's creation 
   hours, so the alert cooldown never started and every 10 s check added a
   "CPU temp high" event, flushing the whole 100-event history out of the daily
   report. Events now have their own 30-minute cooldown.
+- **Resource and container events flooded the report history the same way.**
+  The monitor loop recorded every CPU, RAM, swap, SSD, disk and SMART alert on
+  every 30 s check, and a stopped critical container added an event per check
+  during quiet hours. Each condition now records at most one event every
+  30 minutes per level.
 - **`/ask` and `/logs` hid the real error** behind "no logs available"; it is
   now logged.
 

@@ -86,7 +86,7 @@ type MonitorState struct {
 	CPUTrend                   []TrendPoint
 	RAMTrend                   []TrendPoint
 	LastTempAlert              time.Time
-	LastTempEvent              time.Time
+	LastEventByKey             map[string]time.Time
 	Healthchecks               HealthchecksState
 	HealthInDowntime           bool
 	RaidLastSignature          string
@@ -227,6 +227,7 @@ func InitApp(cfg *Config) *AppContext {
 			CPUTrend:                   make([]TrendPoint, 0, 72),
 			RAMTrend:                   make([]TrendPoint, 0, 72),
 			LastCriticalContainerAlert: make(map[string]time.Time),
+			LastEventByKey:             make(map[string]time.Time),
 			SmartCache:                 make(map[string]SmartResult),
 			KwLastSignatures:           make(map[string]string),
 			DiskMountsSnapshot:         make(map[string]DiskMountInfo),
