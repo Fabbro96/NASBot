@@ -112,3 +112,20 @@ func TestSendReportChunksResumesWithoutResending(t *testing.T) {
 		t.Fatalf("each chunk must be delivered exactly once, got %d sends", len(bot.sent))
 	}
 }
+
+// Regression: inside the grace window getNextReportTime returns time.Now(), so
+// a slot captured a moment earlier must still count as due. Otherwise the
+// scheduler loop spins without sleeping and floods the log.
+func TestReportsStillDue_GraceWindowSlotIsDue(t *testing.T) {
+	ctx := newTestAppContext()
+	ctx.Settings.ReportsEnabled = true
+	ctx.Settings.ReportDays = []int{}
+	now := time.Now().In(ctx.State.TimeLocation)
+	ctx.Settings.ReportTimes = []TimePoint{{Hour: now.Hour(), Minute: now.Minute()}}
+
+	scheduled, _ := getNextReportTime(ctx)
+	time.Sleep(5 * time.Millisecond)
+	if !reportsStillDue(ctx, scheduled) {
+		t.Fatalf("expected a grace-window slot to still be due")
+	}
+}

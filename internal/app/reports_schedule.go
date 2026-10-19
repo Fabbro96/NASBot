@@ -364,7 +364,12 @@ func reportsStillDue(ctx *AppContext, scheduled time.Time) bool {
 		return false
 	}
 	next, _ := getNextReportTime(ctx)
-	return !next.After(scheduled)
+	// Inside the grace window getNextReportTime returns time.Now(), which is
+	// always a few microseconds after `scheduled`. A strict comparison made that
+	// look like a moved slot, so the loop never slept and spun for the whole
+	// grace period, logging thousands of lines per second. Slots sit on whole
+	// minutes, so a real move is far larger than this tolerance.
+	return !next.After(scheduled.Add(reportDueTolerance))
 }
 
 // reportsChangeSignaler is the optional interface model.UserSettings must
