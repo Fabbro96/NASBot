@@ -86,6 +86,7 @@ type MonitorState struct {
 	CPUTrend                   []TrendPoint
 	RAMTrend                   []TrendPoint
 	LastTempAlert              time.Time
+	LastTempEvent              time.Time
 	Healthchecks               HealthchecksState
 	HealthInDowntime           bool
 	RaidLastSignature          string

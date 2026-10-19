@@ -489,14 +489,37 @@ func getTopProcesses(limit int) (topCPU, topRAM []ProcInfo) {
 	return topCPU, topRAM
 }
 
+// tempAlertCooldown spaces out both the Telegram alerts and the report events
+// for a CPU that stays hot.
+const tempAlertCooldown = 30 * time.Minute
+
 func checkTemperatureAlert(ctx *AppContext, bot BotAPI) {
-	temp := readCPUTemp()
+	handleTemperature(ctx, bot, readCPUTemp())
+}
+
+// tempEventDue reports whether a temperature event may be recorded now, and
+// starts its cooldown when it may. The Telegram cooldown alone was not enough:
+// during quiet hours no message goes out, so it never started, and a CPU that
+// stayed hot added an event on every 10s check. One night filled the
+// 100-event history with "CPU temp high" and pushed every other event out of
+// the report.
+func tempEventDue(ctx *AppContext) bool {
+	ctx.Monitor.Mu.Lock()
+	defer ctx.Monitor.Mu.Unlock()
+	if time.Since(ctx.Monitor.LastTempEvent) < tempAlertCooldown {
+		return false
+	}
+	ctx.Monitor.LastTempEvent = time.Now()
+	return true
+}
+
+func handleTemperature(ctx *AppContext, bot BotAPI, temp float64) {
 	if temp <= 0 {
 		return
 	}
 
 	ctx.Monitor.Mu.Lock()
-	if time.Since(ctx.Monitor.LastTempAlert) < 30*time.Minute {
+	if time.Since(ctx.Monitor.LastTempAlert) < tempAlertCooldown {
 		ctx.Monitor.Mu.Unlock()
 		return
 	}
@@ -518,7 +541,9 @@ func checkTemperatureAlert(ctx *AppContext, bot BotAPI) {
 			ctx.Monitor.LastTempAlert = time.Now()
 			ctx.Monitor.Mu.Unlock()
 		}
-		ctx.State.AddEvent("critical", fmt.Sprintf("CPU temp critical: %.1f°C", temp))
+		if tempEventDue(ctx) {
+			ctx.State.AddEvent("critical", fmt.Sprintf("CPU temp critical: %.1f°C", temp))
+		}
 	} else if thresholdReached(temp, cfg.Temperature.WarningThreshold) {
 		if !ctx.IsQuietHours() {
 			msg := fmt.Sprintf(ctx.Tr("temp_warn_alert"), temp, cfg.Temperature.WarningThreshold)
@@ -529,7 +554,9 @@ func checkTemperatureAlert(ctx *AppContext, bot BotAPI) {
 			ctx.Monitor.LastTempAlert = time.Now()
 			ctx.Monitor.Mu.Unlock()
 		}
-		ctx.State.AddEvent("warning", fmt.Sprintf("CPU temp high: %.1f°C", temp))
+		if tempEventDue(ctx) {
+			ctx.State.AddEvent("warning", fmt.Sprintf("CPU temp high: %.1f°C", temp))
+		}
 	}
 }
 
