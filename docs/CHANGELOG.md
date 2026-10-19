@@ -11,7 +11,19 @@ section per tag, in reverse chronological order. The date is the tag's creation 
 > release <tag>` only requires a section for the tag being released, so those releases are
 > unaffected — but new tags must follow this format.
 
-## v1.8.1 - 2026-10-17
+## v1.8.1 - 2026-10-19
+
+### Fixed
+- **Report scheduler busy-loop.** Inside the 5-minute grace window the
+  scheduler compared the slot with a fresh `time.Now()`, treated it as moved
+  and looped without sleeping, logging thousands of lines per second. On a
+  real NAS this grew `nasbot.log` to 41 GB and caused ~4 TB of disk I/O.
+- **CPU temperature events during quiet hours.** No alert is sent in quiet
+  hours, so the alert cooldown never started and every 10 s check added a
+  "CPU temp high" event, flushing the whole 100-event history out of the daily
+  report. Events now have their own 30-minute cooldown.
+- **`/ask` and `/logs` hid the real error** behind "no logs available"; it is
+  now logged.
 
 ### Changed
 - **Go 1.23 is the minimum.** `go.mod` declares 1.23.0 (1.22 is end of life),
